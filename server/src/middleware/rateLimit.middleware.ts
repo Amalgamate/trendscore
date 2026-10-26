@@ -5,8 +5,9 @@ const buckets: Record<string, Entry> = {};
 
 export const rateLimit = (max: number, windowMs: number) => {
   return (req: Request, res: Response, next: NextFunction) => {
-    // robust IP detection for proxy environments
-    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || req.ip;
+    // Express resolves forwarded addresses from the configured trusted proxy.
+    // Never key limits from raw caller-controlled forwarding headers.
+    const ip = req.ip || req.socket.remoteAddress || 'unknown';
     const key = `${ip}:${req.path}`;
     const now = Date.now();
     const entry = buckets[key] || { count: 0, resetAt: now + windowMs };

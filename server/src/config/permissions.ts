@@ -12,6 +12,25 @@ export const BROADCAST_MANAGER_ROLES: Role[] = [
   'HEAD_OF_CURRICULUM',
 ];
 
+// Deputies handle day-to-day teaching and learner operations, but the head
+// teacher retains personnel, deletion, pathway-finalization, and school-wide
+// leadership actions. Keep this set aligned with the frontend policy below.
+export const DEPUTY_RESTRICTED_PERMISSIONS = new Set<Permission>([
+  'EDIT_USER',
+  'DELETE_USER',
+  'DELETE_LEARNER',
+  'LOCK_PATHWAY',
+  'MANAGE_DORMITORIES',
+  'ASSIGN_DORMITORY_BEDS',
+  'MANAGE_HOUSE_MASTERS',
+  'VIEW_BOARDING_REPORTS',
+  'MANAGE_ID_TEMPLATES',
+  'VIEW_AUDIT_LOGS',
+  'VIEW_SYSTEM_LOGS',
+  'DELETE_ANY_MESSAGE',
+  'MARKETPLACE_APPROVE',
+]);
+
 /**
  * Permissions Configuration
  * Defines which roles have access to which features/actions
@@ -227,6 +246,9 @@ export type { Role };
  */
 export function hasPermission(role: Role, permission: Permission): boolean {
   const allowedRoles = PERMISSIONS[permission] as readonly Role[] | undefined;
+  if (role === 'DEPUTY_HEAD_TEACHER') {
+    return Boolean(allowedRoles?.includes('HEAD_TEACHER') && !DEPUTY_RESTRICTED_PERMISSIONS.has(permission));
+  }
   return allowedRoles ? allowedRoles.includes(role) : false;
 }
 
@@ -238,7 +260,7 @@ export function hasPermission(role: Role, permission: Permission): boolean {
  */
 export function getRolePermissions(role: Role): Permission[] {
   return Object.entries(PERMISSIONS)
-    .filter(([_, roles]) => (roles as readonly Role[]).includes(role))
+    .filter(([permission, roles]) => hasPermission(role, permission as Permission))
     .map(([permission]) => permission as Permission);
 }
 

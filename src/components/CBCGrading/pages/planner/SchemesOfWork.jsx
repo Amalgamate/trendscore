@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   FileText, Plus, Search, Filter, 
   CheckCircle, Clock, 
@@ -35,7 +35,8 @@ const StatusBadge = ({ status }) => {
 
 const SchemesOfWork = ({ onNavigate }) => {
   const { user } = useAuth();
-  const { can, role } = usePermissions();
+  const { isAnyRole, role } = usePermissions();
+  const canCreateScheme = isAnyRole(['TEACHER', 'HEAD_TEACHER', 'ADMIN', 'SUPER_ADMIN']);
   const [schemes, setSchemes] = useState([]);
   const [loading, setLoading] = useState(true);
   
@@ -47,13 +48,7 @@ const SchemesOfWork = ({ onNavigate }) => {
   const [currentView, setCurrentView] = useState('list'); // 'list' | 'form'
   const [selectedSchemeId, setSelectedSchemeId] = useState(null);
 
-  useEffect(() => {
-    if (currentView === 'list') {
-      fetchSchemes();
-    }
-  }, [currentView, statusFilter]);
-
-  const fetchSchemes = async () => {
+  const fetchSchemes = useCallback(async () => {
     try {
       setLoading(true);
       const params = {};
@@ -70,7 +65,11 @@ const SchemesOfWork = ({ onNavigate }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [statusFilter]);
+
+  useEffect(() => {
+    if (currentView === 'list') fetchSchemes();
+  }, [currentView, fetchSchemes]);
 
   const handleDelete = async (id) => {
     if (!window.confirm('Are you sure you want to delete this Scheme of Work?')) return;
@@ -123,7 +122,7 @@ const SchemesOfWork = ({ onNavigate }) => {
           <p className="text-gray-500 text-sm">Manage teaching plans and termly schemes</p>
         </div>
         
-        {(role === 'TEACHER' || role === 'HEAD_TEACHER' || role === 'ADMIN' || role === 'SUPER_ADMIN') && (
+        {canCreateScheme && (
           <button
             onClick={handleCreateNew}
             className="flex items-center gap-2 px-4 py-2 bg-brand-teal text-white rounded-lg hover:bg-teal-700 transition"
@@ -224,7 +223,7 @@ const SchemesOfWork = ({ onNavigate }) => {
                     
                     <td className="py-3 px-4">
                       <div className="text-sm text-gray-900">Grade {scheme.grade}</div>
-                      <div className="text-xs text-gray-500">Term {scheme.term} - {scheme.academicYear}</div>
+                      <div className="text-xs text-gray-500">{String(scheme.term).replace(/^TERM_(\d+)$/, 'Term $1')} - {scheme.academicYear}</div>
                     </td>
                     
                     <td className="py-3 px-4">

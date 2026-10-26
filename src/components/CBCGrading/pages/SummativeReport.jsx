@@ -360,7 +360,7 @@ const CATEGORY_KEYWORDS = {
 // ============================================================================
 // LEARNER REPORT TEMPLATE COMPONENT (Reusable for Bulk Print)
 // ============================================================================
-const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, academicYear, brandingSettings, user, streamConfigs, remarks, commentData, gradingRanges, categoryAverages }) => {
+const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, academicYear, classPosition, classSize, streamPosition, streamSize, brandingSettings, user, streamConfigs, remarks, commentData, gradingRanges, categoryAverages }) => {
   // Build a grade function from DB ranges (or defaults if not yet loaded).
   // useMemo keeps it stable across re-renders when gradingRanges hasn't changed.
   const getGrade = React.useMemo(() => makeCBCGrader(gradingRanges), [gradingRanges]);
@@ -582,9 +582,9 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
         fontFamily: "'Raleway', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
         lineHeight: '1.2',
         width: '794px',    // 210mm at 96 DPI
-        minHeight: '1123px', // ensure card is never shorter than A4
-        // height is intentionally omitted — html2canvas reads scrollHeight,
-        // so reports with many subjects expand instead of clipping.
+        height: '1123px',
+        maxHeight: '1123px',
+        overflow: 'hidden',
         padding: '30px 40px 30px 40px',
         boxSizing: 'border-box',
         display: 'flex',
@@ -705,7 +705,7 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
               <div style={{ fontWeight: pdfTypeWeight.bold, color: '#0f172a' }}>{learner.stream || 'A'}</div>
             </div>
             {/* RIGHT: Assessment Summary */}
-            <div style={{ display: 'grid', gridTemplateRows: '1fr 1fr', height: '100%' }}>
+            <div style={{ display: 'grid', gridTemplateRows: '1fr 1fr 1fr', height: '100%' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
                 <div style={{ padding: '8px 4px', textAlign: 'center', borderRight: '1.2px solid #e2e8f0', borderBottom: '1.2px solid #e2e8f0', display: 'flex', flexDirection: 'column', justifyContent: 'center', backgroundColor: '#f8fafc', gap: '2px' }}>
                   <div style={{ fontSize: '8px', fontWeight: pdfTypeWeight.semibold, color: '#64748b', textTransform: 'uppercase' }}>Subjects</div>
@@ -724,6 +724,16 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
                 <div style={{ padding: '8px 4px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center', backgroundColor: '#f1f5f9', gap: '2px' }}>
                   <div style={{ fontSize: '8px', fontWeight: pdfTypeWeight.semibold, color: '#1e40af', textTransform: 'uppercase' }}>Grade</div>
                   <div style={{ fontSize: '16px', fontWeight: pdfTypeWeight.bold, color: '#1e40af' }}>{overallGrade}</div>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
+                <div style={{ padding: '8px 4px', textAlign: 'center', borderRight: '1.2px solid #e2e8f0', display: 'flex', flexDirection: 'column', justifyContent: 'center', backgroundColor: '#f8fafc', gap: '2px' }}>
+                  <div style={{ fontSize: '8px', fontWeight: pdfTypeWeight.semibold, color: '#64748b', textTransform: 'uppercase' }}>Class Position</div>
+                  <div style={{ fontSize: '16px', fontWeight: pdfTypeWeight.bold, color: '#0f172a' }}>{classPosition ? `${classPosition} / ${classSize}` : '—'}</div>
+                </div>
+                <div style={{ padding: '8px 4px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center', backgroundColor: '#f1f5f9', gap: '2px' }}>
+                  <div style={{ fontSize: '8px', fontWeight: pdfTypeWeight.semibold, color: '#1e40af', textTransform: 'uppercase' }}>Stream Position</div>
+                  <div style={{ fontSize: '16px', fontWeight: pdfTypeWeight.bold, color: '#1e40af' }}>{streamPosition ? `${streamPosition} / ${streamSize}` : '—'}</div>
                 </div>
               </div>
             </div>
@@ -1061,8 +1071,31 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
 
       </div>{/* end CONTENT BODY */}
 
+      {/* Manual dates and balance fields — left aligned above teacher remarks */}
+      <div style={{
+        marginTop: 'auto',
+        marginBottom: '16px',
+        display: 'flex',
+        justifyContent: 'flex-start',
+        alignItems: 'center',
+        gap: '44px',
+        color: '#475569',
+        fontSize: '10px',
+        fontWeight: '800',
+        textTransform: 'uppercase'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '7px', whiteSpace: 'nowrap' }}>
+          <span>Opening Date:</span>
+          <span style={{ display: 'inline-block', minWidth: '150px', borderBottom: '1px dotted #94a3b8', height: '14px' }} />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '7px', whiteSpace: 'nowrap' }}>
+          <span>Fee Balance:</span>
+          <span style={{ display: 'inline-block', minWidth: '150px', borderBottom: '1px dotted #94a3b8', height: '14px' }} />
+        </div>
+      </div>
+
       {/* Class Teacher's Remarks — anchored just above the footer */}
-      <div style={{ marginTop: 'auto', marginBottom: '10px' }}>
+      <div style={{ marginBottom: '10px' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
           <span style={{ fontSize: '10px', fontWeight: '900', color: '#475569', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
             Class Teacher's Remarks:
@@ -1107,7 +1140,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
   const [selectedTestGroups, setSelectedTestGroups] = useState([]);
   const [selectedTestIds, setSelectedTestIds] = useState([]);
   const [streamConfigs, setStreamConfigs] = useState([]);
-  const { grades: contextGrades } = useSchoolData();
+  const { grades: contextGrades, termConfigs } = useSchoolData();
   const [grades, setGrades] = useState([]);
   const [loading, setLoading] = useState(false);
   const [reportData, setReportData] = useState(null);
@@ -2910,14 +2943,88 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
         const selectedLearners = selectedLearnerIds
           .map((id) => filteredLearners?.find((l) => l.id === id))
           .filter(Boolean);
-        const allowedSubjectsByLearner = await buildAllowedSubjectsMap(selectedLearners);
+        let rankingLearners = filteredLearners || [];
+        if (stagedGrade && stagedGrade !== 'all' && stagedStream && stagedStream !== 'all') {
+          try {
+            const gradeRoster = await api.learners.getAll({ grade: stagedGrade, limit: 1000 });
+            rankingLearners = gradeRoster.success && Array.isArray(gradeRoster.data) ? gradeRoster.data : [];
+          } catch {
+            rankingLearners = [];
+          }
+        }
+        const allowedSubjectsByLearner = await buildAllowedSubjectsMap(rankingLearners);
         const categoryAveragesByLearner = await buildCategoryAveragesMap(selectedLearners);
 
-        // OPTIMIZED: Fetch all results and communication history for the whole group in one hit
-        const bulkRes = await api.assessments.getBulkResults(queryParams);
+        // Fetch the whole grade so class position can compare across streams.
+        const rankingParams = { ...queryParams };
+        delete rankingParams.stream;
+        const bulkRes = await api.assessments.getBulkResults(rankingParams);
         const allResults = bulkRes.success ? (bulkRes.data || bulkRes.results || []) : [];
         const allCommunications = bulkRes.success ? (bulkRes.communications || []) : [];
         const allPredictions = bulkRes.success ? (bulkRes.predictions || {}) : {};
+
+        // Rank against all assessed learners in the grade and the learner's
+        // stream, even when printing a single learner or one selected stream.
+        const classPeers = stagedGrade && stagedGrade !== 'all' ? rankingLearners : [];
+        const classScores = classPeers.map((peer) => {
+          let peerResults = allResults.filter(result => result.learnerId === peer.id);
+          if (selectedTestIds.length > 0) {
+            peerResults = peerResults.filter(result => selectedTestIds.includes(result.testId));
+          }
+          if (selectedTestGroups.length > 0) {
+            peerResults = peerResults.filter(result => {
+              const matchingTest = currentTests.find(test => test.id === result.testId);
+              const group = resolveTestGroup({
+                testType: result.test?.testType || result.testType || matchingTest?.testType,
+                title: result.test?.title || matchingTest?.title || result.title,
+                weekNumber: result.test?.weekNumber ?? result.weekNumber ?? matchingTest?.weekNumber
+              });
+              return selectedTestGroups.includes(group);
+            });
+          }
+          const allowedSubjects = allowedSubjectsByLearner.get(peer.id);
+          if (allowedSubjects && allowedSubjects.size > 0) {
+            peerResults = peerResults.filter(result => {
+              const test = result.test || currentTests.find(item => item.id === result.testId) || {};
+              const area = getCanonicalLearningAreaKey(result.learningArea || test.learningArea);
+              return area ? allowedSubjects.has(area) : true;
+            });
+          }
+          const totals = peerResults.reduce((acc, result) => {
+            const test = result.test || currentTests.find(item => item.id === result.testId) || {};
+            const score = result.score !== undefined ? result.score : result.marksObtained;
+            acc.score += Number(score || 0);
+            acc.max += Number(result.totalMarks || test.totalMarks || 100);
+            return acc;
+          }, { score: 0, max: 0 });
+          return {
+            learner: peer,
+            average: totals.max > 0 ? totals.score / totals.max : null
+          };
+        }).filter(entry => entry.average !== null);
+
+        const classGroups = new Map();
+        const streamGroups = new Map();
+        classScores.forEach((entry) => {
+          const gradeKey = normalize(entry.learner.grade);
+          const streamKey = `${gradeKey}|${normalize(entry.learner.stream)}`;
+          if (!classGroups.has(gradeKey)) classGroups.set(gradeKey, []);
+          classGroups.get(gradeKey).push(entry);
+          if (!streamGroups.has(streamKey)) streamGroups.set(streamKey, []);
+          streamGroups.get(streamKey).push(entry);
+        });
+        const rankGroups = (groups) => {
+          const positions = new Map();
+          groups.forEach((group) => {
+          group.forEach((entry) => {
+            const position = 1 + group.filter(other => other.average > entry.average + 0.000001).length;
+              positions.set(entry.learner.id, { position, size: group.length });
+            });
+          });
+          return positions;
+        };
+        const classPositions = rankGroups(classGroups);
+        const streamPositions = rankGroups(streamGroups);
 
 
         for (const learnerId of selectedLearnerIds) {
@@ -2995,6 +3102,10 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
           allReportRows.push({
             learner,
             results: processedResults,
+            classPosition: classPositions.get(learnerId)?.position || null,
+            classSize: classPositions.get(learnerId)?.size || null,
+            streamPosition: streamPositions.get(learnerId)?.position || null,
+            streamSize: streamPositions.get(learnerId)?.size || null,
             communication,
             pathwayPrediction: allPredictions[learnerId] || null,
             byCategoryAverages: rowCategoryAverages,
@@ -3842,6 +3953,11 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
                     categoryAverages={reportData.byCategoryAverages || reportData.rows?.[0]?.byCategoryAverages || []}
                     term={reportData.term}
                     academicYear={reportData.academicYear}
+                    termConfigs={termConfigs}
+                    classPosition={reportData.rows?.[0]?.classPosition}
+                    classSize={reportData.rows?.[0]?.classSize}
+                    streamPosition={reportData.rows?.[0]?.streamPosition}
+                    streamSize={reportData.rows?.[0]?.streamSize}
                     brandingSettings={brandingSettings}
                     user={user}
                     streamConfigs={streamConfigs}
@@ -4480,7 +4596,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
               <div
                 key={`bulk-${row.learner.id}-${index}`}
                 className="pdf-report-page"
-                style={{ pageBreakAfter: index === bulkDownloadData.length - 1 ? 'auto' : 'always' }}
+                style={{ width: '794px', height: '1123px', maxHeight: '1123px', overflow: 'hidden', boxSizing: 'border-box', pageBreakAfter: index === bulkDownloadData.length - 1 ? 'auto' : 'always' }}
               >
                 <LearnerReportTemplate
                   learner={row.learner}
@@ -4488,7 +4604,12 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
                   pathwayPrediction={row.pathwayPrediction}
                   categoryAverages={row.byCategoryAverages || []}
                   term={stagedTerm || selectedTerm}
-                  academicYear={academicYear || setup.academicYear}
+                  academicYear={stagedAcademicYear || setup.academicYear}
+                  termConfigs={termConfigs}
+                  classPosition={row.classPosition}
+                  classSize={row.classSize}
+                  streamPosition={row.streamPosition}
+                  streamSize={row.streamSize}
                   commentData={commentMap?.[row?.learner?.id]}
                   brandingSettings={brandingSettings}
                   user={user}
@@ -4509,7 +4630,12 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
               pathwayPrediction={singleDownloadData.pathwayPrediction}
               categoryAverages={singleDownloadData.byCategoryAverages || []}
               term={stagedTerm || selectedTerm}
-              academicYear={academicYear || setup.academicYear}
+              academicYear={stagedAcademicYear || setup.academicYear}
+              termConfigs={termConfigs}
+              classPosition={singleDownloadData.classPosition}
+              classSize={singleDownloadData.classSize}
+              streamPosition={singleDownloadData.streamPosition}
+              streamSize={singleDownloadData.streamSize}
               commentData={singleCommentData}
               brandingSettings={brandingSettings}
               user={user}
@@ -4809,7 +4935,12 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
               pathwayPrediction={singleDownloadData?.pathwayPrediction || reportData?.pathwayPrediction || reportData?.rows?.[0]?.pathwayPrediction}
               categoryAverages={singleDownloadData?.byCategoryAverages || reportData?.byCategoryAverages || reportData?.rows?.[0]?.byCategoryAverages || []}
               term={selectedTerm || reportData?.term}
-              academicYear={academicYear || reportData?.academicYear}
+              academicYear={reportData?.academicYear || stagedAcademicYear || academicYear}
+              termConfigs={termConfigs}
+              classPosition={singleDownloadData?.classPosition || reportData?.rows?.[0]?.classPosition}
+              classSize={singleDownloadData?.classSize || reportData?.rows?.[0]?.classSize}
+              streamPosition={singleDownloadData?.streamPosition || reportData?.rows?.[0]?.streamPosition}
+              streamSize={singleDownloadData?.streamSize || reportData?.rows?.[0]?.streamSize}
               brandingSettings={brandingSettings}
               user={user}
               streamConfigs={streamConfigs}
@@ -4823,14 +4954,19 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
         {bulkDownloadData && bulkDownloadData.length > 0 && (
           <div id="bulk-print-content" style={{ display: 'flex', flexDirection: 'column' }}>
             {bulkDownloadData.map((row, idx) => (
-              <div key={idx} className="pdf-report-page" style={{ width: '794px', minHeight: '1123px', overflow: 'visible', backgroundColor: '#fff' }}>
+              <div key={idx} className="pdf-report-page" style={{ width: '794px', height: '1123px', maxHeight: '1123px', overflow: 'hidden', boxSizing: 'border-box', backgroundColor: '#fff', pageBreakAfter: idx === bulkDownloadData.length - 1 ? 'auto' : 'always' }}>
                 <LearnerReportTemplate
                   learner={row.learner}
                   results={row.results || []}
                   pathwayPrediction={row.pathwayPrediction}
                   categoryAverages={row.byCategoryAverages || []}
                   term={selectedTerm || reportData?.term}
-                  academicYear={academicYear || reportData?.academicYear}
+                  academicYear={reportData?.academicYear || stagedAcademicYear || academicYear}
+                  termConfigs={termConfigs}
+                  classPosition={row.classPosition}
+                  classSize={row.classSize}
+                  streamPosition={row.streamPosition}
+                  streamSize={row.streamSize}
                   brandingSettings={brandingSettings}
                   user={user}
                   streamConfigs={streamConfigs}

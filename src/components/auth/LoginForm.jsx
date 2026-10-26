@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Eye,
   EyeOff,
@@ -130,6 +130,7 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState({});
   const [isPhoneOtpLoading, setIsPhoneOtpLoading] = useState(false);
+  const autoRequestedPhoneRef = useRef('');
   const [phoneOtpStep, setPhoneOtpStep] = useState('request');
   const [phoneOtpCooldown, setPhoneOtpCooldown] = useState(0);
   const [phonePasswordFallback, setPhonePasswordFallback] = useState(false);
@@ -374,8 +375,15 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
 
   // Auto-submit phone number when it reaches 9 digits on mobile
   useEffect(() => {
-    if (isMobile && phoneOtpStep === 'request' && phoneOtp.phone.length === 9 && !isPhoneOtpLoading) {
+    if (
+      isMobile &&
+      phoneOtpStep === 'request' &&
+      phoneOtp.phone.length === 9 &&
+      !isPhoneOtpLoading &&
+      autoRequestedPhoneRef.current !== phoneOtp.phone
+    ) {
       const timer = setTimeout(() => {
+        autoRequestedPhoneRef.current = phoneOtp.phone;
         handlePhoneOtpRequest();
       }, 250);
       return () => clearTimeout(timer);
@@ -1056,6 +1064,16 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
                         )}
                       </div>
                       {errors.phone && <p className="mt-2 text-xs font-bold uppercase text-red-600">{errors.phone}</p>}
+                      {errors.form && displayDigits.length === 9 && (
+                        <button
+                          type="button"
+                          onClick={handlePhoneOtpRequest}
+                          disabled={isPhoneOtpLoading}
+                          className="mt-3 w-full text-center text-sm font-semibold text-[#F47C20] disabled:opacity-50"
+                        >
+                          Try again
+                        </button>
+                      )}
                     </>
                   ) : (
                     <>
@@ -1064,10 +1082,19 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
                         <button
                           type="button"
                           onClick={() => {
+                            autoRequestedPhoneRef.current = '';
                             setPhoneOtpStep('request');
                             setPhonePasswordFallback(false);
                             setLoginBgRole(null);
-                            setPhoneOtp(prev => ({ ...prev, code: '', requiresOtp: true }));
+                            setPhoneOtp(prev => ({
+                              ...prev,
+                              phone: '',
+                              challengeId: '',
+                              code: '',
+                              requiresOtp: true,
+                            }));
+                            setPhoneOtpCooldown(0);
+                            setErrors({});
                           }}
                           className="ml-1 text-sm font-semibold text-[#F47C20]"
                         >

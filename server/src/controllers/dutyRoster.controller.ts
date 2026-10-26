@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { DutyRosterFrequency } from '@prisma/client';
 import { AuthRequest } from '../middleware/permissions.middleware';
 import { DutyRosterService } from '../services/dutyRoster.service';
+import { getCanonicalRoles } from '../utils/roleNormalizer';
 
 export class DutyRosterController {
   async list(req: AuthRequest, res: Response) {
@@ -32,6 +33,8 @@ export class DutyRosterController {
 
   async update(req: AuthRequest, res: Response) {
     const { id } = req.params;
+    const userId = req.user!.userId;
+    const roles = getCanonicalRoles(req.user);
     const { title, frequency, startDate, endDate, isActive, reminderEnabled, assignments } = req.body;
     const roster = await DutyRosterService.updateRoster(id, {
       title,
@@ -41,7 +44,7 @@ export class DutyRosterController {
       isActive,
       reminderEnabled,
       assignments
-    });
+    }, { userId, canManageAll: roles.some((role) => ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'].includes(role)) });
     res.json({ success: true, data: roster });
   }
 

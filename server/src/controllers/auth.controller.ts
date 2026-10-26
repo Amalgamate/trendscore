@@ -14,6 +14,8 @@ import { markGlobalForceLogout } from '../services/auth-session.service';
 import { authLoginService } from '../services/auth-login.service';
 import { authPhoneOtpService } from '../services/auth-phone-otp.service';
 import { authTokenService } from '../services/auth-token.service';
+import { revokedImpersonationKey } from '../services/impersonation.service';
+import { invalidateAuthLookupCache } from '../services/auth-cache.service';
 import { PRODUCT_DISPLAY_NAME } from '../config/productIdentity';
 import { buildParentLoginEmail, getParentPhoneLookupCandidates, getParentLoginEmailCandidates, normalizeParentPhoneForFamily } from '../services/parent.service';
 import { studentPhoneLookupService } from '../services/studentPhoneLookup.service';
@@ -281,6 +283,7 @@ export class AuthController {
     await prisma.user.update({
       where: { id: user.id },
       data: {
+        authVersion: { increment: 1 },
         password: hashedPassword,
         passwordResetToken: null,   // Clears the mustChangePassword flag
         passwordResetExpiry: null,
@@ -288,14 +291,18 @@ export class AuthController {
         lockedUntil: null
       }
     });
+    await invalidateAuthLookupCache();
 
     res.json({ success: true, message: 'Password reset successful' });
   }
 
   async logout(req: AuthRequest, res: Response) {
-    const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
-    if (refreshToken) {
-      try { await authTokenService.revokeRefreshToken(refreshToken); } catch { /* non-blocking */ }
+    if (req.user?.isImpersonation && req.accessToken) {
+      const expiresAt = Number(req.user.exp || 0);
+      const ttl = Math.max(1, expiresAt - Math.floor(Date.now() / 1000));
+      await redisCacheService.setSecurityValue(revokedImpersonationKey(req.accessToken), '1', ttl);
+    } else if (req.user?.userId) {
+      await prisma.user.update({ where: { id: req.user.userId }, data: { authVersion: { increment: 1 } } });
     }
     authTokenService.clearTokenCookies(res);
     res.json({ success: true, message: 'Logged out' });
@@ -421,6 +428,7 @@ export class AuthController {
     await prisma.user.update({
       where: { id: userId },
       data: {
+        authVersion: { increment: 1 },
         password: hashedPassword,
         passwordResetToken: null,   // clears mustChangePassword flag
         passwordResetExpiry: null,
@@ -430,7 +438,7 @@ export class AuthController {
     });
 
     // Invalidate any cached auth state for this user
-    await redisCacheService.delete(`auth:v2:user:${userId}`);
+    await invalidateAuthLookupCache();
 
     res.json({ success: true, message: 'Password changed successfully' });
   }

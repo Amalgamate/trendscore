@@ -1955,11 +1955,10 @@ export class HRService {
                 timestamp:    new Date(),
             };
 
-            // 2. Broadcast to the school attendance room so the live feed updates
+            // Broadcast inside this school's isolated Socket.IO deployment.
             try {
                 const io = getIO();
-                const room = `attendance:${params.schoolId || 'school'}`;
-                io.to(room).emit('hr:clock_event', payload);
+                io.to('attendance:school').emit('hr:clock_event', payload);
             } catch {
                 // Socket not ready — non-fatal
             }
@@ -2027,8 +2026,7 @@ export class HRService {
 
             try {
                 const io = getIO();
-                const room = `attendance:${params.schoolId || 'school'}`;
-                io.to(room).emit('hr:presence_exit', payload);
+                io.to('attendance:school').emit('hr:presence_exit', payload);
             } catch {
                 // Socket not ready — non-fatal
             }

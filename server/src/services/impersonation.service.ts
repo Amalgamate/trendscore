@@ -67,6 +67,7 @@ interface TargetUserRecord {
   institutionType: InstitutionType | null;
   status: string;
   archived: boolean;
+  authVersion: number;
   profilePicture: string | null;
 }
 
@@ -262,6 +263,7 @@ export class ImpersonationService {
         institutionType: true,
         status:         true,
         archived:       true,
+        authVersion:    true,
         profilePicture: true,
       },
     }) as TargetUserRecord | null;
@@ -320,6 +322,7 @@ export class ImpersonationService {
       role:            targetUser.role,
       roles:           impersonationRoles,
       institutionType: targetUser.institutionType as ImpersonationJWTPayload['institutionType'],
+      authVersion: targetUser.authVersion ?? 0,
       isImpersonation: true,
       originalAdminId: requestingUser.userId,
     };
@@ -403,7 +406,7 @@ export class ImpersonationService {
     const nowSeconds  = Math.floor(Date.now() / 1000);
     const remaining   = Math.max(requestingUser.exp - nowSeconds, 1);
 
-    await redisCacheService.set(
+    await redisCacheService.setSecurityValue(
       revokedImpersonationKey(currentToken),
       '1',
       remaining,

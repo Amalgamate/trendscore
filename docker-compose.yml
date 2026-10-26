@@ -54,6 +54,8 @@ services:
       NODE_ENV: production
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-0}
+      SECURE_COOKIES: ${SECURE_COOKIES:-true}
     depends_on:
       - db
       - redis

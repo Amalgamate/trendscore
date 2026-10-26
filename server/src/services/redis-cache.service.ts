@@ -16,6 +16,13 @@ interface CacheEntry<T> {
   expiresAt: number;
 }
 
+export class SecurityStateUnavailableError extends Error {
+  constructor() {
+    super('Shared security state is unavailable');
+    this.name = 'SecurityStateUnavailableError';
+  }
+}
+
 class RedisCacheService {
   private redis: Redis | null = null;
   private memoryFallback = new Map<string, CacheEntry<any>>();
@@ -151,6 +158,49 @@ class RedisCacheService {
     }
   }
 
+  /** Cache reads for authentication state must not silently degrade to local memory in production. */
+  async getSecurityValue<T>(key: string): Promise<T | null> {
+    if (process.env.NODE_ENV !== 'production') return this.get<T>(key);
+    if (!this.useRedis || !this.redis) throw new SecurityStateUnavailableError();
+    let value: string | null;
+    try { value = await this.redis.get(key); } catch { throw new SecurityStateUnavailableError(); }
+    if (value === null) return null;
+    try { return JSON.parse(value) as T; } catch { return value as T; }
+  }
+
+  async setSecurityValue<T>(key: string, value: T, ttlSeconds: number): Promise<void> {
+    if (process.env.NODE_ENV !== 'production') return this.set(key, value, ttlSeconds);
+    if (!this.useRedis || !this.redis) throw new SecurityStateUnavailableError();
+    const serialized = typeof value === 'string' ? value : JSON.stringify(value);
+    try { await this.redis.setex(key, ttlSeconds, serialized); } catch { throw new SecurityStateUnavailableError(); }
+  }
+
+  async setSecurityValueIfAbsent(key: string, value: string, ttlSeconds: number): Promise<boolean> {
+    if (process.env.NODE_ENV !== 'production') {
+      const now = Date.now();
+      const existing = this.memoryFallback.get(key);
+      if (existing && existing.expiresAt > now) return false;
+      this.memoryFallback.set(key, { value, expiresAt: now + ttlSeconds * 1000 });
+      return true;
+    }
+    if (!this.useRedis || !this.redis) throw new SecurityStateUnavailableError();
+    try { return (await this.redis.set(key, value, 'EX', ttlSeconds, 'NX')) === 'OK'; }
+    catch { throw new SecurityStateUnavailableError(); }
+  }
+
+  async incrementSecurityCounter(key: string, ttlSeconds: number): Promise<number> {
+    if (process.env.NODE_ENV !== 'production') return this.increment(key, ttlSeconds);
+    if (!this.useRedis || !this.redis) throw new SecurityStateUnavailableError();
+    let value: unknown;
+    try { value = await this.redis.eval(
+      "local n = redis.call('INCR', KEYS[1]); if n == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]); end; return n",
+      1,
+      key,
+      Math.max(1, Math.ceil(ttlSeconds)),
+    ); } catch { throw new SecurityStateUnavailableError(); }
+    return Number(value);
+  }
+
   /**
    * Atomically retrieve and remove a value.
    * Used for one-time tokens and AI confirmations so concurrent requests
@@ -200,6 +250,38 @@ class RedisCacheService {
     } catch (error) {
       console.error(`[Cache] Set error for key ${key}:`, error);
     }
+  }
+
+  /** Atomically increment a numeric counter and set its expiry on first use. */
+  async increment(key: string, ttlSeconds: number): Promise<number> {
+    try {
+      if (this.useRedis && this.redis) {
+        const value = await this.redis.eval(
+          "local n = redis.call('INCR', KEYS[1]); if n == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]); end; return n",
+          1,
+          key,
+          Math.max(1, Math.ceil(ttlSeconds)),
+        );
+        return Number(value);
+      }
+
+      return this.incrementMemory(key, ttlSeconds);
+    } catch (error) {
+      console.error(`[Cache] Increment error for key ${key}:`, error);
+      return this.incrementMemory(key, ttlSeconds);
+    }
+  }
+
+  private incrementMemory(key: string, ttlSeconds: number): number {
+    const now = Date.now();
+    const entry = this.memoryFallback.get(key);
+    const current = entry && entry.expiresAt > now ? Number(entry.value) || 0 : 0;
+    const next = current + 1;
+    this.memoryFallback.set(key, {
+      value: next,
+      expiresAt: current ? entry!.expiresAt : now + Math.max(1, ttlSeconds) * 1000,
+    });
+    return next;
   }
 
   /**

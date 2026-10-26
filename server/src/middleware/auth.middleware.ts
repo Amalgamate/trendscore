@@ -5,8 +5,9 @@ import { ApiError } from '../utils/error.util';
 import { Role } from '../config/permissions';
 import { normalizeRole, getCanonicalRoles } from '../utils/roleNormalizer';
 import { isTokenGloballyInvalidated } from '../services/auth-session.service';
-import { redisCacheService } from '../services/redis-cache.service';
+import { redisCacheService, SecurityStateUnavailableError } from '../services/redis-cache.service';
 import { revokedImpersonationKey } from '../services/impersonation.service';
+import prisma from '../config/database';
 
 export type { AuthRequest };
 
@@ -34,23 +35,30 @@ export const authenticate = async (
       throw new ApiError(401, 'Session invalidated by administrator').withCode('FORCE_LOGOUT');
     }
 
-    // ── Impersonation token revocation check (Requirement 6.3) ───────────────
-    // Check the Redis revocation list for impersonation tokens BEFORE
-    // processing any payload fields. This runs even for non-impersonation
-    // tokens (the key simply won't exist), so normal requests are unaffected.
-    // Fail open: if Redis is unavailable the check is skipped rather than
-    // blocking all authenticated requests. redisCacheService.get() already
-    // catches internal errors and returns null, but we wrap defensively here
-    // to ensure any unexpected throw never propagates into the auth catch block.
-    let isRevoked: string | null = null;
-    try {
-      isRevoked = await redisCacheService.get(revokedImpersonationKey(token));
-    } catch {
-      // Redis unavailable — treat as not revoked and continue.
-      console.warn('[Auth] Redis revocation check failed — failing open');
-    }
-    if (isRevoked) {
+    if (decoded.isImpersonation && await redisCacheService.getSecurityValue(revokedImpersonationKey(token))) {
       throw new ApiError(401, 'Impersonation session has been revoked').withCode('TOKEN_REVOKED');
+    }
+
+    const userId = decoded.userId;
+    let currentUser;
+    try {
+      currentUser = userId ? await prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true, email: true, role: true, roles: true, status: true, archived: true, institutionType: true, authVersion: true },
+      }) : null;
+    } catch {
+      throw new ApiError(503, 'Authentication service is temporarily unavailable').withCode('AUTH_STATE_UNAVAILABLE');
+    }
+    if (!currentUser || currentUser.status !== 'ACTIVE' || currentUser.archived) {
+      throw new ApiError(401, 'Account is inactive').withCode('ACCOUNT_INACTIVE');
+    }
+    if ((decoded.authVersion ?? 0) !== currentUser.authVersion) {
+      throw new ApiError(401, 'Session invalidated by account security change').withCode('SESSION_REVOKED');
+    }
+    const tokenRoles = getCanonicalRoles(decoded).sort();
+    const databaseRoles = getCanonicalRoles(currentUser).sort();
+    if (tokenRoles.length !== databaseRoles.length || tokenRoles.some((role, index) => role !== databaseRoles[index])) {
+      throw new ApiError(401, 'Session role claims are no longer current').withCode('SESSION_REVOKED');
     }
 
     // ── Validate impersonation payload integrity (Requirement 6.4) ───────────
@@ -60,36 +68,52 @@ export const authenticate = async (
       if (!decoded.originalAdminId || (decoded.originalAdminId as string).trim() === '') {
         throw new ApiError(401, 'Invalid impersonation token: missing originalAdminId').withCode('INVALID_TOKEN');
       }
+      const administrator = await prisma.user.findUnique({
+        where: { id: decoded.originalAdminId },
+        select: { role: true, roles: true, status: true, archived: true },
+      });
+      const administratorRoles = getCanonicalRoles(administrator);
+      if (!administrator || administrator.status !== 'ACTIVE' || administrator.archived ||
+          !administratorRoles.some(role => role === 'ADMIN' || role === 'SUPER_ADMIN')) {
+        throw new ApiError(401, 'Impersonation owner is no longer authorized').withCode('SESSION_REVOKED');
+      }
     }
 
     // Normalize roles exactly once at the auth boundary.
     // From this point req.user.role and req.user.roles are always canonical —
     // no downstream guard or controller should re-normalize.
-    const canonicalRole  = normalizeRole(decoded.role) as Role;
-    const canonicalRoles = getCanonicalRoles(decoded) as Role[];
+    const canonicalRole  = normalizeRole(currentUser.role) as Role;
+    const canonicalRoles = getCanonicalRoles(currentUser) as Role[];
 
     // ── Propagate impersonation claims to req.user (Requirements 6.1, 6.2) ──
     req.user = {
       ...decoded,
+      userId: currentUser.id,
+      email: currentUser.email,
+      institutionType: currentUser.institutionType,
       role: canonicalRole,
       roles: canonicalRoles,
       isImpersonation: !!decoded.isImpersonation,
-      originalAdminId: (decoded as any).originalAdminId ?? undefined,
+      originalAdminId: decoded.originalAdminId,
     };
+    req.accessToken = token;
 
     next();
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const authError = error instanceof Error ? error : new Error('Unknown authentication error');
     const isProd = process.env.NODE_ENV === 'production';
     if (isProd) {
-      console.error(`[Auth] Authentication failed: ${error.message} (Name: ${error.name})`);
+      console.error(`[Auth] Authentication failed: ${authError.message} (Name: ${authError.name})`);
     }
 
     if (error instanceof ApiError) {
       next(error);
-    } else if (error.name === 'TokenExpiredError') {
+    } else if (authError.name === 'TokenExpiredError') {
       next(new ApiError(401, 'Token expired').withCode('TOKEN_EXPIRED'));
-    } else if (error.name === 'JsonWebTokenError') {
+    } else if (authError.name === 'JsonWebTokenError') {
       next(new ApiError(401, 'Invalid token').withCode('INVALID_TOKEN'));
+    } else if (error instanceof SecurityStateUnavailableError) {
+      next(new ApiError(503, 'Authentication service is temporarily unavailable').withCode('AUTH_STATE_UNAVAILABLE'));
     } else {
       next(new ApiError(401, 'Authentication failed').withCode('AUTH_REQUIRED'));
     }
@@ -126,32 +150,49 @@ export const optionalAuthenticate = async (
       return next();
     }
 
-    // ── Impersonation token revocation check ──────────────────────────────
-    // Silently continue as anonymous if the impersonation token was revoked.
-    // Fail open on Redis errors — treat as not revoked.
-    let isRevoked: string | null = null;
-    try {
-      isRevoked = await redisCacheService.get(revokedImpersonationKey(token));
-    } catch {
-      // Redis unavailable — fail open.
-    }
-    if (isRevoked) {
+    if (decoded.isImpersonation && await redisCacheService.getSecurityValue(revokedImpersonationKey(token))) {
       return next();
     }
 
+    const userId = decoded.userId;
+    const currentUser = userId ? await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, role: true, roles: true, status: true, archived: true, institutionType: true, authVersion: true },
+    }) : null;
+    if (!currentUser || currentUser.status !== 'ACTIVE' || currentUser.archived || (decoded.authVersion ?? 0) !== currentUser.authVersion) {
+      return next();
+    }
+    if (decoded.isImpersonation) {
+      if (!decoded.originalAdminId?.trim()) return next();
+      const administrator = await prisma.user.findUnique({
+        where: { id: decoded.originalAdminId },
+        select: { role: true, roles: true, status: true, archived: true },
+      });
+      const administratorRoles = getCanonicalRoles(administrator);
+      if (!administrator || administrator.status !== 'ACTIVE' || administrator.archived ||
+          !administratorRoles.some(role => role === 'ADMIN' || role === 'SUPER_ADMIN')) return next();
+    }
+    const tokenRoles = getCanonicalRoles(decoded).sort();
+    const databaseRoles = getCanonicalRoles(currentUser).sort();
+    if (tokenRoles.length !== databaseRoles.length || tokenRoles.some((role, index) => role !== databaseRoles[index])) return next();
+
     // Mirror authenticate(): normalize at the boundary so all downstream
     // code sees canonical roles whether or not auth was required.
-    const canonicalRole  = normalizeRole(decoded.role) as Role;
-    const canonicalRoles = getCanonicalRoles(decoded) as Role[];
+    const canonicalRole  = normalizeRole(currentUser.role) as Role;
+    const canonicalRoles = getCanonicalRoles(currentUser) as Role[];
 
     // Propagate impersonation claims (Requirements 6.1, 6.2).
     req.user = {
       ...decoded,
+      userId: currentUser.id,
+      email: currentUser.email,
+      institutionType: currentUser.institutionType,
       role: canonicalRole,
       roles: canonicalRoles,
       isImpersonation: !!decoded.isImpersonation,
-      originalAdminId: (decoded as any).originalAdminId ?? undefined,
+      originalAdminId: decoded.originalAdminId,
     };
+    req.accessToken = token;
 
     next();
   } catch {

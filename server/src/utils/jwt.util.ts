@@ -12,7 +12,9 @@ interface JWTPayload {
   institutionType: InstitutionType;
   isImpersonation?: boolean;
   originalAdminId?: string;
+  authVersion?: number;
   iat?: number;
+  exp?: number;
 }
 
 interface User {
@@ -21,6 +23,7 @@ interface User {
   role: UserRole;
   roles?: UserRole[];
   institutionType: InstitutionType;
+  authVersion?: number;
 }
 
 export const generateAccessToken = (user: User): string => {
@@ -35,6 +38,7 @@ export const generateAccessToken = (user: User): string => {
     role: user.role as Role,
     roles,
     institutionType: user.institutionType,
+    authVersion: user.authVersion ?? 0,
   };
 
   return jwt.sign(
@@ -46,7 +50,13 @@ export const generateAccessToken = (user: User): string => {
 
 export const generateRefreshToken = (user: User, rememberMe = false): string => {
   return jwt.sign(
-    { userId: user.id, rememberMe },
+    {
+      userId: user.id,
+      rememberMe,
+      authVersion: user.authVersion ?? 0,
+      role: user.role,
+      roles: Array.from(new Set([user.role, ...(user.roles ?? [])])),
+    },
     process.env.JWT_REFRESH_SECRET!,
     {
       expiresIn: rememberMe
@@ -57,9 +67,9 @@ export const generateRefreshToken = (user: User, rememberMe = false): string => 
 };
 
 export const verifyAccessToken = (token: string): JWTPayload => {
-  return jwt.verify(token, process.env.JWT_SECRET!) as JWTPayload;
+  return jwt.verify(token, process.env.JWT_SECRET!, { algorithms: ['HS256'] }) as JWTPayload;
 };
 
-export const verifyRefreshToken = (token: string): { userId: string; rememberMe?: boolean; iat?: number } => {
-  return jwt.verify(token, process.env.JWT_REFRESH_SECRET!) as { userId: string; rememberMe?: boolean; iat?: number };
+export const verifyRefreshToken = (token: string): { userId: string; rememberMe?: boolean; authVersion?: number; role?: Role; roles?: Role[]; iat?: number } => {
+  return jwt.verify(token, process.env.JWT_REFRESH_SECRET!, { algorithms: ['HS256'] }) as { userId: string; rememberMe?: boolean; authVersion?: number; role?: Role; roles?: Role[]; iat?: number };
 };

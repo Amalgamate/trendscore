@@ -10,11 +10,23 @@ const flattenLeafItems = (items = []) =>
 const isItemActive = (item, currentPage, pageParams = {}) => {
   if (currentPage !== item.path) return false;
   const params = item.params || {};
-  return Object.entries(params).every(([key, value]) => pageParams?.[key] === value);
+  const matchesParams = Object.entries(params).every(([key, value]) => pageParams?.[key] === value);
+  if (!matchesParams) return false;
+
+  // Several Planner destinations share annual-planner and differ by tab.
+  // Require exact tab matching so Year Planner doesn't remain highlighted on
+  // Term Setup or All Events, and direct annual-planner links resolve to home.
+  if (item.path === 'annual-planner') {
+    return (pageParams?.tab || 'dashboard') === (params.tab || 'dashboard');
+  }
+
+  return true;
 };
 
 const PASTEL_PALETTE = {
   'Assessments':        'text-emerald-700 bg-emerald-50',
+  'Formative':          'text-violet-700  bg-violet-50',
+  'Holistic Development': 'text-sky-700    bg-sky-50',
   'Detailed Reports':   'text-amber-700   bg-amber-50',
   'Reports':            'text-amber-700   bg-amber-50',
   'Core Competencies':  'text-sky-700     bg-sky-50',

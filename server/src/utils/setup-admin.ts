@@ -1,5 +1,6 @@
 import bcrypt from 'bcrypt';
 import prisma from '../config/database';
+import { invalidateAuthLookupCache } from '../services/auth-cache.service';
 
 /**
  * Ensures initial users exist in the database for testing and administration.
@@ -65,7 +66,7 @@ export async function ensureSuperAdmin() {
         for (const userData of usersToCreate) {
             const existing = await prisma.user.findUnique({
                 where: { email: userData.email },
-                select: { id: true }
+                select: { id: true, role: true, status: true }
             });
 
             if (existing) {
@@ -74,11 +75,17 @@ export async function ensureSuperAdmin() {
                     data: {
                         status: 'ACTIVE',
                         role: userData.role,
+                        ...((existing.role !== userData.role || existing.status !== 'ACTIVE')
+                            ? { authVersion: { increment: 1 } }
+                            : {}),
                         firstName: userData.firstName,
                         lastName: userData.lastName,
                         phone: userData.phone
                     }
                 });
+                if (existing.role !== userData.role || existing.status !== 'ACTIVE') {
+                    await invalidateAuthLookupCache();
+                }
             } else {
                 const finalHashedPassword = await bcrypt.hash(userData.password, hashRounds);
                 await prisma.user.create({

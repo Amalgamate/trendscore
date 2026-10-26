@@ -14,6 +14,9 @@ jest.mock('../services/redis-cache.service', () => ({
   redisCacheService: {
     get: jest.fn(),
     set: jest.fn(),
+    getSecurityValue: jest.fn(),
+    setSecurityValue: jest.fn(),
+    setSecurityValueIfAbsent: jest.fn(),
   },
 }));
 
@@ -40,6 +43,8 @@ const mockedPrisma = prisma as unknown as {
 const mockedRedis = redisCacheService as unknown as {
   get: jest.Mock;
   set: jest.Mock;
+  getSecurityValue: jest.Mock;
+  setSecurityValueIfAbsent: jest.Mock;
 };
 
 const mockedInvalidated = isTokenGloballyInvalidated as jest.Mock;
@@ -52,6 +57,8 @@ describe('AuthTokenService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockedRedis.getSecurityValue.mockResolvedValue(null);
+    mockedRedis.setSecurityValueIfAbsent.mockResolvedValue(true);
     service = new AuthTokenService();
   });
 
@@ -126,7 +133,8 @@ describe('AuthTokenService', () => {
   });
 
   it('rotates a valid refresh token and revokes the consumed token', async () => {
-    mockedRedis.get.mockResolvedValue(null);
+    mockedRedis.getSecurityValue.mockResolvedValue(null);
+    mockedRedis.setSecurityValueIfAbsent.mockResolvedValue(true);
     mockedInvalidated.mockResolvedValue(false);
     const user = {
       id: 'user-1',
@@ -135,6 +143,8 @@ describe('AuthTokenService', () => {
       roles: ['ADMIN'],
       institutionType: 'PRIMARY_CBC',
       status: 'ACTIVE',
+      archived: false,
+      authVersion: 0,
     };
     mockedPrisma.user.findUnique.mockResolvedValue(user);
 
@@ -142,12 +152,12 @@ describe('AuthTokenService', () => {
 
     expect(mockedVerifyRefresh).toHaveBeenCalledWith('old.refresh.jwt');
     expect(mockedPrisma.user.findUnique).toHaveBeenCalledWith({ where: { id: 'user-1' } });
-    expect(mockedRedis.set).toHaveBeenCalledWith('revoked_rt:old.refresh.jwt', '1', 30 * 24 * 60 * 60);
+    expect(mockedRedis.setSecurityValueIfAbsent).toHaveBeenCalledWith('revoked_rt:old.refresh.jwt', '1', 30 * 24 * 60 * 60);
     expect(pair).toEqual({ accessToken: 'access.jwt', refreshToken: 'refresh.jwt', rememberMe: false });
   });
 
   it('rejects a refresh token that was already revoked', async () => {
-    mockedRedis.get.mockResolvedValue('1');
+    mockedRedis.getSecurityValue.mockResolvedValue('1');
 
     await expect(service.rotateRefreshToken('old.refresh.jwt')).rejects.toMatchObject({
       statusCode: 401,
@@ -157,23 +167,42 @@ describe('AuthTokenService', () => {
   });
 
   it('revokes and rejects globally invalidated refresh tokens', async () => {
-    mockedRedis.get.mockResolvedValue(null);
+    mockedRedis.getSecurityValue.mockResolvedValue(null);
     mockedInvalidated.mockResolvedValue(true);
 
     await expect(service.rotateRefreshToken('old.refresh.jwt')).rejects.toMatchObject({
       statusCode: 401,
       message: 'Session invalidated by administrator',
     });
-    expect(mockedRedis.set).toHaveBeenCalledWith('revoked_rt:old.refresh.jwt', '1', 30 * 24 * 60 * 60);
+    expect(mockedRedis.setSecurityValueIfAbsent).not.toHaveBeenCalled();
+  });
+
+  it('rejects refresh tokens whose role claims no longer match the account', async () => {
+    mockedRedis.getSecurityValue.mockResolvedValue(null);
+    mockedInvalidated.mockResolvedValue(false);
+    mockedVerifyRefresh.mockReturnValue({
+      userId: 'user-1', authVersion: 0, role: 'TEACHER', roles: ['TEACHER'], iat: 100,
+    });
+    mockedPrisma.user.findUnique.mockResolvedValue({
+      id: 'user-1', email: 'user@example.test', role: 'ADMIN', roles: ['ADMIN'],
+      institutionType: 'PRIMARY_CBC', status: 'ACTIVE', archived: false, authVersion: 0,
+    });
+
+    await expect(service.rotateRefreshToken('old.refresh.jwt')).rejects.toMatchObject({
+      statusCode: 401,
+      code: 'SESSION_REVOKED',
+    });
+    expect(mockedRedis.setSecurityValueIfAbsent).not.toHaveBeenCalled();
   });
 
   it('preserves remembered-session lifetime when rotating refresh tokens', async () => {
-    mockedRedis.get.mockResolvedValue(null);
+    mockedRedis.getSecurityValue.mockResolvedValue(null);
+    mockedRedis.setSecurityValueIfAbsent.mockResolvedValue(true);
     mockedInvalidated.mockResolvedValue(false);
     mockedVerifyRefresh.mockReturnValue({ userId: 'user-1', rememberMe: true, iat: 100 });
     mockedPrisma.user.findUnique.mockResolvedValue({
       id: 'user-1', email: 'user@example.test', role: 'ADMIN', roles: ['ADMIN'],
-      institutionType: 'PRIMARY_CBC', status: 'ACTIVE',
+      institutionType: 'PRIMARY_CBC', status: 'ACTIVE', archived: false, authVersion: 0,
     });
 
     const pair = await service.rotateRefreshToken('remembered.refresh.jwt');

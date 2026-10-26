@@ -25,7 +25,7 @@ const CreateClassForm = () => {
     grade: grades.length > 0 ? grades[0] : 'GRADE_1',
     stream: '',
     branchId: '',
-    teacherId: '',
+    teacherIds: [],
     capacity: 40,
     room: '',
     academicYear: new Date().getFullYear(),
@@ -80,9 +80,12 @@ const CreateClassForm = () => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
+    const nextValue = e.target.multiple
+      ? Array.from(e.target.selectedOptions, (option) => option.value)
+      : name === 'capacity' || name === 'academicYear' ? parseInt(value) : value;
     setFormData(prev => ({
       ...prev,
-      [name]: name === 'capacity' || name === 'academicYear' ? parseInt(value) : value
+      [name]: nextValue
     }));
   };
 
@@ -309,22 +312,22 @@ const CreateClassForm = () => {
             {/* Teacher Selection */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Class Teacher (Optional)
+                  Class Teachers (Optional)
               </label>
               <select
-                name="teacherId"
-                value={formData.teacherId}
+                name="teacherIds"
+                multiple
+                value={formData.teacherIds}
                 onChange={handleChange}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-purple focus:border-transparent"
+                className="w-full min-h-28 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-purple focus:border-transparent"
               >
-                <option value="">-- Assign Later --</option>
                 {teachers.map(teacher => (
                   <option key={teacher.id} value={teacher.id}>
                     {teacher.firstName} {teacher.lastName}
                   </option>
                 ))}
               </select>
-              <p className="text-xs text-gray-500 mt-1">Can be assigned or changed later</p>
+              <p className="text-xs text-gray-500 mt-1">Select one or more class teachers. Hold Ctrl (Windows) or Command (Mac) to select multiple.</p>
             </div>
 
             {/* Academic Context */}

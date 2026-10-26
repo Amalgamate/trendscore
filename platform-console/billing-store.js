@@ -3,6 +3,7 @@
 const path = require('path');
 const fs = require('fs');
 const { DatabaseSync } = require('node:sqlite');
+const { DEFAULT_PRODUCTS } = require('./billing-pricing');
 
 function createBillingStore(dataDir) {
   fs.mkdirSync(dataDir, { recursive: true });
@@ -111,7 +112,28 @@ function createBillingStore(dataDir) {
     );
     CREATE INDEX IF NOT EXISTS billing_payments_invoice_idx ON billing_payments(invoice_id, payment_date DESC);
     CREATE UNIQUE INDEX IF NOT EXISTS billing_payments_reference_unique ON billing_payments(method, lower(reference)) WHERE reference <> '';
+    CREATE TABLE IF NOT EXISTS billing_products (
+      code TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      kind TEXT NOT NULL CHECK (kind IN ('setup', 'term', 'module', 'sms')),
+      school_type TEXT NOT NULL CHECK (school_type IN ('private', 'public_primary')),
+      price_ksh INTEGER NOT NULL CHECK (price_ksh >= 0),
+      active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      updated_by TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL
+    );
   `);
+
+  // Seed the price list once; INSERT OR IGNORE keeps any edits made later in the admin UI.
+  {
+    const seedAt = new Date().toISOString();
+    const seed = db.prepare(`INSERT OR IGNORE INTO billing_products (code,name,kind,school_type,price_ksh,active,sort_order,updated_by,updated_at)
+      VALUES (@code,@name,@kind,@schoolType,@priceKsh,@active,@sortOrder,'system',@updatedAt)`);
+    for (const product of DEFAULT_PRODUCTS) seed.run({ ...product, active: product.active ? 1 : 0, updatedAt: seedAt });
+    // One-off: public primary add-on modules were seeded off before the business confirmed them. Only rows nobody has edited change.
+    db.prepare("UPDATE billing_products SET active=1, updated_at=? WHERE code='module_public_primary' AND updated_by='system' AND active=0").run(seedAt);
+  }
 
   const ensureColumn = (table, column, definition) => {
     const columns = db.prepare(`PRAGMA table_info(${table})`).all();
@@ -130,6 +152,7 @@ function createBillingStore(dataDir) {
   const contractColumns = `id, customer_id AS customerId, reference, service_description AS serviceDescription,
     cadence, start_date AS startDate, end_date AS endDate, renewal_date AS renewalDate,
     terms_note AS termsNote, status, created_at AS createdAt, updated_at AS updatedAt`;
+  const todayNairobi = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Nairobi' }).format(new Date());
   const decodeJson = value => {
     try { return JSON.parse(value); } catch { return null; }
   };
@@ -144,7 +167,7 @@ function createBillingStore(dataDir) {
     customer_id AS customerId, invoice_snapshot AS invoiceSnapshotJson, amount_ksh AS amountKsh,
     status, created_by AS createdBy, created_at AS createdAt, updated_at AS updatedAt,
     cancel_reason AS cancelReason, cancelled_by AS cancelledBy`;
-  const decodeQuote = row => row && ({ ...row, status: row.cancelledAt ? 'cancelled' : row.status, customerSnapshot: decodeJson(row.customerSnapshotJson), quoteSnapshot: decodeJson(row.quoteSnapshotJson), customerSnapshotJson: undefined, quoteSnapshotJson: undefined });
+  const decodeQuote = row => row && ({ ...row, status: row.cancelledAt ? 'cancelled' : (row.status === 'sent' && row.expiresOn && row.expiresOn < todayNairobi() ? 'expired' : row.status), customerSnapshot: decodeJson(row.customerSnapshotJson), quoteSnapshot: decodeJson(row.quoteSnapshotJson), customerSnapshotJson: undefined, quoteSnapshotJson: undefined });
   const decodeInvoice = row => row && ({ ...row, invoiceSnapshot: decodeJson(row.invoiceSnapshotJson), invoiceSnapshotJson: undefined });
   const invoicePaidAmount = invoiceId => Number(db.prepare('SELECT COALESCE(SUM(amount_ksh), 0) AS amount FROM billing_payments WHERE invoice_id=?').get(invoiceId)?.amount || 0);
   const withPaymentTotals = invoice => {
@@ -154,7 +177,24 @@ function createBillingStore(dataDir) {
     return { ...invoice, paidAmountKsh, balanceKsh: Math.max(0, amountKsh - paidAmountKsh), paymentStatus: paidAmountKsh >= amountKsh ? 'paid' : paidAmountKsh > 0 ? 'partially_paid' : invoice.status === 'draft' ? 'not_issued' : 'unpaid' };
   };
 
+  const productColumns = `code, name, kind, school_type AS schoolType, price_ksh AS priceKsh, active,
+    sort_order AS sortOrder, updated_by AS updatedBy, updated_at AS updatedAt`;
+  const decodeProduct = row => row && ({ ...row, active: Number(row.active) === 1 });
+
   return {
+    listProducts() {
+      return db.prepare(`SELECT ${productColumns} FROM billing_products ORDER BY sort_order, code`).all().map(decodeProduct);
+    },
+    getProduct(code) {
+      return decodeProduct(db.prepare(`SELECT ${productColumns} FROM billing_products WHERE code=?`).get(code) || null);
+    },
+    // Only name, price and active can change. Existing quotes keep their own price snapshot.
+    updateProduct(code, product, actor) {
+      const now = new Date().toISOString();
+      const result = db.prepare(`UPDATE billing_products SET name=@name, price_ksh=@priceKsh, active=@active, updated_by=@actor, updated_at=@updatedAt WHERE code=@code`)
+        .run({ code, name: product.name, priceKsh: product.priceKsh, active: product.active ? 1 : 0, actor: actor || '', updatedAt: now });
+      return result.changes ? this.getProduct(code) : null;
+    },
     listCustomers() {
       return db.prepare(`SELECT ${customerColumns} FROM billing_customers ORDER BY name COLLATE NOCASE`).all();
     },
@@ -340,6 +380,47 @@ function createBillingStore(dataDir) {
         try { db.exec('ROLLBACK'); } catch {}
         throw error;
       }
+    },
+    getCustomerByTenantKey(tenantKey) {
+      const row = db.prepare('SELECT id FROM billing_customers WHERE tenant_key=?').get(tenantKey);
+      return row ? this.getCustomer(row.id) : null;
+    },
+    counts() {
+      const n = t => Number(db.prepare(`SELECT COUNT(*) AS c FROM ${t}`).get().c);
+      return { customers: n('billing_customers'), contracts: n('billing_contracts'), quotes: n('billing_quotes'), invoices: n('billing_invoices'), payments: n('billing_payments') };
+    },
+    // Writes a consistent copy of the billing database into billing-backups/ and returns its path.
+    backupNow(prefix = 'platform-billing') {
+      const backupDir = path.join(dataDir, 'billing-backups');
+      fs.mkdirSync(backupDir, { recursive: true });
+      const backupPath = path.join(backupDir, `${prefix}-${new Date().toISOString().replace(/[:.]/g, '-')}.sqlite`);
+      db.exec(`VACUUM INTO '${backupPath.replace(/'/g, "''")}'`);
+      return backupPath;
+    },
+    // Deletes the oldest backups with this prefix, keeping the newest `keep`. Returns how many were removed.
+    pruneBackups(prefix, keep) {
+      const backupDir = path.join(dataDir, 'billing-backups');
+      if (!fs.existsSync(backupDir)) return 0;
+      const files = fs.readdirSync(backupDir).filter(name => name.startsWith(`${prefix}-`) && name.endsWith('.sqlite')).sort().reverse();
+      let removed = 0;
+      for (const name of files.slice(Math.max(0, keep))) {
+        try { fs.unlinkSync(path.join(backupDir, name)); removed += 1; } catch { /* retry on the next run */ }
+      }
+      return removed;
+    },
+    // Wipes every billing table after writing a consistent backup copy. Returns { backupPath, before }.
+    resetAll() {
+      const before = this.counts();
+      const backupPath = this.backupNow();
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        for (const t of ['billing_payments', 'billing_invoice_deliveries', 'billing_invoices', 'billing_quote_deliveries', 'billing_quotes', 'billing_contracts', 'billing_customers']) db.exec(`DELETE FROM ${t}`);
+        db.exec('COMMIT');
+      } catch (error) {
+        try { db.exec('ROLLBACK'); } catch {}
+        throw error;
+      }
+      return { backupPath, before };
     },
     close() { db.close(); },
   };

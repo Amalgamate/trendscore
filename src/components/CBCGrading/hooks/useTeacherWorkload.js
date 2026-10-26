@@ -78,7 +78,10 @@ export const useTeacherWorkload = () => {
             .map((schedule) => schedule?.class?.grade || schedule?.grade)
             .filter(Boolean);
 
-        const contextGrades = (teacherContext?.assignedGrades || [])
+        const subjectAssignmentGrades = (teacherContext?.subjectAssignments || [])
+            .map((assignment) => assignment?.grade)
+            .filter(Boolean);
+        const contextGrades = [...(teacherContext?.assignedGrades || []), ...subjectAssignmentGrades]
             .filter(Boolean);
 
         return [...new Set([...classGrades, ...scheduleGrades, ...contextGrades].map(normalizeGradeCode).filter(Boolean))];
@@ -117,18 +120,11 @@ export const useTeacherWorkload = () => {
             .map((assignment) => assignment?.learningAreaName)
             .filter(Boolean);
 
-        if (gradeSchedules.length > 0) {
-            const subjects = gradeSchedules
-                .map((schedule) => schedule?.subject || schedule?.learningArea?.name || schedule?.learningArea?.shortName)
-                .filter(Boolean);
-
-            const mergedSubjects = [...new Set([...subjects, ...contextSubjects].filter(Boolean))];
-            return mergedSubjects.length > 0 ? mergedSubjects : null;
-        }
-
-        if (contextSubjects.length > 0) {
-            return [...new Set(contextSubjects)];
-        }
+        const subjects = gradeSchedules
+            .map((schedule) => schedule?.learningArea?.name || schedule?.subject || schedule?.learningArea?.shortName)
+            .filter(Boolean);
+        const mergedSubjects = [...new Set([...subjects, ...contextSubjects].filter(Boolean))];
+        if (mergedSubjects.length > 0) return mergedSubjects;
 
         // Fallback: If assigned as a class teacher for this grade but no specific subjects are in the schedule
         // In many primary settings, the class teacher handles all subjects

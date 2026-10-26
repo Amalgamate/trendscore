@@ -10,8 +10,11 @@ export const plannerAPI = {
     fetchWithAuth(`/planner/events/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteEvent: async (id) =>
     fetchWithAuth(`/planner/events/${id}`, { method: 'DELETE' }),
-  getAnnualSummary: async (academicYear) =>
-    fetchWithAuth(`/planner/events/annual-summary?academicYear=${academicYear}`),
-  bulkCreateAnnualPlan: async (events) =>
-    fetchWithAuth('/planner/events/bulk-annual', { method: 'POST', body: JSON.stringify({ events }) }),
+  // Academic year setup: all three terms plus break and exam dates in one call.
+  getAcademicYearSetup: async (academicYear) =>
+    fetchWithAuth(`/config/academic-year/${academicYear}`),
+  checkAcademicYearSetup: async (plan) =>
+    fetchWithAuth('/config/academic-year', { method: 'POST', body: JSON.stringify({ ...plan, dryRun: true }) }),
+  saveAcademicYearSetup: async (plan) =>
+    fetchWithAuth('/config/academic-year', { method: 'POST', body: JSON.stringify({ ...plan, dryRun: false }) }),
 };

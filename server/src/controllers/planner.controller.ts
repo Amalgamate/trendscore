@@ -3,6 +3,8 @@ import { AuthRequest } from '../middleware/permissions.middleware';
 import prisma from '../config/database';
 import { ApiError } from '../utils/error.util';
 import { EventType } from '@prisma/client';
+import { broadcastKeyDatesChanged } from '../services/keyDates.service';
+import { assertClassIdsExist, buildEventVisibilityWhere, resolveAudienceFields } from '../services/eventVisibility.service';
 
 export class PlannerController {
     /**
@@ -14,10 +16,15 @@ export class PlannerController {
         const where: any = {};
 
         if (start && end) {
-            where.startDate = {
-                gte: new Date(start as string),
-                lte: new Date(end as string),
-            };
+            const rangeStart = new Date(start as string);
+            const rangeEnd = new Date(end as string);
+            if (Number.isNaN(rangeStart.getTime()) || Number.isNaN(rangeEnd.getTime()) || rangeStart > rangeEnd) {
+                throw new ApiError(400, 'A valid start and end date range is required');
+            }
+            where.AND = [
+                { startDate: { lte: rangeEnd } },
+                { endDate: { gte: rangeStart } },
+            ];
         }
 
         if (type) {
@@ -32,10 +39,9 @@ export class PlannerController {
             where.term = term as string;
         }
 
-        const userRole = req.user?.role;
-        if (userRole === 'PARENT' || userRole === 'STUDENT') {
-            where.isParentVisible = true;
-        } else if (isParentVisible !== undefined) {
+        const visibility = await buildEventVisibilityWhere(req.user as any);
+        Object.assign(where, visibility);
+        if (isParentVisible !== undefined && where.isParentVisible === undefined) {
             where.isParentVisible = isParentVisible === 'true';
         }
 
@@ -61,7 +67,7 @@ export class PlannerController {
      */
     async createEvent(req: AuthRequest, res: Response) {
         const userId = req.user!.userId;
-        const { title, description, startDate, endDate, allDay, type, location, meetingLink, isParentVisible, academicYear, term } = req.body;
+        const { title, description, startDate, endDate, allDay, type, location, meetingLink, isParentVisible, audience, classIds, academicYear, term } = req.body;
 
         if (!title) throw new ApiError(400, 'Title is required');
         if (!startDate || !endDate) throw new ApiError(400, 'Start and End dates are required');
@@ -71,6 +77,9 @@ export class PlannerController {
         if (type && !validTypes.includes(type)) {
             throw new ApiError(400, `Invalid event type. Must be one of: ${validTypes.join(', ')}`);
         }
+
+        const targeting = resolveAudienceFields({ audience, classIds, isParentVisible });
+        await assertClassIdsExist(targeting.classIds);
 
         const event = await prisma.event.create({
             data: {
@@ -83,12 +92,15 @@ export class PlannerController {
                 location,
                 meetingLink,
                 creatorId: userId,
-                isParentVisible: isParentVisible !== undefined ? Boolean(isParentVisible) : true,
+                isParentVisible: targeting.isParentVisible,
+                audience: targeting.audience,
+                classIds: targeting.classIds,
                 academicYear: academicYear ? parseInt(academicYear.toString(), 10) : null,
                 term: term || null,
             },
         });
 
+        broadcastKeyDatesChanged();
         res.status(201).json({ success: true, data: event });
     }
 
@@ -97,11 +109,14 @@ export class PlannerController {
      */
     async updateEvent(req: AuthRequest, res: Response) {
         const { id } = req.params;
-        const { title, description, startDate, endDate, allDay, type, location, meetingLink, isParentVisible, academicYear, term } = req.body;
+        const { title, description, startDate, endDate, allDay, type, location, meetingLink, isParentVisible, audience, classIds, academicYear, term } = req.body;
 
         const existingEvent = await prisma.event.findUnique({ where: { id } });
 
         if (!existingEvent) throw new ApiError(404, 'Event not found');
+
+        const targeting = resolveAudienceFields({ audience, classIds, isParentVisible }, existingEvent);
+        await assertClassIdsExist(targeting.classIds);
 
         const event = await prisma.event.update({
             where: { id },
@@ -114,12 +129,15 @@ export class PlannerController {
                 type: type as EventType,
                 location,
                 meetingLink,
-                isParentVisible: isParentVisible !== undefined ? Boolean(isParentVisible) : undefined,
+                isParentVisible: targeting.isParentVisible,
+                audience: targeting.audience,
+                classIds: targeting.classIds,
                 academicYear: academicYear !== undefined ? (academicYear ? parseInt(academicYear.toString(), 10) : null) : undefined,
                 term: term !== undefined ? term : undefined,
             },
         });
 
+        broadcastKeyDatesChanged();
         res.json({ success: true, data: event });
     }
 
@@ -135,6 +153,7 @@ export class PlannerController {
 
         await prisma.event.delete({ where: { id } });
 
+        broadcastKeyDatesChanged();
         res.json({ success: true, message: 'Event deleted successfully' });
     }
 
@@ -153,7 +172,7 @@ export class PlannerController {
 
         await prisma.$transaction(async (tx) => {
             for (const eventData of events) {
-                const { id, title, description, startDate, endDate, allDay, type, location, meetingLink, isParentVisible, academicYear, term } = eventData;
+                const { id, title, description, startDate, endDate, allDay, type, location, meetingLink, isParentVisible, audience, classIds, academicYear, term } = eventData;
 
                 if (!title) throw new ApiError(400, 'Title is required for all events');
                 if (!startDate || !endDate) throw new ApiError(400, 'Start and End dates are required for all events');
@@ -167,7 +186,6 @@ export class PlannerController {
                     type: (type as EventType) || 'GENERAL',
                     location,
                     meetingLink,
-                    isParentVisible: isParentVisible !== undefined ? Boolean(isParentVisible) : true,
                     academicYear: academicYear ? parseInt(academicYear.toString(), 10) : null,
                     term: term || null,
                     creatorId: userId,
@@ -187,24 +205,34 @@ export class PlannerController {
                     });
                 }
 
+                const targeting = resolveAudienceFields({ audience, classIds, isParentVisible }, existingEvent || undefined);
+                await assertClassIdsExist(targeting.classIds);
+                const audienceData = {
+                    isParentVisible: targeting.isParentVisible,
+                    audience: targeting.audience,
+                    classIds: targeting.classIds,
+                };
+
                 if (existingEvent) {
                     const updated = await tx.event.update({
                         where: { id: existingEvent.id },
                         data: {
                             ...dataPayload,
+                            ...audienceData,
                             creatorId: undefined,
                         }
                     });
                     createdOrUpdated.push(updated);
                 } else {
                     const created = await tx.event.create({
-                        data: dataPayload
+                        data: { ...dataPayload, ...audienceData }
                     });
                     createdOrUpdated.push(created);
                 }
             }
         });
 
+        broadcastKeyDatesChanged();
         res.status(200).json({ success: true, data: createdOrUpdated });
     }
 
@@ -223,11 +251,8 @@ export class PlannerController {
             throw new ApiError(400, 'Invalid academic year');
         }
 
-        const userRole = req.user?.role;
         const where: any = { academicYear: year };
-        if (userRole === 'PARENT' || userRole === 'STUDENT') {
-            where.isParentVisible = true;
-        }
+        Object.assign(where, await buildEventVisibilityWhere(req.user as any));
 
         const events = await prisma.event.findMany({
             where,

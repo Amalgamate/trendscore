@@ -179,6 +179,7 @@ jobs:
           API_URL=https://${PUBLIC_DOMAIN}/api
           CORS_ORIGIN=https://${PUBLIC_DOMAIN}
           HTTPS_ONLY=false
+          TRUST_PROXY_HOPS=1
           VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
           VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
           VAPID_SUBJECT=mailto:admin@trendscore.app

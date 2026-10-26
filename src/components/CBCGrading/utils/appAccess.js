@@ -4,7 +4,6 @@ const PAGE_APP_REQUIREMENTS = {
   'planner-calendar': 'planner',
   'annual-planner': 'planner',
   'events-calendar': 'planner',
-  'planner-agenda': 'planner',
   'timetable': 'timetable',
   'planner-timetable': 'timetable',
   'student-timetable': 'timetable',

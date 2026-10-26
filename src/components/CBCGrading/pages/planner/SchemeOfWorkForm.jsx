@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../../../hooks/useAuth';
 import { usePermissions } from '../../../../hooks/usePermissions';
 import api from '../../../../services/api';
@@ -33,7 +33,7 @@ const generateEmptyWeeks = () => {
 
 const SchemeOfWorkForm = ({ schemeId, onBack }) => {
   const { user } = useAuth();
-  const { role } = usePermissions();
+  const { isAnyRole } = usePermissions();
 
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -41,10 +41,9 @@ const SchemeOfWorkForm = ({ schemeId, onBack }) => {
   
   // Data sources for dropdowns
   const [learningAreas, setLearningAreas] = useState([]);
-  const [termConfigs, setTermConfigs] = useState([]);
   const [grades, setGrades] = useState([
-    '1', '2', '3', '4', '5', '6', '7', '8', '9'
-  ]); // Simplified fallback. Ideally fetched from config.
+    'PLAYGROUP', 'PP1', 'PP2', 'GRADE_1', 'GRADE_2', 'GRADE_3', 'GRADE_4', 'GRADE_5', 'GRADE_6', 'GRADE_7', 'GRADE_8', 'GRADE_9'
+  ]);
   
   // Initial / Loaded state
   const [schemeData, setSchemeData] = useState({
@@ -70,63 +69,60 @@ const SchemeOfWorkForm = ({ schemeId, onBack }) => {
     warning: ''
   });
 
-  const isTeacher = role === 'TEACHER';
+  const isTeacher = isAnyRole(['TEACHER']);
+  const canReview = isAnyRole(['HEAD_TEACHER', 'ADMIN', 'SUPER_ADMIN']);
   const isCreatorOrNew = !schemeId || (schemeData.teacherId === user.id);
-  const isEditable = isTeacher && isCreatorOrNew && ['DRAFT', 'REJECTED'].includes(schemeData.status);
-  const isReviewable = !isTeacher && schemeId && schemeData.status === 'SUBMITTED';
+  const isEditable = ['DRAFT', 'REJECTED'].includes(schemeData.status)
+    && (canReview || (isTeacher && isCreatorOrNew));
+  const isReviewable = canReview && schemeId && schemeData.status === 'SUBMITTED';
   const isViewOnly = !isEditable && !isReviewable;
 
   const STATUS_STEPS = ['DRAFT', 'SUBMITTED', 'APPROVED'];
   const statusIndex = STATUS_STEPS.indexOf(schemeData.status);
   const isRejected = schemeData.status === 'REJECTED';
 
-  useEffect(() => {
-    fetchFormDependencies();
-    if (schemeId) {
-      fetchScheme();
-    }
-  }, [schemeId]);
-
-  const fetchFormDependencies = async () => {
+  const fetchFormDependencies = useCallback(async () => {
     try {
-      const [laRes, termRes] = await Promise.all([
+      const [laRes, termRes, gradeRes] = await Promise.all([
         api.config.getLearningAreas(),
-        api.config.getTermConfigs()
+        api.config.getTermConfigs(),
+        api.config.getGrades(),
       ]);
       setLearningAreas(laRes.data || laRes || []);
-      
+      const availableGrades = gradeRes.data || gradeRes || [];
+      if (availableGrades.length) {
+        setGrades(availableGrades);
+        setSchemeData((prev) => ({
+          ...prev,
+          grade: availableGrades.includes(prev.grade) ? prev.grade : prev.grade.replace(/^GRADE\s+/, '').replace(/^(\d+)$/, 'GRADE_$1'),
+        }));
+      }
+
       const terms = termRes.data || termRes || [];
-      setTermConfigs(terms);
-      
-      // Auto-select current term if creating new
       if (!schemeId) {
         const activeTerm = terms.find(t => t.isActive);
         if (activeTerm) {
-          setSchemeData(prev => ({ 
-            ...prev, 
+          setSchemeData(prev => ({
+            ...prev,
             term: activeTerm.term,
-            academicYear: activeTerm.academicYear 
+            academicYear: activeTerm.academicYear
           }));
         }
       }
     } catch (err) {
       console.error('Error fetching dependencies:', err);
     }
-  };
+  }, [schemeId]);
 
-  const fetchScheme = async () => {
+  const fetchScheme = useCallback(async () => {
+    if (!schemeId) return;
     setLoading(true);
     try {
       const res = await api.schemesOfWork.getById(schemeId);
       if (res.data) {
         const loaded = res.data;
-        // Merge missing weeks if DB returned fewer than standard
         const mergedWeeks = loaded.weeks.length > 0 ? loaded.weeks : generateEmptyWeeks();
-        
-        setSchemeData({
-          ...loaded,
-          weeks: mergedWeeks
-        });
+        setSchemeData({ ...loaded, weeks: mergedWeeks });
         setReviewComment(loaded.reviewComment || '');
       }
     } catch (err) {
@@ -134,7 +130,12 @@ const SchemeOfWorkForm = ({ schemeId, onBack }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [schemeId]);
+
+  useEffect(() => {
+    fetchFormDependencies();
+    fetchScheme();
+  }, [fetchFormDependencies, fetchScheme]);
 
   const updateHeaderField = (field, value) => {
     if (!isEditable) return;
@@ -443,7 +444,7 @@ const SchemeOfWorkForm = ({ schemeId, onBack }) => {
           <span>Teacher: {schemeData.teacher?.firstName || user.firstName} {schemeData.teacher?.lastName || user.lastName}</span>
           <span>Subject: {schemeData.learningArea}</span>
           <span>Grade: {schemeData.grade}</span>
-          <span>Term: {schemeData.term} - {schemeData.academicYear}</span>
+          <span>Term: {String(schemeData.term || '').replace(/^TERM_(\d+)$/, 'Term $1')} - {schemeData.academicYear}</span>
         </div>
       </div>
 
@@ -483,7 +484,7 @@ const SchemeOfWorkForm = ({ schemeId, onBack }) => {
               >
                 <option value="">Select grade...</option>
                 {grades.map(g => (
-                  <option key={g} value={g}>Grade {g}</option>
+                  <option key={g} value={g}>{g.replace(/_/g, ' ')}</option>
                 ))}
               </select>
             </div>
@@ -498,9 +499,9 @@ const SchemeOfWorkForm = ({ schemeId, onBack }) => {
                   className="w-3/5 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-teal outline-none disabled:bg-gray-100 disabled:text-gray-600 font-medium"
                 >
                   <option value="">Term...</option>
-                  <option value="TERM_ONE">Term 1</option>
-                  <option value="TERM_TWO">Term 2</option>
-                  <option value="TERM_THREE">Term 3</option>
+                  <option value="TERM_1">Term 1</option>
+                  <option value="TERM_2">Term 2</option>
+                  <option value="TERM_3">Term 3</option>
                 </select>
                 <input
                   type="number"

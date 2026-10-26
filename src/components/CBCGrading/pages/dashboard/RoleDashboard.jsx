@@ -18,6 +18,7 @@ import AccountantDashboard from './AccountantDashboard';
 import ReceptionistDashboard from './ReceptionistDashboard';
 import StarterDashboard from './StarterDashboard';
 import MobileDashboard from '../../dashboard/MobileDashboard';
+import TermCountdownCard from '../../dashboard/TermCountdownCard';
 import StudentDashboard from '../student/StudentDashboard';
 import ComingSoon from '../../shared/ComingSoon';
 import useMediaQuery from '../../hooks/useMediaQuery';
@@ -25,7 +26,7 @@ import { MOBILE_MEDIA_QUERY } from '../../../../constants/breakpoints';
 import { useModuleAccess } from '../../../../contexts/ModuleAccessContext';
 import { isStarterPackageApps, isStarterPackageModules } from '../../../../utils/packageAccess';
 
-const RoleDashboard = ({ learners, pagination, teachers, user, onNavigate, brandingSettings, currentPage = 'dashboard' }) => {
+const RoleDashboardBody = ({ learners, pagination, teachers, user, onNavigate, brandingSettings, currentPage = 'dashboard' }) => {
   const { role } = usePermissions();
   const { institutionType } = useAuth();
   const selectedInstitutionType = String(getSelectedInstitutionType() || '').toUpperCase();
@@ -123,5 +124,16 @@ const RoleDashboard = ({ learners, pagination, teachers, user, onNavigate, brand
       );
   }
 };
+
+/**
+ * Single mount point for every role / institution type / mobile shell: the compact
+ * Term Countdown card sits above whichever dashboard the role resolves to.
+ */
+const RoleDashboard = (props) => (
+  <>
+    <TermCountdownCard />
+    <RoleDashboardBody {...props} />
+  </>
+);
 
 export default RoleDashboard;

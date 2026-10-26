@@ -137,7 +137,7 @@ function quotePdfBuffer(quote) {
       text(396, 645, 'QUOTE DETAILS', 8, teal, 'F2'); text(396, 626, 'Valid until', 8, muted); text(554, 626, quote.expiresOn || 'As agreed', 8.5, navy, 'F2', 'right');
       text(396, 607, 'School / tenant', 8, muted); text(554, 607, customer.tenantKey || 'Not linked', 8, navy, 'F2', 'right');
       text(396, 588, 'Currency', 8, muted); text(554, 588, 'KES', 8.5, navy, 'F2', 'right');
-      text(42, 544, `Enrollment snapshot: ${Number(quote.enrollmentCount || 0).toLocaleString('en-KE')} students`, 8.5, muted);
+      text(42, 544, Number(quote.enrollmentCount || 0) > 0 ? `Enrollment snapshot: ${Number(quote.enrollmentCount).toLocaleString('en-KE')} students` : safe(snapshot.schoolTypeLabel || ''), 8.5, muted);
       text(570, 544, safe(snapshot.billingCadenceLabel || quote.billingCadence || ''), 8.5, muted, 'F1', 'right'); cursor = 518;
     } else {
       image(42, 785, 156, 34); text(570, 807, `${quote.quoteNumber || 'Quote'} - CONTINUED`, 8.5, navy, 'F2', 'right');
@@ -205,7 +205,7 @@ function invoicePdfBuffer(invoice) {
       text(396, 647, 'INVOICE DETAILS', 8, teal, 'F2'); text(396, 628, 'Status', 8, muted); text(554, 628, pdfStatusLabel(invoice.status), 9, navy, 'F2', 'right');
       text(396, 609, 'Source quote', 8, muted); text(554, 609, snapshot.quoteNumber || '-', 8.5, navy, 'F2', 'right');
       text(396, 590, 'Due date', 8, muted); text(554, 590, snapshot.dueDate || 'Not set', 8, navy, 'F2', 'right');
-      text(42, 548, `Enrollment snapshot: ${Number(snapshot.enrollmentCount || quote.enrollmentCount || 0).toLocaleString('en-KE')} students`, 8.5, muted);
+      text(42, 548, Number(snapshot.enrollmentCount || quote.enrollmentCount || 0) > 0 ? `Enrollment snapshot: ${Number(snapshot.enrollmentCount || quote.enrollmentCount).toLocaleString('en-KE')} students` : safe(quote.schoolTypeLabel || ''), 8.5, muted);
       text(570, 548, safe(quote.billingCadenceLabel || ''), 8.5, muted, 'F1', 'right'); cursor = 522;
     } else {
       image(42, 785, 156, 34); text(570, 807, `${invoice.invoiceNumber || 'Invoice'} - CONTINUED`, 9, navy, 'F2', 'right');

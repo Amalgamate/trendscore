@@ -92,26 +92,44 @@ const buildOnclone = (opts = {}) => (_clonedDoc, clonedEl) => {
   // 1. Normalise root element to strictly match A4 pixels at (0,0)
   // We strip shadow and centering classes like 'mx-auto' so it doesn't shift
   clonedEl.classList.remove('mx-auto', 'shadow-2xl', 'shadow-lg');
-  clonedEl.style.cssText = `
-    position: absolute !important;
-    left: 0 !important;
-    top: 0 !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    width: ${pageSpec.widthPx}px !important;
-    min-height: ${pageSpec.heightPx}px !important;
-    max-width: ${pageSpec.widthPx}px !important;
-    display: flex !important;
-    flex-direction: column !important;
-    visibility: visible !important;
-    opacity: 1 !important;
-    overflow: visible !important;
-    background: #ffffff !important;
-    transform: none !important;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    box-shadow: none !important;
-  `;
+  if (clonedEl.classList.contains('pdf-report-page')) {
+    // A page is captured on its own. Preserve its authored padding, flex
+    // layout, and overflow rules; only place its canvas at the A4 origin.
+    Object.assign(clonedEl.style, {
+      position: 'absolute',
+      left: '0',
+      top: '0',
+      margin: '0',
+      width: `${pageSpec.widthPx}px`,
+      minHeight: `${pageSpec.heightPx}px`,
+      maxWidth: `${pageSpec.widthPx}px`,
+      visibility: 'visible',
+      opacity: '1',
+      transform: 'none',
+      boxShadow: 'none',
+    });
+  } else {
+    clonedEl.style.cssText = `
+      position: absolute !important;
+      left: 0 !important;
+      top: 0 !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      width: ${pageSpec.widthPx}px !important;
+      min-height: ${pageSpec.heightPx}px !important;
+      max-width: ${pageSpec.widthPx}px !important;
+      display: flex !important;
+      flex-direction: column !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+      overflow: visible !important;
+      background: #ffffff !important;
+      transform: none !important;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      box-shadow: none !important;
+    `;
+  }
 
   // 2. Fix the inner .report-card for fidelity
   const card = clonedEl.querySelector('.report-card');
@@ -226,7 +244,9 @@ export const captureElement = async (el, opts = {}) => {
  * Uses 'Best Fit' logic: Scales width to fit A4_W_MM exactly.
  */
 const sliceCanvasToPages = (canvas, pageSpec = getPageSpec()) => {
-  const pageHeightPx = pageSpec.heightPx;
+  // html2canvas scales the CSS-pixel dimensions by CAPTURE_SCALE. Slice at
+  // that same scale or every A4 page is split into CAPTURE_SCALE fragments.
+  const pageHeightPx = pageSpec.heightPx * CAPTURE_SCALE;
   const pages = [];
   let yOffset = 0;
 

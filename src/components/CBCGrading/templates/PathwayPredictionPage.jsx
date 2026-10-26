@@ -50,10 +50,13 @@ const PathwayPredictionPage = ({ data, brandColor = '#4a0404' }) => {
 
     return (
         <div
-            className="bg-white text-gray-900 font-sans p-10 flex flex-col"
+            className="pdf-report-page bg-white text-gray-900 font-sans p-10 flex flex-col"
             style={{
                 width: '794px',
+                height: '1123px',
                 minHeight: '1123px',
+                maxWidth: '100%',
+                margin: '0 auto',
                 boxSizing: 'border-box',
                 position: 'relative',
                 overflow: 'hidden',

@@ -19,6 +19,8 @@ let LEADS = [];
 let BILLING_CUSTOMERS = [];
 let BILLING_CONTRACTS = [];
 let BILLING_SCHOOLS = [];
+let BILLING_PRODUCTS = [];
+let BILLING_SCHOOL_TYPES = {};
 let BILLING_QUOTES = [];
 let BILLING_INVOICES = [];
 let BILLING_PAYMENTS = [];
@@ -700,6 +702,12 @@ async function loadBillingData() {
     BILLING_DELIVERIES = quotesData.deliveries || [];
     BILLING_INVOICE_DELIVERIES = invoicesData.deliveries || [];
     BILLING_EMAIL_STATUS = emailStatusResponse?.ok ? (emailData.configured === true ? 'ready' : 'unconfigured') : 'unavailable';
+    try {
+      const productsResponse = await fetch('/api/billing/products', { credentials: 'same-origin' });
+      const productsData = productsResponse.ok ? await productsResponse.json().catch(() => ({})) : {};
+      BILLING_PRODUCTS = Array.isArray(productsData.products) ? productsData.products : [];
+      BILLING_SCHOOL_TYPES = productsData.schoolTypes || {};
+    } catch { BILLING_PRODUCTS = []; }
     renderBillingRegistry();
   } catch (error) {
     Object.keys(BILLING_DATA_STATUS).forEach(key => { BILLING_DATA_STATUS[key] = 'unavailable'; });
@@ -761,6 +769,7 @@ function renderBillingRegistry() {
     }).join('');
   }
   renderBillingQuotes();
+  renderBillingProducts();
   renderBillingOverview();
   renderBillingSettings();
   renderBillingPayments();
@@ -839,6 +848,37 @@ function billingTodayDate() {
   return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
+function renderBillingProducts() {
+  const body = $('billing-products-table');
+  if (!body) return;
+  if (!BILLING_PRODUCTS.length) { body.innerHTML = '<tr><td colspan="6">The price list could not be loaded.</td></tr>'; return; }
+  const canEdit = !window.consoleUserRole || window.consoleUserRole === 'super_admin';
+  const kindLabel = { setup: 'One-off setup', term: 'CORE, per term', module: 'Add-on module, per term', sms: 'Communication, per term' };
+  const disabled = canEdit ? '' : 'disabled';
+  body.innerHTML = BILLING_PRODUCTS.map(p => `<tr data-product-row="${esc(p.code)}"><td>${esc(BILLING_SCHOOL_TYPES[p.schoolType] || p.schoolType)}</td><td>${esc(kindLabel[p.kind] || p.kind)}</td><td><input class="form-input" data-product-name value="${esc(p.name)}" maxlength="160" ${disabled}></td><td><input class="form-input" data-product-price type="number" min="0" step="1" value="${esc(p.priceKsh)}" ${disabled}></td><td><label><input type="checkbox" data-product-active ${p.active ? 'checked' : ''} ${disabled}> Offered</label></td><td>${canEdit ? `<button class="btn sm" type="button" data-product-save="${esc(p.code)}">Save</button>` : ''}</td></tr>`).join('');
+}
+
+async function saveBillingProduct(code) {
+  const row = [...document.querySelectorAll('[data-product-row]')].find(item => item.dataset.productRow === code);
+  if (!row) return;
+  try {
+    const response = await fetch(`/api/billing/products/${encodeURIComponent(code)}`, {
+      method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: row.querySelector('[data-product-name]').value, priceKsh: Number(row.querySelector('[data-product-price]').value), active: row.querySelector('[data-product-active]').checked }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || 'Could not save price');
+    BILLING_PRODUCTS = BILLING_PRODUCTS.map(p => (p.code === code ? payload.product : p));
+    renderBillingProducts();
+    toast('Price saved. New quotes use it; existing quotes keep their original prices.');
+  } catch (error) { toast(error.message); }
+}
+
+document.addEventListener('click', event => {
+  const button = event.target.closest?.('[data-product-save]');
+  if (button) saveBillingProduct(button.dataset.productSave);
+});
+
 function renderBillingQuotes() {
   const quotesBody = $('billing-quotes-table');
   const invoicesBody = $('billing-invoices-table');
@@ -878,7 +918,7 @@ function renderBillingQuotes() {
       if (quote.status === 'draft' && !quote.sentAt && !deliveryCount && !existingInvoice) actions.push(`<button class="btn sm danger" data-quote-delete="${esc(quote.id)}" data-super-admin-only type="button">Delete</button>`);
       if (quote.status === 'accepted') actions.push(`<button class="btn sm" data-quote-convert="${esc(quote.id)}" data-super-admin-only type="button">Create draft invoice</button>`);
       if (quote.status === 'converted' && existingInvoice) actions.push(`<span class="table-sub">${esc(existingInvoice.invoiceNumber)}</span>`);
-      return `<tr><td><strong>${esc(quote.quoteNumber)}</strong></td><td>${esc(customer.name || 'Customer')}</td><td>${Number(quote.enrollmentCount).toLocaleString('en-KE')}</td><td>${formatBillingKsh(quote.subtotalKsh)}</td><td>${esc(quote.expiresOn || 'No expiry')}</td><td>${esc(quote.status)}${deliveryCount ? `<div class="table-sub">${deliveryCount} email attempt${deliveryCount === 1 ? '' : 's'}</div>` : ''}</td><td><div class="billing-action-row">${actions.join('')}</div></td></tr>`;
+      return `<tr><td><strong>${esc(quote.quoteNumber)}</strong></td><td>${esc(customer.name || 'Customer')}</td><td>${Number(quote.enrollmentCount) > 0 ? Number(quote.enrollmentCount).toLocaleString('en-KE') : esc(quote.quoteSnapshot?.schoolTypeLabel || '-')}</td><td>${formatBillingKsh(quote.subtotalKsh)}</td><td>${esc(quote.expiresOn || 'No expiry')}</td><td>${esc(quote.status)}${deliveryCount ? `<div class="table-sub">${deliveryCount} email attempt${deliveryCount === 1 ? '' : 's'}</div>` : ''}</td><td><div class="billing-action-row">${actions.join('')}</div></td></tr>`;
     }).join('');
   }
   const invoiceNeedle = BILLING_FILTERS.invoices.trim().toLowerCase();
@@ -1101,15 +1141,16 @@ function openBillingQuote(quote = null) {
   $('billing-quote-save').textContent = quote ? 'Save quote changes' : 'Save draft quote';
   $('bq-customer').value = quote?.customerId || '';
   $('bq-students').value = quote?.enrollmentCount || '';
-  $('bq-pricing-model').value = quote?.pricingModel || 'rate_by_band';
-  $('bq-cadence').value = quote?.billingCadence || 'termly';
-  $('bq-setup').value = quote ? snapshot.setupFeeKsh : '';
+  $('bq-school-type').value = snapshot.schoolType || '';
+  $('bq-own-sms').checked = snapshot.ownSmsProvider === true;
+  $('bq-discount').value = snapshot.discount?.amountKsh || '';
+  $('bq-discount-reason').value = snapshot.discount?.reason || '';
+  $('bq-discount-approval').checked = snapshot.discount?.requiresApproval === true;
   $('bq-expires').value = quote?.expiresOn || '';
   $('bq-communications').checked = snapshot.communicationsIncluded === true;
   $('bq-extras').value = (snapshot.extraModules || []).join('\n');
-  $('bq-extra-cadence').value = snapshot.extraCadence || 'termly';
   $('bq-notes').value = quote?.notes || '';
-  $('billing-quote-preview').textContent = 'Enter the student count and setup fee to calculate a quote preview.';
+  $('billing-quote-preview').textContent = quote && snapshot.pricingModel !== 'catalogue' ? 'This quote used the old per-student rates. Choose a school type to re-price it from the current price list.' : 'Choose the school type to calculate a quote preview.';
   $('billing-quote-overlay')?.classList.add('open');
   if (quote) updateBillingQuotePreview();
   else if (!BILLING_CUSTOMERS.some(customer => customer.status === 'active')) toast('Add or select a billing customer before creating a quote.');
@@ -1121,13 +1162,12 @@ function billingQuotePayload() {
   return {
     customerId: $('bq-customer').value,
     enrollmentCount: $('bq-students').value,
-    pricingModel: $('bq-pricing-model').value,
-    billingCadence: $('bq-cadence').value,
-    setupFeeKsh: $('bq-setup').value,
+    schoolType: $('bq-school-type').value,
+    ownSmsProvider: $('bq-own-sms').checked,
+    discount: { amountKsh: $('bq-discount').value, reason: $('bq-discount-reason').value, requiresApproval: $('bq-discount-approval').checked },
     expiresOn: $('bq-expires').value,
     communicationsIncluded: $('bq-communications').checked,
     extraModules: $('bq-extras').value.split(/[\n,]/).map(value => value.trim()).filter(Boolean),
-    extraModuleCadence: $('bq-extra-cadence').value,
     notes: $('bq-notes').value,
   };
 }
@@ -1136,8 +1176,8 @@ async function updateBillingQuotePreview() {
   const preview = $('billing-quote-preview');
   if (!preview) return;
   const payload = billingQuotePayload();
-  if (!payload.enrollmentCount || payload.setupFeeKsh === '') {
-    preview.textContent = 'Enter the student count and one-off setup fee to calculate a quote preview.';
+  if (!payload.schoolType) {
+    preview.textContent = 'Choose the school type to calculate a quote preview.';
     return;
   }
   preview.textContent = 'Calculating quote…';
@@ -1347,7 +1387,7 @@ function scheduleBillingQuotePreview() {
   billingQuotePreviewTimer = setTimeout(updateBillingQuotePreview, 250);
 }
 
-['bq-students', 'bq-pricing-model', 'bq-cadence', 'bq-setup', 'bq-communications', 'bq-extras', 'bq-extra-cadence'].forEach(id => {
+['bq-students', 'bq-school-type', 'bq-own-sms', 'bq-discount', 'bq-discount-reason', 'bq-discount-approval', 'bq-communications', 'bq-extras'].forEach(id => {
   $(id)?.addEventListener('input', scheduleBillingQuotePreview);
   $(id)?.addEventListener('change', scheduleBillingQuotePreview);
 });
@@ -2389,7 +2429,7 @@ function runConsoleDeploy() {
 }
 
 // Navigation
-const SECTIONS = ['overview', 'instances', 'storage', 'deployments', 'controls', 'billing', 'communications', 'logs', 'leads'];
+const SECTIONS = ['overview', 'instances', 'storage', 'deployments', 'controls', 'billing', 'communications', 'logs', 'leads', 'agents'];
 const SECTION_LABELS = {
   overview: 'Overview',
   instances: 'Instances',
@@ -2400,6 +2440,7 @@ const SECTION_LABELS = {
   communications: 'Communications Settings',
   logs: 'Audit Log',
   leads: 'Leads & CRM',
+  agents: 'Field Agents & Commissions',
 };
 
 function sectionFromHash() {
@@ -2423,6 +2464,7 @@ function showSection(id, options = {}) {
   }
   if (targetSection === 'billing') loadBillingData();
   if (targetSection === 'communications') loadCommunicationsSettings();
+  if (targetSection === 'agents') loadAgentsData();
 
   if (!options.skipHashUpdate) {
     const nextHash = `#${targetSection}`;
@@ -2446,6 +2488,7 @@ window.addEventListener('hashchange', () => {
 window.addEventListener('console:authenticated', () => {
   if (sectionFromHash() === 'billing') loadBillingData();
   if (sectionFromHash() === 'communications') loadCommunicationsSettings();
+  if (sectionFromHash() === 'agents') loadAgentsData();
 });
 
 function setSidebarCollapsed(collapsed) {
@@ -2753,6 +2796,26 @@ document.body.addEventListener('click', event => {
     return;
   }
 
+  if (id === 'billing-reset-btn') {
+    const confirmInput = $('billing-reset-confirm');
+    const phrase = confirmInput?.value.trim() || '';
+    if (phrase !== 'RESET BILLING') { toast('Type RESET BILLING exactly to confirm.'); return; }
+    (async () => {
+      try {
+        const r = await fetch('/api/billing/reset', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ confirm: phrase }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) { toast(data.error || 'Billing reset failed.'); return; }
+        if (confirmInput) confirmInput.value = '';
+        toast(`Billing reset. Backup saved as ${data.backupFile}.`);
+        if (typeof loadBillingData === 'function') await loadBillingData();
+      } catch (e) { toast(`Billing reset failed: ${e.message}`); }
+    })();
+    return;
+  }
   if (id === 'billing-add-customer') {
     openBillingCustomer();
     return;
@@ -3124,6 +3187,11 @@ function bindModalEvents() {
     $(id)?.addEventListener('change', renderComposePreview);
   });
 
+  $('f-bill-mode')?.addEventListener('change', () => {
+    const fields = $('f-bill-fields');
+    if (fields) fields.style.display = $('f-bill-mode').value === 'later' ? 'none' : 'grid';
+  });
+
   $('modal-submit')?.addEventListener('click', () => {
     (async () => {
       const app = APP_PROVISIONING_CATALOG[currentProvisionApp] || APP_PROVISIONING_CATALOG.school;
@@ -3148,7 +3216,20 @@ function bindModalEvents() {
         adminEmail: $('f-admin-email')?.value.trim() || '',
         notes: $('f-notes')?.value.trim() || '',
         db: `${currentProvisionApp}_${slugify(name).replace(/-/g, '_')}`,
+        billing: {
+          mode: $('f-bill-mode')?.value || 'now',
+          schoolType: $('f-bill-school-type')?.value || '',
+          enrollmentCount: $('f-bill-students')?.value.trim() || '',
+          communicationsIncluded: $('f-bill-comms')?.checked === true,
+          ownSmsProvider: $('f-bill-own-sms')?.checked === true,
+          extraModules: ($('f-bill-extras')?.value || '').split(',').map(value => value.trim()).filter(Boolean),
+          discount: { amountKsh: $('f-bill-discount')?.value.trim() || '', reason: $('f-bill-discount-reason')?.value.trim() || '' },
+        },
       };
+      if (payload.billing.mode !== 'later' && !payload.billing.schoolType) {
+        toast('Choose the school type — every instance is billed on creation.');
+        return;
+      }
 
       try {
         setProvisionSubmitBusy(true);
@@ -3227,6 +3308,13 @@ function bindModalEvents() {
           return;
         }
 
+        try {
+          const created = await response.clone().json();
+          if (created?.billing?.deferred) toast('Billing deferred — add the customer and quote from Billing when ready.');
+          else if (created?.billing?.ok) toast(`Billing: draft quote ${created.billing.quoteNumber} ready for review.`);
+          else if (created?.billing?.error) toast(created.billing.error);
+          if (typeof loadBillingData === 'function') loadBillingData();
+        } catch { /* response body not JSON */ }
         addAudit({
           action: `Provision ${app.label}`,
           instance: payload.name,
@@ -3446,9 +3534,537 @@ function bindDeployEvents() {
   });
 }
 
+// ── Field Agents & Commissions Store & UI ──────────────────────────────────
+let AGENTS = [];
+let CURRENT_AGENT = null;
+let AGENTS_STATUS = 'idle';
+
+function formatKsh(amount) {
+  const num = Number(amount || 0);
+  return 'KES ' + num.toLocaleString('en-KE', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+
+async function loadAgentsData() {
+  AGENTS_STATUS = 'loading';
+  const tableBody = $('agents-table-body');
+  if (tableBody && (!AGENTS || AGENTS.length === 0)) {
+    tableBody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:24px">Loading field agents…</td></tr>';
+  }
+
+  try {
+    const search = $('agent-search')?.value.trim() || '';
+    const status = $('agent-filter-status')?.value || 'all';
+    const params = new URLSearchParams();
+    if (search) params.set('search', search);
+    if (status !== 'all') params.set('status', status);
+
+    const [overviewRes, listRes] = await Promise.all([
+      fetch('/api/agents/overview', { credentials: 'same-origin' }),
+      fetch(`/api/agents?${params.toString()}`, { credentials: 'same-origin' }),
+    ]);
+
+    if (overviewRes.ok) {
+      const { overview } = await overviewRes.json();
+      renderAgentsOverview(overview);
+    }
+
+    if (listRes.ok) {
+      const data = await listRes.json();
+      AGENTS = Array.isArray(data.agents) ? data.agents : [];
+      renderAgentsTable();
+    }
+    AGENTS_STATUS = 'ready';
+  } catch (err) {
+    AGENTS_STATUS = 'error';
+    if (tableBody) {
+      tableBody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--red);padding:24px">Failed to load agents: ${esc(err.message)}</td></tr>`;
+    }
+  }
+}
+
+function renderAgentsOverview(overview = {}) {
+  if ($('metric-agents-total')) $('metric-agents-total').textContent = overview.totalAgents || 0;
+  if ($('metric-agents-active-sub')) $('metric-agents-active-sub').textContent = `${overview.activeAgents || 0} active in field`;
+  if ($('metric-agents-schools')) $('metric-agents-schools').textContent = overview.totalAssignedSchools || 0;
+  if ($('metric-agents-earned')) $('metric-agents-earned').textContent = formatKsh(overview.totalEarnedAll || 0);
+  if ($('metric-agents-balance')) $('metric-agents-balance').textContent = formatKsh(overview.totalBalanceDue || 0);
+  if ($('metric-agents-disbursed-sub')) $('metric-agents-disbursed-sub').textContent = `Disbursed: ${formatKsh(overview.totalPayoutsDisbursed || 0)}`;
+}
+
+function renderAgentsTable() {
+  const tableBody = $('agents-table-body');
+  if (!tableBody) return;
+
+  if (AGENTS.length === 0) {
+    tableBody.innerHTML = `
+      <tr>
+        <td colspan="10" style="text-align:center;color:var(--muted);padding:32px">
+          No field agents found. Click <strong>"+ Register Field Agent"</strong> above to register your first partner.
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  tableBody.innerHTML = AGENTS.map(agent => {
+    const rateLabel = agent.commission_type === 'percentage'
+      ? `${agent.commission_rate}% of subscription`
+      : agent.commission_type === 'fixed_per_student'
+      ? `${formatKsh(agent.commission_rate)} / student`
+      : `${formatKsh(agent.commission_rate)} / school`;
+
+    const statusBadge = agent.status === 'active'
+      ? '<span class="status-badge" style="background:rgba(5,150,105,.12);color:#059669;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:700">● Active</span>'
+      : agent.status === 'pending'
+      ? '<span class="status-badge" style="background:rgba(217,119,6,.12);color:#d97706;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:700">● Pending</span>'
+      : '<span class="status-badge" style="background:rgba(220,38,38,.12);color:#dc2626;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:700">● Inactive</span>';
+
+    const balanceColor = Number(agent.balance_due_ksh || 0) > 0 ? 'var(--brand)' : 'var(--muted)';
+
+    return `
+      <tr style="border-bottom:1px solid var(--border)">
+        <td><span class="pill" style="font-weight:700;font-size:11px">${esc(agent.agent_code)}</span></td>
+        <td>
+          <div style="font-weight:700;color:var(--ink)">${esc(agent.full_name)}</div>
+          ${agent.national_id ? `<div style="font-size:11px;color:var(--muted)">ID: ${esc(agent.national_id)}</div>` : ''}
+        </td>
+        <td>
+          <div style="font-size:12px;font-weight:600"><a href="tel:${esc(agent.phone)}" style="color:var(--brand)">${esc(agent.phone)}</a></div>
+          ${agent.email ? `<div style="font-size:11px;color:var(--muted)">${esc(agent.email)}</div>` : ''}
+          ${agent.mpesa_number && agent.mpesa_number !== agent.phone ? `<div style="font-size:11px;color:#059669">M-Pesa: ${esc(agent.mpesa_number)}</div>` : ''}
+        </td>
+        <td>
+          <div style="font-weight:600;font-size:12px">${esc(agent.county || 'Unspecified')}</div>
+          ${agent.base_location ? `<div style="font-size:11px;color:var(--muted)">${esc(agent.base_location)}</div>` : ''}
+        </td>
+        <td><span style="font-size:12px;font-weight:600;color:var(--ink)">${esc(rateLabel)}</span></td>
+        <td>
+          <span class="pill" style="font-size:11px;font-weight:600">${agent.total_schools || 0} schools</span>
+        </td>
+        <td style="font-weight:600;font-size:12px">${formatKsh(agent.total_earned_ksh || 0)}</td>
+        <td style="font-weight:700;font-size:13px;color:${balanceColor}">${formatKsh(agent.balance_due_ksh || 0)}</td>
+        <td>${statusBadge}</td>
+        <td>
+          <div style="display:flex;gap:4px">
+            <button class="btn" style="padding:3px 8px;font-size:11px" onclick="openAgentDetailModal('${agent.id}')" title="View Profile & Statement">View</button>
+            <button class="btn primary" style="padding:3px 8px;font-size:11px" onclick="openPayoutModal('${agent.id}')" title="Record Payout">Payout</button>
+            <button class="btn" style="padding:3px 8px;font-size:11px" onclick="openEditAgentModal('${agent.id}')" title="Edit Agent">Edit</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function openNewAgentModal() {
+  $('agent-form-id').value = '';
+  $('agent-modal-title').textContent = 'Register Field Agent';
+  $('agent-form-name').value = '';
+  $('agent-form-phone').value = '';
+  $('agent-form-email').value = '';
+  $('agent-form-national-id').value = '';
+  $('agent-form-county').value = '';
+  $('agent-form-base').value = '';
+  $('agent-form-commission-type').value = 'percentage';
+  $('agent-form-commission-rate').value = '10.0';
+  $('agent-form-mpesa').value = '';
+  $('agent-form-status').value = 'active';
+  $('agent-form-bank-name').value = '';
+  $('agent-form-bank-account').value = '';
+  $('agent-form-pin').value = '';
+  $('agent-form-notes').value = '';
+  $('agent-modal-overlay').style.display = 'grid';
+}
+
+function openEditAgentModal(agentId) {
+  const agent = AGENTS.find(a => a.id === agentId);
+  if (!agent) return;
+  $('agent-form-id').value = agent.id;
+  $('agent-modal-title').textContent = `Edit Agent — ${agent.agent_code}`;
+  $('agent-form-name').value = agent.full_name || '';
+  $('agent-form-phone').value = agent.phone || '';
+  $('agent-form-email').value = agent.email || '';
+  $('agent-form-national-id').value = agent.national_id || '';
+  $('agent-form-county').value = agent.county || '';
+  $('agent-form-base').value = agent.base_location || '';
+  $('agent-form-commission-type').value = agent.commission_type || 'percentage';
+  $('agent-form-commission-rate').value = agent.commission_rate ?? 10.0;
+  $('agent-form-mpesa').value = agent.mpesa_number || '';
+  $('agent-form-status').value = agent.status || 'active';
+  $('agent-form-bank-name').value = agent.bank_name || '';
+  $('agent-form-bank-account').value = agent.bank_account || '';
+  $('agent-form-pin').value = '';
+  $('agent-form-notes').value = agent.notes || '';
+  $('agent-modal-overlay').style.display = 'grid';
+}
+
+async function saveAgentForm() {
+  const id = $('agent-form-id').value.trim();
+  const full_name = $('agent-form-name').value.trim();
+  const phone = $('agent-form-phone').value.trim();
+  if (!full_name) return alert('Full Name is required');
+  if (!phone) return alert('Primary Phone number is required');
+
+  const payload = {
+    full_name,
+    phone,
+    email: $('agent-form-email').value.trim(),
+    national_id: $('agent-form-national-id').value.trim(),
+    county: $('agent-form-county').value.trim(),
+    base_location: $('agent-form-base').value.trim(),
+    commission_type: $('agent-form-commission-type').value,
+    commission_rate: parseFloat($('agent-form-commission-rate').value) || 0,
+    mpesa_number: $('agent-form-mpesa').value.trim(),
+    status: $('agent-form-status').value,
+    bank_name: $('agent-form-bank-name').value.trim(),
+    bank_account: $('agent-form-bank-account').value.trim(),
+    notes: $('agent-form-notes').value.trim(),
+  };
+
+  const pin = $('agent-form-pin').value.trim();
+  if (pin) payload.pin = pin;
+
+  try {
+    const url = id ? `/api/agents/${id}` : '/api/agents';
+    const method = id ? 'PUT' : 'POST';
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      credentials: 'same-origin',
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Failed to save agent');
+    toast(id ? 'Agent updated successfully' : `Agent ${result.agent?.agent_code || ''} registered`);
+    $('agent-modal-overlay').style.display = 'none';
+    loadAgentsData();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
+}
+
+async function openAgentDetailModal(agentId) {
+  try {
+    const res = await fetch(`/api/agents/${agentId}`, { credentials: 'same-origin' });
+    if (!res.ok) throw new Error('Agent not found');
+    const { agent } = await res.json();
+    CURRENT_AGENT = agent;
+    renderAgentDetailModal(agent);
+    $('agent-detail-overlay').style.display = 'grid';
+  } catch (err) {
+    alert('Error loading agent: ' + err.message);
+  }
+}
+
+function renderAgentDetailModal(agent) {
+  $('agent-detail-code').textContent = agent.agent_code;
+  $('agent-detail-name').textContent = agent.full_name;
+  $('agent-detail-sub').textContent = `Phone: ${agent.phone} · County: ${agent.county || 'N/A'} · Rate: ${agent.commission_rate}${agent.commission_type === 'percentage' ? '%' : ' KES'}`;
+
+  const statusBadge = $('agent-detail-status-badge');
+  if (statusBadge) {
+    statusBadge.innerHTML = agent.status === 'active'
+      ? '<span style="background:rgba(5,150,105,.12);color:#059669;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700">Active</span>'
+      : '<span style="background:rgba(217,119,6,.12);color:#d97706;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700">' + esc(agent.status) + '</span>';
+  }
+
+  $('agent-stat-earned').textContent = formatKsh(agent.financials?.totalEarnedKsh || 0);
+  $('agent-stat-paid').textContent = formatKsh(agent.financials?.totalPaidKsh || 0);
+  $('agent-stat-balance').textContent = formatKsh(agent.financials?.balanceDueKsh || 0);
+
+  // Render Schools Table
+  const schoolsBody = $('agent-schools-body');
+  if (schoolsBody) {
+    const schools = agent.schools || [];
+    if (schools.length === 0) {
+      schoolsBody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:18px">No schools assigned to this agent yet.</td></tr>';
+    } else {
+      schoolsBody.innerHTML = schools.map(s => `
+        <tr>
+          <td style="font-weight:600">${esc(s.school_name)}</td>
+          <td><span class="pill" style="font-size:11px">${esc(s.status)}</span></td>
+          <td>${esc(s.contact_person || '—')}</td>
+          <td>${esc(s.contact_phone || '—')}</td>
+          <td>${esc(s.created_at ? s.created_at.slice(0, 10) : '—')}</td>
+          <td><button class="btn" style="padding:2px 6px;font-size:10px" onclick="deleteSchoolAssignment('${s.id}')">Remove</button></td>
+        </tr>
+      `).join('');
+    }
+  }
+
+  // Render Earnings Table
+  const earningsBody = $('agent-earnings-body');
+  if (earningsBody) {
+    const earnings = agent.earnings || [];
+    if (earnings.length === 0) {
+      earningsBody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:18px">No commissions recorded yet.</td></tr>';
+    } else {
+      earningsBody.innerHTML = earnings.map(e => `
+        <tr>
+          <td>${esc(e.earned_date)}</td>
+          <td style="font-weight:600">${esc(e.school_name || 'General')}</td>
+          <td>${esc(e.description)}</td>
+          <td>${formatKsh(e.gross_amount_ksh)}</td>
+          <td style="font-weight:700;color:var(--brand)">${formatKsh(e.earned_amount_ksh)}</td>
+          <td><span class="pill" style="font-size:11px;font-weight:600">${esc(e.status)}</span></td>
+        </tr>
+      `).join('');
+    }
+  }
+
+  // Render Payouts Table
+  const payoutsBody = $('agent-payouts-body');
+  if (payoutsBody) {
+    const payouts = agent.payouts || [];
+    if (payouts.length === 0) {
+      payoutsBody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:18px">No payouts disbursed to this agent yet.</td></tr>';
+    } else {
+      payoutsBody.innerHTML = payouts.map(p => `
+        <tr>
+          <td>${esc(p.payout_date)}</td>
+          <td style="text-transform:uppercase;font-weight:600">${esc(p.payout_method)}</td>
+          <td style="font-family:monospace;font-weight:700">${esc(p.reference || '—')}</td>
+          <td style="font-weight:700;color:var(--green)">${formatKsh(p.amount_ksh)}</td>
+          <td><span class="pill" style="font-size:11px">${esc(p.status)}</span></td>
+          <td>${esc(p.processed_by || 'admin')}</td>
+        </tr>
+      `).join('');
+    }
+  }
+
+  switchAgentDetailTab('schools');
+}
+
+function switchAgentDetailTab(tab) {
+  const tabs = ['schools', 'earnings', 'payouts'];
+  tabs.forEach(t => {
+    const btn = $(`tab-btn-${t}`);
+    const pane = $(`pane-agent-${t}`);
+    if (btn) {
+      if (t === tab) {
+        btn.classList.add('active');
+        btn.style.borderBottomColor = 'var(--brand)';
+        btn.style.color = 'var(--ink)';
+      } else {
+        btn.classList.remove('active');
+        btn.style.borderBottomColor = 'transparent';
+        btn.style.color = 'var(--muted)';
+      }
+    }
+    if (pane) pane.style.display = t === tab ? 'block' : 'none';
+  });
+}
+
+function openPayoutModal(agentId) {
+  const agent = CURRENT_AGENT && CURRENT_AGENT.id === agentId ? CURRENT_AGENT : AGENTS.find(a => a.id === agentId);
+  if (!agent) return;
+  CURRENT_AGENT = agent;
+
+  $('payout-modal-agent-name').textContent = `${agent.full_name} (${agent.agent_code})`;
+  $('payout-modal-agent-mpesa').textContent = `M-Pesa / Phone: ${agent.mpesa_number || agent.phone}`;
+  const balance = agent.financials ? agent.financials.balanceDueKsh : (agent.balance_due_ksh || 0);
+  $('payout-modal-balance-hint').textContent = `Current Outstanding Balance: ${formatKsh(balance)}`;
+  $('payout-form-amount').value = balance > 0 ? balance : '';
+  $('payout-form-ref').value = '';
+  $('payout-form-notes').value = '';
+  $('payout-form-date').value = new Date().toISOString().slice(0, 10);
+  $('agent-payout-overlay').style.display = 'grid';
+}
+
+async function submitPayout() {
+  if (!CURRENT_AGENT) return;
+  const amount_ksh = parseFloat($('payout-form-amount').value);
+  const reference = $('payout-form-ref').value.trim();
+  if (isNaN(amount_ksh) || amount_ksh <= 0) return alert('Please enter a valid payout amount');
+  if (!reference) return alert('Transaction reference (e.g. M-Pesa receipt code) is required');
+
+  try {
+    const res = await fetch(`/api/agents/${CURRENT_AGENT.id}/payouts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        amount_ksh,
+        payout_method: $('payout-form-method').value,
+        reference,
+        payout_date: $('payout-form-date').value,
+        notes: $('payout-form-notes').value.trim(),
+      }),
+      credentials: 'same-origin',
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Failed to record payout');
+    toast(`Payout of KES ${amount_ksh.toLocaleString()} recorded`);
+    $('agent-payout-overlay').style.display = 'none';
+    if ($('agent-detail-overlay').style.display !== 'none') {
+      openAgentDetailModal(CURRENT_AGENT.id);
+    }
+    loadAgentsData();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
+}
+
+function openEarningModal(agentId) {
+  const agent = CURRENT_AGENT && CURRENT_AGENT.id === agentId ? CURRENT_AGENT : AGENTS.find(a => a.id === agentId);
+  if (!agent) return;
+  CURRENT_AGENT = agent;
+  $('earning-form-school').value = '';
+  $('earning-form-gross').value = '';
+  $('earning-form-earned').value = '';
+  $('earning-form-invoice').value = '';
+  $('earning-form-desc').value = '';
+  $('earning-form-status').value = 'approved';
+  $('agent-earning-overlay').style.display = 'grid';
+}
+
+async function submitEarning() {
+  if (!CURRENT_AGENT) return;
+  const school_name = $('earning-form-school').value.trim();
+  const earned_amount_ksh = parseFloat($('earning-form-earned').value);
+  if (!school_name) return alert('School name is required');
+  if (isNaN(earned_amount_ksh) || earned_amount_ksh <= 0) return alert('Valid commission amount is required');
+
+  try {
+    const res = await fetch(`/api/agents/${CURRENT_AGENT.id}/earnings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        school_name,
+        gross_amount_ksh: parseFloat($('earning-form-gross').value) || 0,
+        earned_amount_ksh,
+        invoice_ref: $('earning-form-invoice').value.trim(),
+        description: $('earning-form-desc').value.trim(),
+        status: $('earning-form-status').value,
+      }),
+      credentials: 'same-origin',
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Failed to record commission');
+    toast(`Commission of KES ${earned_amount_ksh.toLocaleString()} recorded`);
+    $('agent-earning-overlay').style.display = 'none';
+    if ($('agent-detail-overlay').style.display !== 'none') {
+      openAgentDetailModal(CURRENT_AGENT.id);
+    }
+    loadAgentsData();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
+}
+
+function openAssignSchoolModal(agentId) {
+  const agent = CURRENT_AGENT && CURRENT_AGENT.id === agentId ? CURRENT_AGENT : AGENTS.find(a => a.id === agentId);
+  if (!agent) return;
+  CURRENT_AGENT = agent;
+  $('school-form-name').value = '';
+  $('school-form-contact').value = '';
+  $('school-form-phone').value = '';
+  $('school-form-status').value = 'pitching';
+  $('agent-school-overlay').style.display = 'grid';
+}
+
+async function submitAssignSchool() {
+  if (!CURRENT_AGENT) return;
+  const school_name = $('school-form-name').value.trim();
+  if (!school_name) return alert('School name is required');
+
+  try {
+    const res = await fetch(`/api/agents/${CURRENT_AGENT.id}/schools`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        school_name,
+        contact_person: $('school-form-contact').value.trim(),
+        contact_phone: $('school-form-phone').value.trim(),
+        status: $('school-form-status').value,
+      }),
+      credentials: 'same-origin',
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Failed to assign school');
+    toast(`School ${school_name} assigned to agent`);
+    $('agent-school-overlay').style.display = 'none';
+    if ($('agent-detail-overlay').style.display !== 'none') {
+      openAgentDetailModal(CURRENT_AGENT.id);
+    }
+    loadAgentsData();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
+}
+
+async function deleteSchoolAssignment(schoolId) {
+  if (!confirm('Remove this school from the agent?')) return;
+  try {
+    const res = await fetch(`/api/agents/schools/${schoolId}`, {
+      method: 'DELETE',
+      credentials: 'same-origin',
+    });
+    if (!res.ok) throw new Error('Failed to remove school assignment');
+    toast('School removed');
+    if (CURRENT_AGENT) openAgentDetailModal(CURRENT_AGENT.id);
+    loadAgentsData();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
+}
+
+function bindAgentEvents() {
+  $('btn-new-agent')?.addEventListener('click', openNewAgentModal);
+  $('btn-refresh-agents')?.addEventListener('click', loadAgentsData);
+  $('agent-search')?.addEventListener('input', () => {
+    clearTimeout(window._agentSearchTimer);
+    window._agentSearchTimer = setTimeout(loadAgentsData, 250);
+  });
+  $('agent-filter-status')?.addEventListener('change', loadAgentsData);
+
+  // Agent form
+  $('agent-modal-close')?.addEventListener('click', () => { $('agent-modal-overlay').style.display = 'none'; });
+  $('agent-form-cancel')?.addEventListener('click', () => { $('agent-modal-overlay').style.display = 'none'; });
+  $('agent-form-save')?.addEventListener('click', saveAgentForm);
+
+  // Detail modal
+  $('agent-detail-close')?.addEventListener('click', () => { $('agent-detail-overlay').style.display = 'none'; });
+  $('agent-detail-dismiss')?.addEventListener('click', () => { $('agent-detail-overlay').style.display = 'none'; });
+  $('tab-btn-schools')?.addEventListener('click', () => switchAgentDetailTab('schools'));
+  $('tab-btn-earnings')?.addEventListener('click', () => switchAgentDetailTab('earnings'));
+  $('tab-btn-payouts')?.addEventListener('click', () => switchAgentDetailTab('payouts'));
+
+  $('btn-agent-record-payout')?.addEventListener('click', () => { if (CURRENT_AGENT) openPayoutModal(CURRENT_AGENT.id); });
+  $('btn-agent-add-earning')?.addEventListener('click', () => { if (CURRENT_AGENT) openEarningModal(CURRENT_AGENT.id); });
+  $('btn-agent-add-school')?.addEventListener('click', () => { if (CURRENT_AGENT) openAssignSchoolModal(CURRENT_AGENT.id); });
+  $('btn-agent-edit-profile')?.addEventListener('click', () => {
+    if (CURRENT_AGENT) {
+      $('agent-detail-overlay').style.display = 'none';
+      openEditAgentModal(CURRENT_AGENT.id);
+    }
+  });
+
+  // Payout modal
+  $('agent-payout-close')?.addEventListener('click', () => { $('agent-payout-overlay').style.display = 'none'; });
+  $('payout-form-cancel')?.addEventListener('click', () => { $('agent-payout-overlay').style.display = 'none'; });
+  $('payout-form-submit')?.addEventListener('click', submitPayout);
+
+  // Earning modal
+  $('agent-earning-close')?.addEventListener('click', () => { $('agent-earning-overlay').style.display = 'none'; });
+  $('earning-form-cancel')?.addEventListener('click', () => { $('agent-earning-overlay').style.display = 'none'; });
+  $('earning-form-submit')?.addEventListener('click', submitEarning);
+
+  // School modal
+  $('agent-school-close')?.addEventListener('click', () => { $('agent-school-overlay').style.display = 'none'; });
+  $('school-form-cancel')?.addEventListener('click', () => { $('agent-school-overlay').style.display = 'none'; });
+  $('school-form-submit')?.addEventListener('click', submitAssignSchool);
+}
+
+// Make functions globally available for inline onclick handlers
+window.openAgentDetailModal = openAgentDetailModal;
+window.openPayoutModal = openPayoutModal;
+window.openEditAgentModal = openEditAgentModal;
+window.deleteSchoolAssignment = deleteSchoolAssignment;
+
 async function init() {
   bindModalEvents();
   bindDeployEvents();
+  bindAgentEvents();
   initSidebarToggle();
   showSection(sectionFromHash(), { skipHashUpdate: true });
   await loadLeadsFromApi();

@@ -92,6 +92,9 @@
     <a class="nav-item" data-section="leads" href="#">
       <span class="nav-icon">👥</span> Leads &amp; CRM
     </a>
+    <a class="nav-item" data-section="agents" href="#">
+      <span class="nav-icon">🤝</span> Field Agents &amp; Earnings
+    </a>
     <a class="nav-item" data-section="instances" href="#">
       <span class="nav-icon">🏫</span> Instances
     </a>
@@ -578,7 +581,7 @@
           <div class="panel">
             <div class="panel-header"><div><div class="panel-title">Quotes</div><div class="panel-sub">Prepare a quote, send its PDF, record the customer decision, and convert accepted quotes into draft invoices. Sent quotes are kept as history.</div></div><div class="billing-register-filters"><input class="form-input billing-filter" id="billing-quote-search" type="search" placeholder="Search quote or customer" aria-label="Search quotes"><select class="form-input billing-filter" id="billing-quote-status" aria-label="Filter quotes by status"><option value="">All statuses</option><option value="draft">Draft</option><option value="sent">Sent</option><option value="accepted">Accepted</option><option value="declined">Declined</option><option value="expired">Expired</option><option value="converted">Converted</option><option value="cancelled">Cancelled</option></select></div></div>
             <div id="billing-email-status" class="billing-email-status" role="status"></div>
-            <div class="table-wrap"><table><thead><tr><th>Quote</th><th>Customer</th><th>Students</th><th>Quoted total</th><th>Valid until</th><th>Status</th><th>Actions</th></tr></thead>
+            <div class="table-wrap"><table><thead><tr><th>Quote</th><th>Customer</th><th>School type / students</th><th>Quoted total</th><th>Valid until</th><th>Status</th><th>Actions</th></tr></thead>
               <tbody id="billing-quotes-table"><tr><td colspan="7">Loading quotes…</td></tr></tbody></table></div>
           </div>
         </section>
@@ -599,7 +602,7 @@
         </section>
 
         <section class="billing-tab-panel" id="billing-panel-catalogue" role="tabpanel" aria-labelledby="billing-tab-catalogue" tabindex="0" hidden>
-          <div class="panel"><div class="panel-header"><div><div class="panel-title">School platform rate card</div><div class="panel-sub">Current quoted student rate is selected by the school's total enrollment. This rate card applies to new quotes; each saved quote retains its pricing snapshot.</div></div><span class="billing-status-chip">KES · Current rate card</span></div><div class="table-wrap"><table><thead><tr><th>Enrolled students</th><th>Rate per student</th><th>Cadence</th></tr></thead><tbody><tr><td>1–300</td><td>KSh 50</td><td>Selected quote cadence</td></tr><tr><td>301–500</td><td>KSh 40</td><td>Selected quote cadence</td></tr><tr><td>501–1,000</td><td>KSh 35</td><td>Selected quote cadence</td></tr><tr><td>1,001+</td><td>KSh 30</td><td>Selected quote cadence</td></tr></tbody></table></div><div class="billing-price-extras"><article><span>School setup</span><strong>One-off · customer-specific</strong><small>Entered and shown separately on each quote.</small></article><article><span>Communications module</span><strong>KSh 10,000 per term</strong><small>Sender ID and 1,000 SMS included each term.</small></article><article><span>Additional module</span><strong>KSh 5,000 per module</strong><small>Charge cadence is selected on each quote.</small></article></div><div class="billing-register-note">The quote form offers flat-tier pricing (one rate applied to all students based on total enrollment) or progressive pricing (each rate applies only to students in that band). The selected method is saved with the quote. Tax is not included; existing quotes keep their original rate snapshots.</div></div>
+          <div class="panel"><div class="panel-header"><div><div class="panel-title">Price list</div><div class="panel-sub">Flat per school, in KES. Setup is charged once; everything else per term. Changes apply to new quotes only; each saved quote keeps the prices it was created with.</div></div><span class="billing-status-chip">KES</span></div><div class="table-wrap"><table><thead><tr><th>School type</th><th>Item</th><th>Name on quote</th><th>Price (KSh)</th><th>Offered</th><th></th></tr></thead><tbody id="billing-products-table"><tr><td colspan="6">Loading price list...</td></tr></tbody></table></div><div class="billing-register-note">Add-on modules for public primary schools are switched off until that decision is confirmed. Tick Offered and save to turn them on. Tax is not included in any price.</div></div>
         </section>
 
         <section class="billing-tab-panel" id="billing-panel-reports" role="tabpanel" aria-labelledby="billing-tab-reports" tabindex="0" hidden>
@@ -610,6 +613,7 @@
           <div class="panel">
             <div class="panel-header"><div><div class="panel-title">Billing configuration readiness</div><div class="panel-sub">Configuration values are shown as readiness only; credentials are never displayed.</div></div></div>
             <div id="billing-settings-email-status" class="billing-email-status" role="status">Checking email configuration…</div>
+             <div class="billing-setting-row" data-super-admin-only style="margin:12px 0"><span><strong>Reset billing to zero</strong><br><small>Deletes all customers, contracts, quotes, invoices, payments and delivery logs. A backup file is saved first.</small></span><span><input class="form-input" id="billing-reset-confirm" placeholder="Type RESET BILLING" aria-label="Type RESET BILLING to confirm"> <button class="btn" id="billing-reset-btn" type="button">Reset billing</button></span></div>
             <div class="billing-settings-grid"><div class="billing-setting-row"><span>Invoice status</span><strong>Commercial invoice issuance enabled</strong></div><div class="billing-setting-row"><span>Invoice numbering</span><strong>INV- prefix · based on quote reference</strong></div><div class="billing-setting-row"><span>Payments</span><strong>Manual recording · allocation to issued invoices</strong></div><div class="billing-setting-row"><span>Tax invoice / eTIMS integration</span><strong>Not configured</strong></div><div class="billing-setting-row"><span>Seller legal identity and tax details</span><strong>Confirm before tax invoice use</strong></div><div class="billing-setting-row"><span>Payment instructions</span><strong>Use customer-approved terms and verified references</strong></div></div><div class="billing-register-note">The issue action creates a commercial invoice and does not certify tax compliance or submit anything to eTIMS. Configure seller tax identity and an approved eTIMS route before treating these as tax invoices. Email sender credentials are managed in Communications.</div>
           </div>
         </section>
@@ -767,6 +771,87 @@
       </div>
       <!-- ── END LEADS & CRM ── -->
 
+      <!-- ── FIELD AGENTS & EARNINGS section ── -->
+      <div id="section-agents" class="section-hidden">
+        <div class="page-header">
+          <div>
+            <div class="page-eyebrow">PARTNERS &amp; FIELD NETWORK</div>
+            <div class="page-title">Field Agents &amp; Commissions</div>
+            <div class="page-sub">Register field agents, track school attributions, review commission statements, and disburse payouts.</div>
+          </div>
+          <div class="page-actions">
+            <a href="/agent/" target="_blank" class="btn" style="text-decoration:none; display:inline-flex; align-items:center; gap:6px;">📱 Launch Agent App ↗</a>
+            <button class="btn" id="btn-refresh-agents" type="button">↻ Refresh</button>
+            <button class="btn primary" id="btn-new-agent" type="button">+ Register Field Agent</button>
+          </div>
+        </div>
+
+        <!-- Metric cards row -->
+        <div class="metric-row">
+          <div class="metric-card">
+            <div class="m-label">Registered Agents</div>
+            <div class="m-val" id="metric-agents-total">0</div>
+            <div class="m-sub" id="metric-agents-active-sub">0 active in field</div>
+          </div>
+          <div class="metric-card">
+            <div class="m-label">Assigned Schools</div>
+            <div class="m-val" id="metric-agents-schools">0</div>
+            <div class="m-sub">Total school prospects</div>
+          </div>
+          <div class="metric-card">
+            <div class="m-label">Lifetime Commissions</div>
+            <div class="m-val" id="metric-agents-earned">KES 0</div>
+            <div class="m-sub">Accrued partner earnings</div>
+          </div>
+          <div class="metric-card">
+            <div class="m-label">Pending Payouts</div>
+            <div class="m-val" id="metric-agents-balance" style="color:var(--brand-bright)">KES 0</div>
+            <div class="m-sub" id="metric-agents-disbursed-sub">Disbursed: KES 0</div>
+          </div>
+        </div>
+
+        <!-- Directory Panel -->
+        <div class="panel">
+          <div class="panel-header" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+            <div>
+              <div class="panel-title">Agent Directory</div>
+              <div class="panel-sub">All registered agents with contact info, rates, and current balances</div>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input class="form-input" id="agent-search" placeholder="Search name, phone, code…" style="width:200px;padding:5px 10px;font-size:12px" type="text"/>
+              <select class="form-select" id="agent-filter-status" style="width:130px;padding:5px 8px;font-size:12px">
+                <option value="all">All Statuses</option>
+                <option value="active">Active</option>
+                <option value="pending">Pending</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </div>
+          </div>
+          <div style="overflow-x:auto">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Agent Code</th>
+                  <th>Full Name</th>
+                  <th>Contacts</th>
+                  <th>Region / County</th>
+                  <th>Commission Terms</th>
+                  <th>Schools</th>
+                  <th>Total Earned</th>
+                  <th>Balance Due</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="agents-table-body">
+                <tr><td colspan="10" style="text-align:center;color:var(--muted);padding:24px">Loading agents…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <!-- ── END FIELD AGENTS & EARNINGS ── -->
+
     </div><!-- /content -->
   </div><!-- /main -->
 </div><!-- /shell -->
@@ -827,6 +912,19 @@
       <div class="form-row" id="f-admin-email-row">
         <label class="form-label" for="f-admin-email">Admin Email</label>
         <input class="form-input" id="f-admin-email" placeholder="e.g. admin@school.co.ke" type="email"/>
+      </div>
+      <div class="form-row" id="f-billing-row">
+        <label class="form-label" for="f-bill-mode">Billing</label>
+        <select class="form-input" id="f-bill-mode" aria-label="Bill now or later"><option value="now">Bill now — create customer and draft quote</option><option value="later">Bill later — skip for now</option></select>
+        <div id="f-bill-fields" style="margin-top:8px;display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <select class="form-input" id="f-bill-school-type" aria-label="School type"><option value="">School type...</option><option value="private">Private school</option><option value="public_primary">Public primary school</option></select>
+          <input class="form-input" id="f-bill-students" type="number" min="0" step="1" placeholder="Students (optional)" aria-label="Expected student count (optional)"/>
+          <input class="form-input" id="f-bill-extras" type="text" placeholder="Add-on modules, comma separated (KSh 5,000 each)" aria-label="Add-on modules" style="grid-column:1/-1"/>
+          <label class="billing-option" style="grid-column:1/-1"><input id="f-bill-comms" type="checkbox"/><span><strong>Include Communication</strong><small>KSh 10,000 per term, 1,000 SMS included</small></span></label>
+          <label class="billing-option" style="grid-column:1/-1"><input id="f-bill-own-sms" type="checkbox"/><span><strong>School uses its own SMS provider</strong><small>Communication is then free</small></span></label>
+          <input class="form-input" id="f-bill-discount" type="number" min="0" step="1" placeholder="Discount KSh (optional)" aria-label="Discount in KSh"/>
+          <input class="form-input" id="f-bill-discount-reason" type="text" maxlength="300" placeholder="Discount reason (required with a discount)" aria-label="Discount reason"/>
+        </div>
       </div>
       <div class="form-row" id="f-notes-row">
         <label class="form-label" for="f-notes">Provisioning Notes</label>
@@ -1018,19 +1116,20 @@
       <input id="bq-id" type="hidden"/>
       <div class="billing-quote-grid">
         <div class="form-row"><label class="form-label" for="bq-customer">Customer *</label><select class="form-select" id="bq-customer"><option value="">Select a billing customer</option></select></div>
-        <div class="form-row"><label class="form-label" for="bq-students">Billable student count *</label><input class="form-input" id="bq-students" type="number" min="1" max="100000" step="1" placeholder="Enrollment snapshot"/></div>
-        <div class="form-row"><label class="form-label" for="bq-pricing-model">Student rate rule</label><select class="form-select" id="bq-pricing-model"><option value="rate_by_band">One rate for all students at this tier</option><option value="progressive">Progressive marginal bands</option></select><small class="form-help">Rate card: 1–300 KSh 50; 301–500 KSh 40; 501–1,000 KSh 35; above 1,000 KSh 30 per student.</small></div>
-        <div class="form-row"><label class="form-label" for="bq-cadence">Student charge period</label><select class="form-select" id="bq-cadence"><option value="termly">Per term</option><option value="annual">Per year</option><option value="monthly">Per month</option></select></div>
-        <div class="form-row"><label class="form-label" for="bq-setup">One-off school setup fee (KSh) *</label><input class="form-input" id="bq-setup" type="number" min="0" max="100000000" step="1" placeholder="Enter fee, or 0 if waived"/><small class="form-help">This amount was not specified in the rate card, so enter the approved fee.</small></div>
+        <div class="form-row"><label class="form-label" for="bq-school-type">School type *</label><select class="form-select" id="bq-school-type"><option value="">Choose school type</option><option value="private">Private school</option><option value="public_primary">Public primary school</option></select><small class="form-help">Prices come from the Products &amp; pricing tab. Setup is one-off; everything else is charged per term.</small></div>
+        <div class="form-row"><label class="form-label" for="bq-students">Student count (optional)</label><input class="form-input" id="bq-students" type="number" min="0" max="100000" step="1" placeholder="For reference only; does not change the price"/></div>
+        <div class="form-row"><label class="form-label" for="bq-discount">One-off discount (KSh)</label><input class="form-input" id="bq-discount" type="number" min="0" step="1" placeholder="Optional"/></div>
+        <div class="form-row"><label class="form-label" for="bq-discount-reason">Discount reason</label><input class="form-input" id="bq-discount-reason" maxlength="300" placeholder="Required with a discount"/></div>
         <div class="form-row"><label class="form-label" for="bq-expires">Quote expiry date</label><input class="form-input" id="bq-expires" type="date"/></div>
       </div>
       <label class="billing-option"><input id="bq-communications" type="checkbox"/><span><strong>Include Communications — KSh 10,000 per term</strong><small>Includes sender ID and 1,000 SMS for the term.</small></span></label>
+      <label class="billing-option"><input id="bq-own-sms" type="checkbox"/><span><strong>School uses its own SMS provider</strong><small>Communication is then quoted at no charge.</small></span></label>
       <div class="billing-quote-grid billing-extra-row">
         <div class="form-row"><label class="form-label" for="bq-extras">Extra modules</label><textarea class="form-input" id="bq-extras" rows="2" placeholder="One module name per line; KSh 5,000 each"></textarea><small class="form-help">Each entered module is quoted at KSh 5,000.</small></div>
-        <div class="form-row"><label class="form-label" for="bq-extra-cadence">Extra module charge</label><select class="form-select" id="bq-extra-cadence"><option value="termly">Per term</option><option value="one_off">One-off</option></select></div>
+        <div class="form-row"><label class="billing-option"><input id="bq-discount-approval" type="checkbox"/><span><strong>Flag discount for approval</strong><small>Marks the quote as needing sign-off</small></span></label></div>
       </div>
       <div class="form-row"><label class="form-label" for="bq-notes">Quote notes / commercial terms</label><textarea class="form-input" id="bq-notes" rows="3" maxlength="3000" placeholder="Optional customer-specific terms"></textarea></div>
-      <div class="billing-quote-preview" id="billing-quote-preview" aria-live="polite">Enter the student count and setup fee to calculate a quote preview.</div>
+      <div class="billing-quote-preview" id="billing-quote-preview" aria-live="polite">Choose the school type to calculate a quote preview.</div>
       <div class="form-help">The total adds all listed lines; recurring periods are shown per line. Each quote stores the selected pricing rule and enrollment snapshot. Tax is not added to this quote.</div>
     </div>
     <div class="modal-footer"><button class="btn" id="billing-quote-cancel" type="button">Cancel</button><button class="btn primary" id="billing-quote-save" data-super-admin-only type="button">Save draft quote</button></div>
@@ -1113,6 +1212,299 @@
       <div class="form-row" style="margin-bottom:0"><label class="form-label" for="bct-terms">Approved terms / notes</label><textarea class="form-input" id="bct-terms" rows="3" maxlength="3000" placeholder="Record a short reference to the signed agreement. Do not enter unapproved prices."></textarea></div>
     </div>
     <div class="modal-footer"><button class="btn" id="billing-contract-cancel" type="button">Cancel</button><button class="btn primary" id="billing-contract-save" type="button">Save contract</button></div>
+  </div>
+</div>
+
+<!-- AGENT REGISTRATION / EDIT MODAL -->
+<div class="overlay" id="agent-modal-overlay" aria-modal="true" role="dialog" style="display:none">
+  <div class="modal" style="max-width:680px">
+    <div class="modal-header">
+      <div class="modal-title" id="agent-modal-title">Register Field Agent</div>
+      <button class="modal-close" id="agent-modal-close" type="button" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body">
+      <input id="agent-form-id" type="hidden"/>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div class="form-row">
+          <label class="form-label" for="agent-form-name">Full Name *</label>
+          <input class="form-input" id="agent-form-name" placeholder="e.g. John Kamau" required maxlength="120"/>
+        </div>
+        <div class="form-row">
+          <label class="form-label" for="agent-form-phone">Primary Phone (M-Pesa) *</label>
+          <input class="form-input" id="agent-form-phone" placeholder="e.g. 0712345678" required maxlength="30"/>
+        </div>
+        <div class="form-row">
+          <label class="form-label" for="agent-form-email">Email Address</label>
+          <input class="form-input" id="agent-form-email" type="email" placeholder="john@example.com" maxlength="120"/>
+        </div>
+        <div class="form-row">
+          <label class="form-label" for="agent-form-national-id">National ID / Passport</label>
+          <input class="form-input" id="agent-form-national-id" placeholder="e.g. 12345678" maxlength="50"/>
+        </div>
+        <div class="form-row">
+          <label class="form-label" for="agent-form-county">County / Region</label>
+          <input class="form-input" id="agent-form-county" placeholder="e.g. Nairobi / Kiambu" maxlength="80"/>
+        </div>
+        <div class="form-row">
+          <label class="form-label" for="agent-form-base">Base Town / Territory</label>
+          <input class="form-input" id="agent-form-base" placeholder="e.g. Thika Town" maxlength="80"/>
+        </div>
+        <div class="form-row">
+          <label class="form-label" for="agent-form-commission-type">Commission Model</label>
+          <select class="form-select" id="agent-form-commission-type">
+            <option value="percentage">Percentage of Subscription (%)</option>
+            <option value="fixed_per_school">Fixed KES per School Onboarded</option>
+            <option value="fixed_per_student">Fixed KES per Enrolled Student</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label class="form-label" for="agent-form-commission-rate">Commission Rate / Amount *</label>
+          <input class="form-input" id="agent-form-commission-rate" type="number" step="0.1" value="10.0" placeholder="10.0" required/>
+        </div>
+        <div class="form-row">
+          <label class="form-label" for="agent-form-mpesa">M-Pesa Payout Number</label>
+          <input class="form-input" id="agent-form-mpesa" placeholder="Leave blank to use primary phone" maxlength="30"/>
+        </div>
+        <div class="form-row">
+          <label class="form-label" for="agent-form-status">Status</label>
+          <select class="form-select" id="agent-form-status">
+            <option value="active">Active (Field Enabled)</option>
+            <option value="pending">Pending Approval</option>
+            <option value="inactive">Inactive / Suspended</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label class="form-label" for="agent-form-bank-name">Bank Name (Optional)</label>
+          <input class="form-input" id="agent-form-bank-name" placeholder="e.g. Equity Bank" maxlength="80"/>
+        </div>
+        <div class="form-row">
+          <label class="form-label" for="agent-form-bank-account">Bank Account / Paybill</label>
+          <input class="form-input" id="agent-form-bank-account" placeholder="e.g. 0123456789" maxlength="80"/>
+        </div>
+        <div class="form-row" style="grid-column:1/-1">
+          <label class="form-label" for="agent-form-pin">Agent App Access PIN (4-digit)</label>
+          <input class="form-input" id="agent-form-pin" type="password" maxlength="6" placeholder="Set a 4-6 digit numeric PIN for the agent mobile app"/>
+          <div class="form-hint" style="font-size:11px;color:var(--muted);margin-top:3px">The agent will use their phone number and this PIN to log in to their mobile earnings dashboard.</div>
+        </div>
+        <div class="form-row" style="grid-column:1/-1;margin-bottom:0">
+          <label class="form-label" for="agent-form-notes">Internal Notes &amp; Terms Reference</label>
+          <textarea class="form-input" id="agent-form-notes" rows="2" placeholder="Agreement date, manager notes, territory covenants..."></textarea>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" id="agent-form-cancel" type="button">Cancel</button>
+      <button class="btn primary" id="agent-form-save" type="button">Save Agent</button>
+    </div>
+  </div>
+</div>
+
+<!-- AGENT DETAILS / STATEMENT MODAL -->
+<div class="overlay" id="agent-detail-overlay" aria-modal="true" role="dialog" style="display:none">
+  <div class="modal" style="max-width:850px">
+    <div class="modal-header" style="align-items:center">
+      <div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="pill" id="agent-detail-code">AGT-1001</span>
+          <span class="modal-title" id="agent-detail-name">Agent Name</span>
+          <span id="agent-detail-status-badge"></span>
+        </div>
+        <div class="panel-sub" id="agent-detail-sub" style="margin-top:4px">Phone: - · County: - · Commission: -</div>
+      </div>
+      <button class="modal-close" id="agent-detail-close" type="button" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body" style="padding-top:12px">
+      <!-- Top Financial Stats -->
+      <div class="metric-row" style="margin-bottom:16px;grid-template-columns:repeat(3,1fr)">
+        <div class="metric-card" style="padding:10px 14px">
+          <div class="m-label">Total Commission Earned</div>
+          <div class="m-val" id="agent-stat-earned" style="font-size:18px">KES 0</div>
+        </div>
+        <div class="metric-card" style="padding:10px 14px">
+          <div class="m-label">Total Disbursed</div>
+          <div class="m-val" id="agent-stat-paid" style="font-size:18px;color:var(--green)">KES 0</div>
+        </div>
+        <div class="metric-card" style="padding:10px 14px">
+          <div class="m-label">Balance Pending Payout</div>
+          <div class="m-val" id="agent-stat-balance" style="font-size:18px;color:var(--brand)">KES 0</div>
+        </div>
+      </div>
+
+      <!-- Quick Action Buttons -->
+      <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+        <button class="btn primary" id="btn-agent-record-payout" type="button">💸 Record Payout</button>
+        <button class="btn" id="btn-agent-add-earning" type="button">+ Record Commission</button>
+        <button class="btn" id="btn-agent-add-school" type="button">+ Assign School</button>
+        <button class="btn" id="btn-agent-edit-profile" type="button">✏️ Edit Profile</button>
+      </div>
+
+      <!-- Tabbed Views -->
+      <div style="border-bottom:1px solid var(--border);display:flex;gap:16px;margin-bottom:14px">
+        <button class="billing-mail-preview-tab active" id="tab-btn-schools" type="button" style="padding:6px 2px;background:none;border:none;border-bottom:2px solid var(--brand);font-weight:600;cursor:pointer">Assigned Schools</button>
+        <button class="billing-mail-preview-tab" id="tab-btn-earnings" type="button" style="padding:6px 2px;background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);font-weight:600;cursor:pointer">Earnings Ledger</button>
+        <button class="billing-mail-preview-tab" id="tab-btn-payouts" type="button" style="padding:6px 2px;background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);font-weight:600;cursor:pointer">Payout History</button>
+      </div>
+
+      <!-- Schools Pane -->
+      <div id="pane-agent-schools">
+        <div style="overflow-x:auto;max-height:260px">
+          <table class="data-table" style="font-size:12px">
+            <thead><tr><th>School Name</th><th>Status</th><th>Contact Person</th><th>Phone</th><th>Date Assigned</th><th>Action</th></tr></thead>
+            <tbody id="agent-schools-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Earnings Pane -->
+      <div id="pane-agent-earnings" style="display:none">
+        <div style="overflow-x:auto;max-height:260px">
+          <table class="data-table" style="font-size:12px">
+            <thead><tr><th>Earned Date</th><th>School</th><th>Description</th><th>Gross (KES)</th><th>Commission (KES)</th><th>Status</th></tr></thead>
+            <tbody id="agent-earnings-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Payouts Pane -->
+      <div id="pane-agent-payouts" style="display:none">
+        <div style="overflow-x:auto;max-height:260px">
+          <table class="data-table" style="font-size:12px">
+            <thead><tr><th>Payout Date</th><th>Method</th><th>Reference</th><th>Amount (KES)</th><th>Status</th><th>Processed By</th></tr></thead>
+            <tbody id="agent-payouts-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" id="agent-detail-dismiss" type="button">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- RECORD PAYOUT MODAL -->
+<div class="overlay" id="agent-payout-overlay" aria-modal="true" role="dialog" style="display:none">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <div class="modal-title">Record Agent Payout</div>
+      <button class="modal-close" id="agent-payout-close" type="button" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="padding:10px 12px;background:rgba(3,11,130,.05);border-radius:6px;margin-bottom:14px">
+        <div style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase">Disbursing To</div>
+        <div id="payout-modal-agent-name" style="font-weight:700;font-size:14px;color:var(--ink)">-</div>
+        <div id="payout-modal-agent-mpesa" style="font-size:12px;color:var(--muted)">M-Pesa: -</div>
+        <div id="payout-modal-balance-hint" style="font-size:12px;font-weight:600;color:var(--brand);margin-top:4px">Current Outstanding Balance: KES 0</div>
+      </div>
+      <div class="form-row">
+        <label class="form-label" for="payout-form-amount">Payout Amount (KES) *</label>
+        <input class="form-input" id="payout-form-amount" type="number" step="1" required/>
+      </div>
+      <div class="form-row">
+        <label class="form-label" for="payout-form-method">Disbursement Method</label>
+        <select class="form-select" id="payout-form-method">
+          <option value="mpesa">M-Pesa B2C / Send Money</option>
+          <option value="bank_transfer">Bank Transfer (EFT / RTGS)</option>
+          <option value="cash">Cash Voucher</option>
+          <option value="other">Other / Cheque</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label class="form-label" for="payout-form-ref">Transaction Reference / Receipt *</label>
+        <input class="form-input" id="payout-form-ref" placeholder="e.g. SJK82910KL or Ref #" required maxlength="60"/>
+      </div>
+      <div class="form-row">
+        <label class="form-label" for="payout-form-date">Payment Date</label>
+        <input class="form-input" id="payout-form-date" type="date"/>
+      </div>
+      <div class="form-row" style="margin-bottom:0">
+        <label class="form-label" for="payout-form-notes">Notes / Reason</label>
+        <input class="form-input" id="payout-form-notes" placeholder="e.g. Term 1 settlement" maxlength="250"/>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" id="payout-form-cancel" type="button">Cancel</button>
+      <button class="btn primary" id="payout-form-submit" type="button">Confirm &amp; Record Payout</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD EARNING / COMMISSION MODAL -->
+<div class="overlay" id="agent-earning-overlay" aria-modal="true" role="dialog" style="display:none">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <div class="modal-title">Record Commission Earning</div>
+      <button class="modal-close" id="agent-earning-close" type="button" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <label class="form-label" for="earning-form-school">School Name *</label>
+        <input class="form-input" id="earning-form-school" placeholder="e.g. Hillcrest Preparatory" required maxlength="120"/>
+      </div>
+      <div class="form-row">
+        <label class="form-label" for="earning-form-gross">School Invoice / Gross Amount (KES)</label>
+        <input class="form-input" id="earning-form-gross" type="number" step="1" placeholder="e.g. 50000"/>
+      </div>
+      <div class="form-row">
+        <label class="form-label" for="earning-form-earned">Commission Amount (KES) *</label>
+        <input class="form-input" id="earning-form-earned" type="number" step="1" placeholder="e.g. 5000" required/>
+      </div>
+      <div class="form-row">
+        <label class="form-label" for="earning-form-invoice">Invoice / Payment Ref</label>
+        <input class="form-input" id="earning-form-invoice" placeholder="e.g. INV-2026-0042" maxlength="60"/>
+      </div>
+      <div class="form-row">
+        <label class="form-label" for="earning-form-desc">Description</label>
+        <input class="form-input" id="earning-form-desc" placeholder="e.g. 10% commission on CBC Module" maxlength="150"/>
+      </div>
+      <div class="form-row" style="margin-bottom:0">
+        <label class="form-label" for="earning-form-status">Earning Status</label>
+        <select class="form-select" id="earning-form-status">
+          <option value="approved">Approved (Payable)</option>
+          <option value="pending">Pending School Clearance</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" id="earning-form-cancel" type="button">Cancel</button>
+      <button class="btn primary" id="earning-form-submit" type="button">Record Commission</button>
+    </div>
+  </div>
+</div>
+
+<!-- ASSIGN SCHOOL MODAL -->
+<div class="overlay" id="agent-school-overlay" aria-modal="true" role="dialog" style="display:none">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <div class="modal-title">Assign School to Agent</div>
+      <button class="modal-close" id="agent-school-close" type="button" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <label class="form-label" for="school-form-name">School Name *</label>
+        <input class="form-input" id="school-form-name" placeholder="e.g. Zawadi Academy" required maxlength="120"/>
+      </div>
+      <div class="form-row">
+        <label class="form-label" for="school-form-contact">Contact Person (Headteacher / Bursar)</label>
+        <input class="form-input" id="school-form-contact" placeholder="e.g. Mrs. Mutua" maxlength="80"/>
+      </div>
+      <div class="form-row">
+        <label class="form-label" for="school-form-phone">Contact Phone</label>
+        <input class="form-input" id="school-form-phone" placeholder="e.g. 0722123456" maxlength="30"/>
+      </div>
+      <div class="form-row" style="margin-bottom:0">
+        <label class="form-label" for="school-form-status">Prospecting Status</label>
+        <select class="form-select" id="school-form-status">
+          <option value="pitching">Pitching / In Contact</option>
+          <option value="onboarded">Onboarded (Demo / Setup)</option>
+          <option value="active">Active Paying Customer</option>
+          <option value="churned">Lost / Churned</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" id="school-form-cancel" type="button">Cancel</button>
+      <button class="btn primary" id="school-form-submit" type="button">Assign School</button>
+    </div>
   </div>
 </div>
 

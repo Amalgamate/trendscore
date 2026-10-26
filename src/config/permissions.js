@@ -61,7 +61,7 @@ export const PERMISSIONS = {
   // ============================================
   MARK_ATTENDANCE: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'TEACHER'],
   EDIT_ATTENDANCE: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'TEACHER'],
-  VIEW_ALL_ATTENDANCE: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'],
+  VIEW_ALL_ATTENDANCE: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'],
   VIEW_OWN_ATTENDANCE: ['TEACHER'],
   VIEW_CHILDREN_ATTENDANCE: ['PARENT'],
   GENERATE_ATTENDANCE_REPORTS: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'TEACHER'],
@@ -70,8 +70,8 @@ export const PERMISSIONS = {
   // PRESENCE PLATFORM (Phase 2.0)
   // ============================================
   VIEW_PRESENCE_TIMELINE:   ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'TEACHER', 'PARENT'],
-  VIEW_ALL_PRESENCE:        ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'],
-  VIEW_PRESENCE_ANALYTICS:  ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'],
+  VIEW_ALL_PRESENCE:        ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'],
+  VIEW_PRESENCE_ANALYTICS:  ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'],
 
   // ============================================
   // SETTINGS
@@ -130,12 +130,12 @@ export const PERMISSIONS = {
   // ============================================
   // LIBRARY MANAGEMENT
   // ============================================
-  LIBRARY_MANAGEMENT: ['SUPER_ADMIN', 'ADMIN'], // Access to library module
-  MANAGE_BOOK_CATALOG: ['SUPER_ADMIN', 'ADMIN'],
-  BORROW_RETURN_BOOKS: ['SUPER_ADMIN', 'ADMIN'],
+  LIBRARY_MANAGEMENT: ['SUPER_ADMIN', 'ADMIN', 'LIBRARIAN'], // Access to library module
+  MANAGE_BOOK_CATALOG: ['SUPER_ADMIN', 'ADMIN', 'LIBRARIAN'],
+  BORROW_RETURN_BOOKS: ['SUPER_ADMIN', 'ADMIN', 'LIBRARIAN'],
   MANAGE_LIBRARY_FEES: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'],
-  VIEW_LIBRARY_INVENTORY: ['SUPER_ADMIN', 'ADMIN'],
-  MANAGE_LIBRARY_MEMBERS: ['SUPER_ADMIN', 'ADMIN'],
+  VIEW_LIBRARY_INVENTORY: ['SUPER_ADMIN', 'ADMIN', 'LIBRARIAN'],
+  MANAGE_LIBRARY_MEMBERS: ['SUPER_ADMIN', 'ADMIN', 'LIBRARIAN'],
 
   // ============================================
   // LEARNING MANAGEMENT SYSTEM (LMS)
@@ -215,6 +215,21 @@ export const PERMISSIONS = {
 export { ROLE_HIERARCHY, ROLE_NAMES, ROLES };
 
 const ROLE_ACCESS_STORAGE_KEY = 'trendscore.roleAccessOverrides.v1';
+const DEPUTY_RESTRICTED_PERMISSIONS = new Set([
+  'EDIT_USER',
+  'DELETE_USER',
+  'DELETE_LEARNER',
+  'LOCK_PATHWAY',
+  'MANAGE_DORMITORIES',
+  'ASSIGN_DORMITORY_BEDS',
+  'MANAGE_HOUSE_MASTERS',
+  'VIEW_BOARDING_REPORTS',
+  'MANAGE_ID_TEMPLATES',
+  'VIEW_AUDIT_LOGS',
+  'VIEW_SYSTEM_LOGS',
+  'DELETE_ANY_MESSAGE',
+  'MARKETPLACE_APPROVE',
+]);
 
 function getRoleAccessOverrides() {
   if (typeof window === 'undefined' || !window.localStorage) return {};
@@ -229,6 +244,11 @@ function getRoleAccessOverrides() {
 function getEffectiveRolePermissions(role) {
   const overrides = getRoleAccessOverrides();
   if (Array.isArray(overrides[role])) return overrides[role];
+  if (role === 'DEPUTY_HEAD_TEACHER') {
+    return Object.entries(PERMISSIONS)
+      .filter(([permission, roles]) => roles.includes('HEAD_TEACHER') && !DEPUTY_RESTRICTED_PERMISSIONS.has(permission))
+      .map(([permission]) => permission);
+  }
   return Object.entries(PERMISSIONS)
     .filter(([_, roles]) => roles.includes(role))
     .map(([permission]) => permission);

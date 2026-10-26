@@ -98,6 +98,12 @@ const REQUIREMENTS: EnvRequirement[] = [
         validation: (val) => ['true', 'false'].includes(val.toLowerCase()) || 'SECURE_COOKIES must be true or false'
     },
     {
+        key: 'TRUST_PROXY_HOPS',
+        required: false,
+        description: 'Exact number of trusted reverse-proxy hops (0 when directly exposed)',
+        validation: (val) => /^\d+$/.test(val) || 'TRUST_PROXY_HOPS must be a non-negative integer'
+    },
+    {
         key: 'SKIP_OTP',
         required: false,
         description: 'Skip OTP verification in development (true/false)',
@@ -155,6 +161,9 @@ export function validateEnvironment(): void {
 
     // Security checks for production
     if (process.env.NODE_ENV === 'production') {
+        if (!process.env.REDIS_URL && !process.env.REDIS_HOST) {
+            missing.push('   ❌ REDIS_URL or REDIS_HOST | Shared Redis is required for production authentication and rate limiting');
+        }
         if (httpsOnly && process.env.FRONTEND_URL && !process.env.FRONTEND_URL.startsWith('https://')) {
             invalid.push('   ❌ FRONTEND_URL must use HTTPS when HTTPS_ONLY=true in production');
         }
@@ -162,7 +171,7 @@ export function validateEnvironment(): void {
             invalid.push('   ❌ API_URL must use HTTPS when HTTPS_ONLY=true in production');
         }
         if (!process.env.SECURE_COOKIES || process.env.SECURE_COOKIES !== 'true') {
-            warnings.push('   ⚠️ SECURE_COOKIES should be true in production');
+            invalid.push('   ❌ SECURE_COOKIES must be true in production');
         }
         if (!process.env.RATE_LIMIT_ENABLED || process.env.RATE_LIMIT_ENABLED !== 'true') {
             warnings.push('   ⚠️ RATE_LIMIT_ENABLED should be true in production');

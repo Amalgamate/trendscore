@@ -756,7 +756,7 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
 
     let grades = !teacherWorkload.isTeacher
       ? mergedGrades
-      : mergedGrades.filter(g => teacherWorkload.assignedGrades.map(toCanonicalGrade).includes(g));
+      : mergedGrades.filter(g => teacherWorkload.assignedGrades.some(assignedGrade => toCanonicalGrade(assignedGrade) === g));
 
     // Sort by portal-specific grade order
     return grades.sort((a, b) => {

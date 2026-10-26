@@ -30,6 +30,7 @@ export interface ImpersonationJWTPayload {
   roles: Role[];
   /** Target user's institution type — copied from DB record */
   institutionType: InstitutionType;
+  authVersion?: number;
   /** Discriminator flag — always `true` for impersonation tokens (Req 8.3) */
   isImpersonation: true;
   /** The real admin's user ID — used for audit trail and stop flow (Req 8.4) */

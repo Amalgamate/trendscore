@@ -10,7 +10,9 @@ const { execFile } = require('child_process');
 const Docker = require('dockerode');
 const si = require('systeminformation');
 const { createBillingStore } = require('./billing-store');
+const { createAgentsStore } = require('./agents-store');
 const { quotePdfBuffer, invoicePdfBuffer, paymentReceiptPdfBuffer } = require('./billing-documents');
+const { SCHOOL_TYPES, calculateCatalogueQuote, normalizeProductInput } = require('./billing-pricing');
 
 const execFileAsync = promisify(execFile);
 
@@ -53,6 +55,7 @@ fs.mkdirSync(CONSOLE_DATA_DIR, { recursive: true });
 const LEADS_STORE_FILE = path.join(CONSOLE_DATA_DIR, 'leads.store.json');
 const AUDIT_STORE_FILE = path.join(CONSOLE_DATA_DIR, 'audit.store.json');
 const billingStore = createBillingStore(CONSOLE_DATA_DIR);
+const agentsStore = createAgentsStore(CONSOLE_DATA_DIR);
 const MAX_AUDIT_ENTRIES = 2000;
 
 // In-memory deployment log (ephemeral — only tracks this process session)
@@ -1370,7 +1373,17 @@ app.post('/api/instances/create', requireAuth, requireRole('super_admin'), async
     notes = '',
     domain = '',
     db,
+    billing = {},
   } = req.body || {};
+
+  // Every new instance is billed on creation: validate the quote inputs BEFORE provisioning anything.
+  const billNow = String(billing?.mode || 'now').toLowerCase() !== 'later';
+  let billingQuote = null;
+  try {
+    if (billNow) billingQuote = buildQuote(billing || {});
+  } catch (error) {
+    return res.status(400).json({ error: `Billing details: ${error.message}` });
+  }
 
   const normalizedAppType = String(appType || 'school').toLowerCase();
   const appRange = APP_PORT_RANGES[normalizedAppType] || APP_PORT_RANGES.school;
@@ -1431,7 +1444,16 @@ app.post('/api/instances/create', requireAuth, requireRole('super_admin'), async
   try {
     const { stdout, stderr } = await execFileAsync(INSTANCE_PROVISION_SCRIPT, [payload], { timeout: 8 * 60 * 1000 });
     pushAudit('PROVISION', name, req.user.email, `Provision script executed for ${name} (${normalizedAppType})`, 'Warning');
-    res.json({ ok: true, output: stdout?.trim(), warning: stderr?.trim() || null });
+    let billingResult;
+    if (billNow) {
+      billingResult = ensureInstanceBilling({
+        name, tenantKeyHint: stdout, domain: autoAssigned.domain, adminEmail, quoteSnapshot: billingQuote, actor: req.user.email,
+      });
+    } else {
+      pushAudit('BILLING_DEFERRED', name, req.user.email, `Billing deferred for ${name}; create the customer and quote later from Billing.`);
+      billingResult = { ok: true, deferred: true };
+    }
+    res.json({ ok: true, output: stdout?.trim(), warning: stderr?.trim() || null, billing: billingResult });
   } catch (error) {
     res.status(500).json({ error: `Provision failed: ${error.message}` });
   }
@@ -1701,6 +1723,412 @@ app.delete('/api/leads/:id', requireAuth, requireRole('super_admin', 'platform_o
   return res.json({ ok: true });
 });
 
+// ── Field Agents & Commission API ──────────────────────────────────────────
+app.get('/api/agents/overview', requireAuth, requireRole('super_admin', 'platform_owner'), (_req, res) => {
+  try {
+    const overview = agentsStore.getOverview();
+    return res.json({ ok: true, overview });
+  } catch (err) {
+    return res.status(500).json({ error: err.message || 'Failed to fetch agents overview' });
+  }
+});
+
+app.get('/api/agents', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  try {
+    const agents = agentsStore.listAgents({
+      search: req.query.search,
+      status: req.query.status,
+    });
+    return res.json({ ok: true, agents });
+  } catch (err) {
+    return res.status(500).json({ error: err.message || 'Failed to list agents' });
+  }
+});
+
+app.post('/api/agents', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  try {
+    const body = req.body || {};
+    const agent = agentsStore.createAgent(body);
+    pushAudit('AGENT_CREATE', agent.agent_code, req.user.email, `Registered field agent ${agent.full_name} (${agent.agent_code})`, 'Success');
+    return res.status(201).json({ ok: true, agent });
+  } catch (err) {
+    return res.status(400).json({ error: err.message || 'Failed to register agent' });
+  }
+});
+
+app.get('/api/agents/:id', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  try {
+    const agent = agentsStore.getAgent(req.params.id);
+    if (!agent) return res.status(404).json({ error: 'Agent not found' });
+    return res.json({ ok: true, agent });
+  } catch (err) {
+    return res.status(500).json({ error: err.message || 'Failed to get agent' });
+  }
+});
+
+app.put('/api/agents/:id', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  try {
+    const agent = agentsStore.updateAgent(req.params.id, req.body || {});
+    if (!agent) return res.status(404).json({ error: 'Agent not found' });
+    pushAudit('AGENT_UPDATE', agent.agent_code, req.user.email, `Updated agent details for ${agent.full_name}`, 'Success');
+    return res.json({ ok: true, agent });
+  } catch (err) {
+    return res.status(400).json({ error: err.message || 'Failed to update agent' });
+  }
+});
+
+app.delete('/api/agents/:id', requireAuth, requireRole('super_admin'), (req, res) => {
+  try {
+    const existing = agentsStore.getAgent(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Agent not found' });
+    const success = agentsStore.deleteAgent(req.params.id);
+    if (!success) return res.status(404).json({ error: 'Agent not found' });
+    pushAudit('AGENT_DELETE', existing.agent_code, req.user.email, `Deleted agent ${existing.full_name} (${existing.agent_code})`, 'Warning');
+    return res.json({ ok: true });
+  } catch (err) {
+    return res.status(500).json({ error: err.message || 'Failed to delete agent' });
+  }
+});
+
+app.post('/api/agents/:id/schools', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  try {
+    const school = agentsStore.addSchool(req.params.id, req.body || {});
+    pushAudit('AGENT_ASSIGN_SCHOOL', req.params.id, req.user.email, `Assigned school ${school.school_name} to agent`, 'Success');
+    return res.status(201).json({ ok: true, school });
+  } catch (err) {
+    return res.status(400).json({ error: err.message || 'Failed to assign school' });
+  }
+});
+
+app.put('/api/agents/schools/:schoolId', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  try {
+    const school = agentsStore.updateSchool(req.params.schoolId, req.body || {});
+    if (!school) return res.status(404).json({ error: 'School assignment not found' });
+    return res.json({ ok: true, school });
+  } catch (err) {
+    return res.status(400).json({ error: err.message || 'Failed to update school assignment' });
+  }
+});
+
+app.delete('/api/agents/schools/:schoolId', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  try {
+    const success = agentsStore.deleteSchool(req.params.schoolId);
+    if (!success) return res.status(404).json({ error: 'School assignment not found' });
+    return res.json({ ok: true });
+  } catch (err) {
+    return res.status(500).json({ error: err.message || 'Failed to remove school assignment' });
+  }
+});
+
+app.post('/api/agents/:id/earnings', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  try {
+    const earning = agentsStore.recordEarning(req.params.id, req.body || {});
+    pushAudit('AGENT_EARNING_RECORD', req.params.id, req.user.email, `Recorded commission of KES ${earning.earned_amount_ksh} for ${earning.school_name}`, 'Success');
+    return res.status(201).json({ ok: true, earning });
+  } catch (err) {
+    return res.status(400).json({ error: err.message || 'Failed to record earning' });
+  }
+});
+
+app.put('/api/agents/earnings/:earningId', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  try {
+    const { status } = req.body || {};
+    const earning = agentsStore.updateEarningStatus(req.params.earningId, status);
+    if (!earning) return res.status(404).json({ error: 'Earning entry not found' });
+    pushAudit('AGENT_EARNING_STATUS', earning.agent_id, req.user.email, `Updated earning status to ${status}`, 'Success');
+    return res.json({ ok: true, earning });
+  } catch (err) {
+    return res.status(400).json({ error: err.message || 'Failed to update earning status' });
+  }
+});
+
+app.post('/api/agents/:id/payouts', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  try {
+    const payout = agentsStore.recordPayout(req.params.id, req.body || {}, req.user.email);
+    pushAudit('AGENT_PAYOUT_RECORD', req.params.id, req.user.email, `Recorded payout of KES ${payout.amount_ksh} via ${payout.payout_method} (${payout.reference})`, 'Success');
+    return res.status(201).json({ ok: true, payout });
+  } catch (err) {
+    return res.status(400).json({ error: err.message || 'Failed to record payout' });
+  }
+});
+
+// ── Mobile Field Agent App Auth & Endpoints ──────────────────────────────
+const AGENT_COOKIE_NAME = 'trends_agent_token';
+
+function requireAgentAuth(req, res, next) {
+  let token = null;
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.slice(7).trim();
+  } else if (req.cookies && req.cookies[AGENT_COOKIE_NAME]) {
+    token = req.cookies[AGENT_COOKIE_NAME];
+  }
+
+  if (!token) {
+    return res.status(401).json({ ok: false, error: 'Agent authentication required' });
+  }
+
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    if (!payload || !payload.agentId) {
+      return res.status(401).json({ ok: false, error: 'Invalid agent credentials' });
+    }
+    const agent = agentsStore.getAgent(payload.agentId);
+    if (!agent || agent.status !== 'active') {
+      return res.status(401).json({ ok: false, error: 'Agent profile inactive or not found' });
+    }
+    req.agent = agent;
+    next();
+  } catch {
+    return res.status(401).json({ ok: false, error: 'Session expired, please sign in again' });
+  }
+}
+
+app.post('/api/agent/login', (req, res) => {
+  const { phone, pin } = req.body || {};
+  if (!phone || !pin) {
+    return res.status(400).json({ ok: false, error: 'Phone number and 4-digit PIN are required' });
+  }
+  try {
+    const agent = agentsStore.authenticateAgent(phone, pin);
+    if (!agent) {
+      return res.status(401).json({ ok: false, error: 'Incorrect phone number or PIN' });
+    }
+    const token = jwt.sign(
+      { agentId: agent.id, agentCode: agent.agent_code, phone: agent.phone, role: 'field_agent' },
+      JWT_SECRET,
+      { expiresIn: '30d' }
+    );
+    res.cookie(AGENT_COOKIE_NAME, token, {
+      httpOnly: true,
+      secure: COOKIE_SECURE,
+      sameSite: 'lax',
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+    });
+    pushAudit('AGENT_APP_LOGIN', agent.id, agent.phone, `Agent ${agent.full_name} (${agent.agent_code}) logged in via Mobile App`, 'Success');
+    return res.json({ ok: true, token, agent });
+  } catch (err) {
+    return res.status(400).json({ ok: false, error: err.message || 'Authentication failed' });
+  }
+});
+
+app.get('/api/agent/me', requireAgentAuth, (req, res) => {
+  const fresh = agentsStore.getAgent(req.agent.id);
+  return res.json({ ok: true, agent: fresh || req.agent });
+});
+
+app.post('/api/agent/schools', requireAgentAuth, (req, res) => {
+  const body = req.body || {};
+  const schoolName = String(body.school_name || '').trim();
+  const contactPerson = String(body.contact_person || '').trim();
+  const contactPhone = String(body.contact_phone || '').trim();
+  const county = String(body.county || req.agent.county || '').trim();
+  const notes = String(body.notes || '').trim();
+  const estimatedStudents = Number(body.estimated_students || 0) || 0;
+
+  if (!schoolName) {
+    return res.status(400).json({ ok: false, error: 'School name is required' });
+  }
+
+  try {
+    const school = agentsStore.addSchool(req.agent.id, {
+      school_name: schoolName,
+      contact_person: contactPerson,
+      contact_phone: contactPhone,
+      status: 'pitching',
+      notes: notes ? `${notes} · County: ${county}` : (county ? `County: ${county}` : ''),
+    });
+
+    let leadId = '';
+    try {
+      const leads = readLeadsStore();
+      const newLead = {
+        id: `L${Date.now()}`,
+        name: contactPerson || 'Principal / Administrator',
+        school: schoolName,
+        phone: contactPhone || req.agent.phone,
+        stage: 'new',
+        priority: '1',
+        students: estimatedStudents,
+        tags: ['field_agent', req.agent.agent_code, county].filter(Boolean),
+        systems: {
+          assessment: 'None',
+          fees: 'None',
+          lms: 'None',
+        },
+        notes: `Registered via Field Agent Mobile App by ${req.agent.full_name} (${req.agent.agent_code}). ${notes}`.trim(),
+        nextActivity: 'Introductory demo / pitch presentation',
+        created: new Date().toISOString().slice(0, 10),
+      };
+      leads.push(newLead);
+      writeLeadsStore(leads);
+      leadId = newLead.id;
+      agentsStore.updateSchool(school.id, { lead_id: leadId });
+    } catch (leadErr) {
+      console.warn('[Agents] Lead sync notice:', leadErr?.message || leadErr);
+    }
+
+    pushAudit('AGENT_APP_SCHOOL_ADD', req.agent.id, req.agent.phone, `Agent registered prospective school: ${schoolName}`, 'Success');
+    return res.status(201).json({ ok: true, school: { ...school, lead_id: leadId } });
+  } catch (err) {
+    return res.status(400).json({ ok: false, error: err.message || 'Failed to register school' });
+  }
+});
+
+app.put('/api/agent/profile', requireAgentAuth, (req, res) => {
+  const { mpesa_number, bank_name, bank_account, old_pin, new_pin } = req.body || {};
+  const updates = {};
+  if (mpesa_number !== undefined) updates.mpesa_number = String(mpesa_number).trim();
+  if (bank_name !== undefined) updates.bank_name = String(bank_name).trim();
+  if (bank_account !== undefined) updates.bank_account = String(bank_account).trim();
+
+  if (new_pin) {
+    if (!old_pin) return res.status(400).json({ ok: false, error: 'Current PIN is required to set a new PIN' });
+    const verified = agentsStore.authenticateAgent(req.agent.phone, old_pin);
+    if (!verified) return res.status(403).json({ ok: false, error: 'Current PIN is incorrect' });
+    if (!/^\d{4}$/.test(String(new_pin).trim())) return res.status(400).json({ ok: false, error: 'PIN must be exactly 4 digits' });
+    updates.pin = String(new_pin).trim();
+  }
+
+  try {
+    agentsStore.updateAgent(req.agent.id, updates);
+    const updated = agentsStore.getAgent(req.agent.id);
+    return res.json({ ok: true, agent: updated });
+  } catch (err) {
+    return res.status(400).json({ ok: false, error: err.message || 'Failed to update profile' });
+  }
+});
+
+app.post('/api/agent/logout', (req, res) => {
+  res.clearCookie(AGENT_COOKIE_NAME);
+  return res.json({ ok: true });
+});
+
+app.post('/api/agent/withdraw', requireAgentAuth, (req, res) => {
+  const body = req.body || {};
+  const amount = Number(body.amount);
+  const pin = String(body.pin || '').trim();
+
+  if (isNaN(amount) || amount < 500) {
+    return res.status(400).json({ ok: false, error: 'Minimum transfer amount is KES 500' });
+  }
+
+  if (!pin) {
+    return res.status(400).json({ ok: false, error: 'Security PIN is required to authorize M-Pesa transfer' });
+  }
+
+  const freshAgent = agentsStore.getAgent(req.agent.id);
+  if (!freshAgent) {
+    return res.status(404).json({ ok: false, error: 'Agent account not found' });
+  }
+
+  // Verify PIN
+  const verified = agentsStore.authenticateAgent(freshAgent.phone, pin);
+  if (!verified) {
+    return res.status(401).json({ ok: false, error: 'Incorrect 4-digit security PIN' });
+  }
+
+  const availableBalance = Number(freshAgent.financials?.balanceDueKsh || 0);
+  if (amount > availableBalance) {
+    return res.status(400).json({
+      ok: false,
+      error: `Insufficient available balance. You have KES ${availableBalance.toLocaleString()} available.`,
+    });
+  }
+
+  const payoutPhone = freshAgent.mpesa_number || freshAgent.phone;
+  if (!payoutPhone) {
+    return res.status(400).json({ ok: false, error: 'No registered M-Pesa phone number found on profile' });
+  }
+
+  try {
+    const mpesaRef = 'MP' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 5).toUpperCase();
+    const payout = agentsStore.recordPayout(freshAgent.id, {
+      amount_ksh: amount,
+      payout_method: 'mpesa',
+      reference: mpesaRef,
+      status: 'completed',
+      notes: `Self-service M-Pesa transfer requested to ${payoutPhone}`,
+    }, 'agent_app_self_service');
+
+    pushAudit(
+      'AGENT_MPESA_WITHDRAWAL',
+      freshAgent.id,
+      freshAgent.phone,
+      `Agent ${freshAgent.full_name} initiated M-Pesa cash-out of KES ${amount} to ${payoutPhone} (Ref: ${mpesaRef})`,
+      'Success'
+    );
+
+    const updatedAgent = agentsStore.getAgent(freshAgent.id);
+    return res.status(200).json({
+      ok: true,
+      payout,
+      newBalance: updatedAgent.financials.balanceDueKsh,
+      message: `KES ${amount.toLocaleString()} transferred to M-Pesa (${payoutPhone}). Reference: ${mpesaRef}`,
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message || 'Transfer to M-Pesa failed' });
+  }
+});
+
+app.get('/api/agent/notifications', requireAgentAuth, (req, res) => {
+  const agent = agentsStore.getAgent(req.agent.id);
+  if (!agent) return res.status(404).json({ ok: false, error: 'Agent not found' });
+
+  const notifications = [];
+
+  // 1. Commission earnings notifications
+  (agent.earnings || []).slice(0, 5).forEach((e) => {
+    notifications.push({
+      id: `notif_earn_${e.id}`,
+      type: 'earning',
+      title: 'Commission Credited',
+      message: `+KES ${Number(e.earned_amount_ksh).toLocaleString()} earned for ${e.school_name || 'school subscription'}.`,
+      time: e.earned_date || e.created_at,
+      status: e.status,
+    });
+  });
+
+  // 2. Payouts notifications
+  (agent.payouts || []).slice(0, 5).forEach((p) => {
+    notifications.push({
+      id: `notif_pay_${p.id}`,
+      type: 'payout',
+      title: 'M-Pesa Transfer Disbursed',
+      message: `KES ${Number(p.amount_ksh).toLocaleString()} sent to M-Pesa (Ref: ${p.reference || '-'}).`,
+      time: p.payout_date || p.created_at,
+      status: p.status,
+    });
+  });
+
+  // 3. School status updates
+  (agent.schools || []).slice(0, 5).forEach((s) => {
+    notifications.push({
+      id: `notif_sch_${s.id}`,
+      type: 'school',
+      title: s.status === 'onboarded' ? 'School Subscribed!' : 'School Lead Active',
+      message: `${s.school_name} status: ${s.status?.toUpperCase() || 'PITCHING'}.`,
+      time: s.created_at,
+      status: s.status,
+    });
+  });
+
+  // 4. System announcement
+  notifications.unshift({
+    id: 'notif_welcome',
+    type: 'system',
+    title: 'Wallet & Payouts Active',
+    message: 'You can now transfer your available commission directly to your registered M-Pesa (Min KES 500).',
+    time: new Date().toISOString(),
+    status: 'active',
+  });
+
+  notifications.sort((a, b) => new Date(b.time || 0) - new Date(a.time || 0));
+
+  return res.json({ ok: true, notifications, unreadCount: Math.min(notifications.length, 3) });
+});
+
+
 // ── Platform customer and contract registry ────────────────────────────────
 const BILLING_CADENCES = new Set(['one_off', 'monthly', 'termly', 'annual', 'custom']);
 const CONTRACT_STATUSES = new Set(['draft', 'active', 'ended', 'cancelled']);
@@ -1837,6 +2265,13 @@ function calculateQuote(body = {}) {
   };
 }
 
+// Quotes with a schoolType are priced from the price list (flat per school). A request without one falls
+// back to the legacy per-student band calculation, which only exists so older draft quotes stay editable.
+function buildQuote(body = {}) {
+  if (body && body.schoolType) return calculateCatalogueQuote(body, billingStore.listProducts());
+  return calculateQuote(body);
+}
+
 const BILLING_EMAIL_LOGO_URL = process.env.BILLING_EMAIL_LOGO_URL || 'https://trendscore.co.ke/splash/new/TrendsCORE-Logo.png';
 
 function billingEmailEscape(value) {
@@ -1852,7 +2287,7 @@ function billingEmailDraft(kind, record) {
   const customerName = customer.name || 'Customer';
   const subject = quote ? `Your TrendSCORE quotation ${documentNumber}` : draftInvoice ? `Draft invoice for your review · ${documentNumber}` : `Invoice ${documentNumber} from TrendSCORE`;
   const message = quote
-    ? `Hello ${customerName},\n\nPlease find quotation ${documentNumber} attached for your review. It is based on an enrollment snapshot of ${Number(record.enrollmentCount || 0).toLocaleString('en-KE')} students${record.expiresOn ? ` and is valid until ${record.expiresOn}` : ''}.\n\n${record.quoteSnapshot?.taxNote || 'Tax treatment is not included in this quotation and should be reviewed before invoicing.'} This quotation is not a tax invoice.\n\nPlease reply to this email if you have any questions or would like to proceed.\n\nWarm regards,\nTrendSCORE Billing Team`
+    ? `Hello ${customerName},\n\nPlease find quotation ${documentNumber} attached for your review. ${Number(record.enrollmentCount || 0) > 0 ? `It is based on an enrollment snapshot of ${Number(record.enrollmentCount).toLocaleString('en-KE')} students` : 'It covers the school service package'}${record.expiresOn ? ` and is valid until ${record.expiresOn}` : ''}.\n\n${record.quoteSnapshot?.taxNote || 'Tax treatment is not included in this quotation and should be reviewed before invoicing.'} This quotation is not a tax invoice.\n\nPlease reply to this email if you have any questions or would like to proceed.\n\nWarm regards,\nTrendSCORE Billing Team`
     : draftInvoice
       ? `Hello ${customerName},\n\nPlease review the attached draft invoice ${documentNumber} for KSh ${Number(amountKsh || 0).toLocaleString('en-KE')}.\n\nThis is a review copy only. It is not an issued invoice, payment request, or tax invoice. Please reply with any corrections or approval.\n\nWarm regards,\nTrendSCORE Billing Team`
       : `Hello ${customerName},\n\nPlease find invoice ${documentNumber} attached for KSh ${Number(amountKsh || 0).toLocaleString('en-KE')}.${record.invoiceSnapshot?.dueDate ? ` Payment is due by ${record.invoiceSnapshot.dueDate}.` : ' Payment is due upon receipt.'}\n\nPlease include the invoice number as your payment reference. This commercial invoice is not an eTIMS tax invoice.\n\nWarm regards,\nTrendSCORE Billing Team`;
@@ -1969,6 +2404,83 @@ app.get('/api/billing/schools', requireAuth, requireRole('super_admin', 'platfor
     res.json({ ok: true, schools });
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message || 'Could not load provisioned schools' });
+  }
+});
+
+function instanceTenantKey(name, provisionOutput) {
+  try {
+    const parsed = JSON.parse(String(provisionOutput || '').trim().split('\n').filter(Boolean).pop() || '{}');
+    const found = parsed.id || parsed.instanceId || parsed.slug || parsed.tenantKey;
+    if (found) return String(found).toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^[^a-z0-9]+/, '').slice(0, 80);
+  } catch { /* script output is not JSON; fall back to the name */ }
+  return String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
+}
+
+// Idempotent: one billing customer per tenant key, and a draft quote only when the customer has none yet.
+function ensureInstanceBilling({ name, tenantKeyHint, domain, adminEmail, quoteSnapshot, actor }) {
+  try {
+    const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(adminEmail || '').trim());
+    const usableEmail = emailOk ? String(adminEmail).trim() : '';
+    const tenantKey = instanceTenantKey(name, tenantKeyHint);
+    let customer = tenantKey ? billingStore.getCustomerByTenantKey(tenantKey) : null;
+    let customerCreated = false;
+    if (!customer) {
+      customer = billingStore.createCustomer({
+        ...normalizeBillingCustomer({ name, tenantKey, billingEmail: usableEmail, currency: 'KES' }),
+        id: crypto.randomUUID(),
+      });
+      customerCreated = true;
+      pushAudit('BILLING_CUSTOMER_CREATE', customer.name, actor, `Auto-created billing customer on instance creation (${tenantKey})`);
+      if (String(adminEmail || '').trim() && !emailOk) {
+        pushAudit('BILLING_CUSTOMER_EMAIL_DROPPED', customer.name, actor, `Admin email "${billingText(adminEmail, 120)}" is not a valid address, so the billing customer was created without a billing email. Add one before sending the quote.`, 'Warning');
+      }
+    }
+    const existingQuote = billingStore.listQuotes().find(q => q.customerId === customer.id && q.status !== 'cancelled');
+    if (existingQuote) return { ok: true, customerId: customer.id, customerCreated, quoteId: existingQuote.id, quoteNumber: existingQuote.quoteNumber, quoteCreated: false };
+    const quote = billingStore.createQuote({
+      id: crypto.randomUUID(),
+      quoteNumber: `Q-${new Date().getUTCFullYear()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`,
+      customerId: customer.id,
+      customerSnapshot: {
+        name: customer.name, legalName: customer.legalName, tenantKey: customer.tenantKey,
+        billingEmail: customer.billingEmail, billingPhone: customer.billingPhone,
+        billingAddress: customer.billingAddress, taxIdentifier: customer.taxIdentifier, currency: customer.currency,
+      },
+      quoteSnapshot,
+      enrollmentCount: quoteSnapshot.enrollmentCount,
+      pricingModel: quoteSnapshot.pricingModel,
+      billingCadence: quoteSnapshot.billingCadence,
+      subtotalKsh: quoteSnapshot.subtotalKsh,
+      expiresOn: quoteSnapshot.expiresOn,
+      notes: quoteSnapshot.notes,
+      createdBy: actor,
+    });
+    pushAudit('BILLING_QUOTE_CREATE', customer.name, actor, `Auto-created draft ${quote.quoteNumber} on instance creation for KSh ${quote.subtotalKsh}`);
+    return { ok: true, customerId: customer.id, customerCreated, quoteId: quote.id, quoteNumber: quote.quoteNumber, quoteCreated: true };
+  } catch (error) {
+    pushAudit('BILLING_AUTO_CREATE', name, actor, `Billing was NOT created for ${name}: ${error.message}`, 'Warning');
+    return { ok: false, error: `Instance created but billing setup failed: ${error.message}. Create the customer and quote manually.` };
+  }
+}
+
+app.post('/api/billing/reset', requireAuth, requireRole('super_admin'), (req, res) => {
+  const PHRASE = 'RESET BILLING';
+  if (String(req.body?.confirm || '').trim() !== PHRASE) {
+    return res.status(400).json({ ok: false, error: `Type ${PHRASE} exactly to confirm.` });
+  }
+  const issuedInvoices = billingStore.listInvoices().filter(invoice => !['draft', 'void'].includes(invoice.status)).length;
+  const recordedPayments = billingStore.listPayments().length;
+  if ((issuedInvoices > 0 || recordedPayments > 0) && process.env.BILLING_ALLOW_RESET !== 'true') {
+    pushAudit('BILLING_RESET_BLOCKED', 'Platform billing', req.user.email, `Reset refused: ${issuedInvoices} issued invoice(s) and ${recordedPayments} payment(s) exist.`, 'Warning');
+    return res.status(409).json({ ok: false, error: `Billing cannot be reset: ${issuedInvoices} invoice(s) have been issued and ${recordedPayments} payment(s) recorded. Use credit notes or cancellations instead. An operator can set BILLING_ALLOW_RESET=true on the server to override this.` });
+  }
+  try {
+    const { backupPath, before } = billingStore.resetAll();
+    pushAudit('BILLING_RESET', 'Platform billing', req.user.email,
+      `Billing reset to zero (had ${before.customers} customers, ${before.quotes} quotes, ${before.invoices} invoices, ${before.payments} payments). Backup: ${backupPath}`, 'Warning');
+    return res.json({ ok: true, cleared: before, backupFile: path.basename(backupPath) });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: `Reset failed: ${error.message}` });
   }
 });
 
@@ -2114,14 +2626,32 @@ app.get('/api/billing/email-status', requireAuth, requireRole('super_admin', 'pl
   res.json({ ok: true, configured: Boolean(config.keyConfigured && config.fromEmail) });
 });
 
+app.get('/api/billing/products', requireAuth, requireRole('super_admin', 'platform_owner'), (_req, res) => {
+  res.json({ ok: true, products: billingStore.listProducts(), schoolTypes: SCHOOL_TYPES });
+});
+
+app.put('/api/billing/products/:code', requireAuth, requireRole('super_admin'), (req, res) => {
+  try {
+    const existing = billingStore.getProduct(billingText(req.params.code, 80));
+    if (!existing) return res.status(404).json({ ok: false, error: 'Price list item not found' });
+    const input = normalizeProductInput(req.body);
+    const updated = billingStore.updateProduct(existing.code, input, req.user.email);
+    pushAudit('BILLING_PRODUCT_UPDATE', existing.code, req.user.email,
+      `Price list ${existing.code}: KSh ${existing.priceKsh} -> KSh ${updated.priceKsh}, ${existing.active ? 'active' : 'inactive'} -> ${updated.active ? 'active' : 'inactive'}. Existing quotes keep their price snapshot.`);
+    return res.json({ ok: true, product: updated });
+  } catch (error) {
+    return res.status(400).json({ ok: false, error: error.message });
+  }
+});
+
 app.get('/api/billing/quotes', requireAuth, requireRole('super_admin', 'platform_owner'), (_req, res) => {
   res.json({ ok: true, quotes: billingStore.listQuotes(), deliveries: billingStore.listQuotes().map(quote => ({ quoteId: quote.id, attempts: billingStore.listQuoteDeliveries(quote.id) })) });
 });
 
 app.post('/api/billing/quotes/preview', requireAuth, requireRole('super_admin'), (req, res) => {
   try {
-    const quote = calculateQuote(req.body);
-    return res.json({ ok: true, subtotalKsh: quote.subtotalKsh, lines: quote.lines, pricingDescription: quote.pricingDescription, taxNote: quote.taxNote });
+    const quote = buildQuote(req.body);
+    return res.json({ ok: true, subtotalKsh: quote.subtotalKsh, grossKsh: quote.grossKsh, discount: quote.discount || null, lines: quote.lines, pricingDescription: quote.pricingDescription, taxNote: quote.taxNote });
   } catch (error) {
     return res.status(400).json({ ok: false, error: error.message });
   }
@@ -2133,7 +2663,7 @@ app.post('/api/billing/quotes', requireAuth, requireRole('super_admin'), (req, r
     const customer = billingStore.getCustomer(customerId);
     if (!customer) return res.status(404).json({ ok: false, error: 'Select a saved billing customer first' });
     if (customer.currency !== 'KES') return res.status(400).json({ ok: false, error: 'The approved school rate card is in KSh. Set this customer currency to KES before quoting.' });
-    const quoteSnapshot = calculateQuote(req.body);
+    const quoteSnapshot = buildQuote(req.body);
     const quote = billingStore.createQuote({
       id: crypto.randomUUID(),
       quoteNumber: `Q-${new Date().getUTCFullYear()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`,
@@ -2168,7 +2698,7 @@ app.put('/api/billing/quotes/:id', requireAuth, requireRole('super_admin'), (req
     const customer = billingStore.getCustomer(customerId);
     if (!customer) return res.status(404).json({ ok: false, error: 'Select a saved billing customer first' });
     if (customer.currency !== 'KES') return res.status(400).json({ ok: false, error: 'The approved school rate card is in KSh. Set this customer currency to KES before quoting.' });
-    const quoteSnapshot = calculateQuote(req.body);
+    const quoteSnapshot = buildQuote(req.body);
     const updated = billingStore.updateQuote(existing.id, {
       customerId,
       customerSnapshot: { name: customer.name, legalName: customer.legalName, tenantKey: customer.tenantKey,
@@ -2315,7 +2845,20 @@ app.post('/api/billing/payments', requireAuth, requireRole('super_admin'), (req,
     const payment = billingStore.recordPayment({ id: crypto.randomUUID(), invoiceId, amountKsh, paymentDate, method, reference, notes, recordedBy: req.user.email });
     const invoice = billingStore.getInvoice(invoiceId);
     pushAudit('BILLING_PAYMENT_RECORD', invoice?.customerId || invoiceId, req.user.email, `Recorded KSh ${amountKsh.toLocaleString('en-KE')} payment against ${invoice?.invoiceNumber || invoiceId}${reference ? ` · reference ${reference}` : ''}`);
-    return res.status(201).json({ ok: true, payment, invoice });
+
+    // Auto-attribute commission to assigned field agent
+    let autoEarning = null;
+    try {
+      const customer = invoice?.customerId ? billingStore.getCustomer(invoice.customerId) : null;
+      autoEarning = agentsStore.attributePaymentCommission({ payment, invoice, customer });
+      if (autoEarning) {
+        pushAudit('AGENT_COMMISSION_AUTO', autoEarning.agent_id, req.user.email, `Auto-credited KSh ${autoEarning.earned_amount_ksh.toLocaleString('en-KE')} commission for invoice ${invoice?.invoiceNumber || invoiceId} to ${autoEarning.agent_name} (${autoEarning.agent_code})`, 'Success');
+      }
+    } catch (attrErr) {
+      console.warn('[Agents] Auto-attribution notice:', attrErr?.message || attrErr);
+    }
+
+    return res.status(201).json({ ok: true, payment, invoice, autoEarning });
   } catch (error) {
     return res.status(409).json({ ok: false, error: error.message || 'Could not record payment' });
   }

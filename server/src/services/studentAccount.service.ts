@@ -3,6 +3,7 @@ import { randomBytes } from 'crypto';
 import prisma from '../config/database';
 import { PRODUCT_EMAIL_DOMAIN, PRODUCT_TEMP_PASSWORD_PREFIX } from '../config/productIdentity';
 import { studentPasswordIssuanceService } from './studentPasswordIssuance.service';
+import { invalidateAuthLookupCache } from './auth-cache.service';
 
 type EnsureStudentAccountInput = {
   learnerId?: string;
@@ -46,6 +47,7 @@ const findExistingStudentByIdentity = async (username: string, email: string) =>
     select: {
       id: true,
       role: true,
+      status: true,
       username: true,
       email: true
     }
@@ -90,7 +92,7 @@ export const ensureStudentAccountForLearner = async (input: EnsureStudentAccount
     if (linkedLearner?.studentUserId) {
       const linkedUser = await prisma.user.findUnique({
         where: { id: linkedLearner.studentUserId },
-        select: { id: true, role: true },
+        select: { id: true, role: true, status: true },
       });
       if (linkedUser?.role === 'STUDENT') {
         await prisma.user.update({
@@ -101,8 +103,10 @@ export const ensureStudentAccountForLearner = async (input: EnsureStudentAccount
             middleName: input.middleName ?? null,
             phone: input.phone ?? null,
             status: 'ACTIVE',
+            ...(linkedUser.status !== 'ACTIVE' ? { authVersion: { increment: 1 } } : {}),
           },
         });
+        if (linkedUser.status !== 'ACTIVE') await invalidateAuthLookupCache();
         return { created: false, userId: linkedUser.id };
       }
     }
@@ -117,9 +121,11 @@ export const ensureStudentAccountForLearner = async (input: EnsureStudentAccount
         lastName: input.lastName,
         middleName: input.middleName ?? null,
         phone: input.phone ?? null,
-        status: 'ACTIVE'
+        status: 'ACTIVE',
+        ...(existing.status !== 'ACTIVE' ? { authVersion: { increment: 1 } } : {}),
       }
     });
+    if (existing.status !== 'ACTIVE') await invalidateAuthLookupCache();
     await linkAccount(existing.id);
     return { created: false, userId: existing.id };
   }

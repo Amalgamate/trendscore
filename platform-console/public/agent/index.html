@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>TrendSCORE Field Agent Portal</title>
+  <meta name="theme-color" content="#ffffff">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link rel="manifest" href="/agent/manifest.json">
+  <link rel="stylesheet" href="/agent/agent.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='10' fill='%230f766e'/><text x='50' y='67' font-size='48' font-weight='900' fill='%23f97316' text-anchor='middle' font-family='sans-serif'>TS</text></svg>">
+</head>
+<body>
+
+  <!-- Toast Notification Container -->
+  <div id="toastNotice" class="toast-notice"></div>
+
+  <div class="app-container">
+
+    <!-- ── 1. LOGIN VIEW ─────────────────────────────────────────────────── -->
+    <div id="viewLogin" class="login-view">
+      <div class="login-card">
+        <div class="login-header">
+          <div class="login-brand-banner">
+            <span class="brand-teal">Trend</span><span class="brand-orange">SCORE</span>
+          </div>
+          <div style="font-size: 11px; font-weight: 700; color: var(--orange-600); letter-spacing: 0.5px;">Where Analytics Meets Pathways</div>
+          <h2>Field Agent Portal</h2>
+          <p>Sign in with your phone number and security PIN</p>
+        </div>
+
+        <form id="formLogin" onsubmit="handleLogin(event)">
+          <div class="form-group">
+            <label class="form-label" for="loginPhone">Phone Number</label>
+            <input type="tel" id="loginPhone" class="form-input" placeholder="e.g. 0712345678" required autocomplete="tel">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="loginPin">4-Digit Security PIN</label>
+            <input type="password" id="loginPin" class="form-input" placeholder="••••" maxlength="6" inputmode="numeric" required autocomplete="current-password">
+          </div>
+
+          <button type="submit" id="btnLogin" class="submit-btn login-btn-accent" style="margin-top: 14px;">
+            <span>Sign In to Portal</span>
+          </button>
+        </form>
+
+        <p style="text-align: center; font-size: 11px; color: var(--text-subtle); margin-top: 24px;">
+          TrendSCORE CBC Systems · For authorized field representatives only.
+        </p>
+      </div>
+    </div>
+
+    <!-- ── 2. AUTHENTICATED APP SHELL ───────────────────────────────────── -->
+    <div id="viewApp" style="display: none; flex-direction: column; min-height: 100vh;">
+      
+      <!-- Top Sticky Bar -->
+      <header class="app-header">
+        <div class="brand-wrapper">
+          <div class="brand-logo" title="TrendSCORE">
+            <span class="logo-t">T</span><span class="logo-s">S</span>
+          </div>
+          <div class="brand-info">
+            <div class="brand-header-title">
+              <span class="brand-teal">Trend</span><span class="brand-orange">SCORE</span>
+              <span class="header-portal-tag">FIELD AGENT</span>
+            </div>
+          </div>
+        </div>
+        <div class="header-actions">
+          <button class="icon-btn notif-btn" onclick="openNotificationsModal()" title="Notifications" id="btnNotif">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+            </svg>
+            <span class="notif-badge hidden" id="notifBadge">0</span>
+          </button>
+
+          <!-- Avatar & Dropdown (Profile + Logout) -->
+          <div class="avatar-dropdown-wrap" id="avatarDropdownWrap">
+            <button class="avatar-btn" id="btnAvatar" onclick="toggleAvatarDropdown(event)" aria-haspopup="true" aria-expanded="false" title="Account Menu">
+              <span id="headerAvatarInitials">TS</span>
+            </button>
+            
+            <div class="avatar-menu" id="avatarMenu" role="menu">
+              <div class="avatar-menu-header">
+                <div class="avatar-menu-name" id="menuAgentName">Field Representative</div>
+                <div class="avatar-menu-code">
+                  <span id="menuAgentCode" class="agent-badge-pill">AGT</span>
+                  <span id="menuAgentPhone" class="avatar-menu-phone">07...</span>
+                </div>
+              </div>
+
+              <div class="avatar-menu-divider"></div>
+
+              <button class="avatar-menu-item" onclick="onMenuSelectProfile()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+                <span>Profile &amp; Payout Settings</span>
+              </button>
+
+              <button class="avatar-menu-item" onclick="onMenuSelectEarnings()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                <span>Commission Statement</span>
+              </button>
+
+              <button class="avatar-menu-item" onclick="onMenuRefreshData()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                <span>Refresh Data</span>
+              </button>
+
+              <div class="avatar-menu-divider"></div>
+
+              <button class="avatar-menu-item logout-item" onclick="handleLogout()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+                <span>Log Out</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- Main Dynamic View Container -->
+      <main class="main-content">
+        
+        <!-- Tab 1: Dashboard -->
+        <section id="tabDashboard" class="tab-page">
+          <!-- Hero Balance Card -->
+          <div class="balance-card">
+            <div class="balance-meta">
+              <div class="balance-meta-left">
+                <span class="balance-dot"></span>
+                <span class="balance-label">AVAILABLE COMMISSION</span>
+              </div>
+              <span class="balance-status-tag" id="dashStatusTag">10% Commission</span>
+            </div>
+            <div class="balance-amount-wrap">
+              <span class="balance-currency">KES</span>
+              <span id="dashBalanceDue" class="balance-amount-num">0</span>
+            </div>
+
+            <div class="balance-action-row">
+              <button class="withdraw-btn" onclick="openWithdrawModal()">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                <span>Transfer to M-Pesa</span>
+              </button>
+            </div>
+
+            <div class="balance-details-row">
+              <div class="balance-col">
+                <div class="balance-sub">LIFETIME COMMISSIONS</div>
+                <div class="balance-sub-val teal-accent" id="dashTotalEarned">KES 0</div>
+              </div>
+              <div class="balance-col-divider"></div>
+              <div class="balance-col">
+                <div class="balance-sub">DISBURSED PAYOUTS</div>
+                <div class="balance-sub-val orange-accent" id="dashTotalPaid">KES 0</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick Actions -->
+          <div class="quick-actions">
+            <div class="action-btn-card" onclick="openRegisterSchoolModal()">
+              <div class="action-icon orange">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              </div>
+              <div class="action-text">
+                <h4>Register School</h4>
+                <p>New prospective lead</p>
+              </div>
+            </div>
+            <div class="action-btn-card" onclick="switchTab('earnings')">
+              <div class="action-icon teal">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              </div>
+              <div class="action-text">
+                <h4>Commission Ledger</h4>
+                <p>Track earnings &amp; payouts</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Portfolio Summary -->
+          <div class="section-header">
+            <h3 class="section-title">My School Portfolio <span id="dashSchoolsCount" class="section-count">0</span></h3>
+            <span class="section-link" onclick="switchTab('schools')">View All →</span>
+          </div>
+          <div id="dashSchoolsList" class="school-list">
+            <!-- Injected via agent.js -->
+          </div>
+
+          <!-- Recent Commission Credits -->
+          <div class="section-header" style="margin-top: 14px;">
+            <h3 class="section-title">Recent Commissions</h3>
+            <span class="section-link" onclick="switchTab('earnings')">Ledger →</span>
+          </div>
+          <div id="dashRecentEarnings" class="ledger-list">
+            <!-- Injected via agent.js -->
+          </div>
+        </section>
+
+        <!-- Tab 2: Schools List -->
+        <section id="tabSchools" class="tab-page" style="display: none;">
+          <div class="section-header">
+            <h3 class="section-title">Assigned Schools <span id="schoolsTotalBadge" class="section-count">0</span></h3>
+            <button class="section-link" onclick="openRegisterSchoolModal()" style="background:none; border:none; cursor:pointer;">+ Add New</button>
+          </div>
+          <div id="fullSchoolsList" class="school-list">
+            <!-- Injected via agent.js -->
+          </div>
+        </section>
+
+        <!-- Tab 3: Earnings & Commission Ledger -->
+        <section id="tabEarnings" class="tab-page" style="display: none;">
+          <div class="section-header">
+            <h3 class="section-title">Commission Ledger</h3>
+          </div>
+          <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 14px;">
+            Auto-credited commissions linked to school subscription payments and renewals.
+          </p>
+          <div id="fullEarningsList" class="ledger-list">
+            <!-- Injected via agent.js -->
+          </div>
+        </section>
+
+        <!-- Tab 4: Profile / Settings -->
+        <section id="tabProfile" class="tab-page" style="display: none;">
+          <div class="section-header">
+            <h3 class="section-title">Agent Profile & Payout Info</h3>
+          </div>
+
+          <div class="school-card" style="margin-bottom: 16px;">
+            <div style="font-size: 15px; font-weight: 700;" id="profFullName">-</div>
+            <div style="font-size: 12px; color: var(--teal-700); font-weight: 700;" id="profCode">-</div>
+            <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;" id="profPhone">-</div>
+            <div style="font-size: 12px; color: var(--text-muted);" id="profCounty">-</div>
+            <div style="font-size: 12px; color: var(--text-subtle); margin-top: 6px;" id="profTerms">-</div>
+          </div>
+
+          <!-- Payout History -->
+          <div class="section-header">
+            <h3 class="section-title">Disbursement History</h3>
+          </div>
+          <div id="profPayoutsList" class="ledger-list" style="margin-bottom: 24px;">
+            <!-- Injected via agent.js -->
+          </div>
+
+          <!-- M-Pesa Details Form -->
+          <div class="school-card" style="margin-bottom: 20px;">
+            <h4 style="font-size: 13px; font-weight: 700; margin-bottom: 12px; color: var(--text-main);">Payout M-Pesa Details</h4>
+            <div class="form-group">
+              <label class="form-label" for="profMpesa">M-Pesa Phone Number</label>
+              <input type="tel" id="profMpesa" class="form-input" placeholder="07...">
+            </div>
+            <button class="submit-btn" onclick="saveProfileMpesa()" style="padding: 10px; font-size: 13px;">Save Payment Phone</button>
+          </div>
+
+          <!-- Logout Button -->
+          <button class="submit-btn" onclick="handleLogout()" style="background: var(--rose-50); border: 1px solid var(--rose-100); color: var(--rose-600); box-shadow: none;">
+            Sign Out
+          </button>
+        </section>
+
+        <!-- Tab 5: Marketplace & Content Creator Studio -->
+        <section id="tabMarketplace" class="tab-page" style="display: none;">
+          <!-- Dual Switcher -->
+          <div class="market-view-toggle">
+            <button class="market-toggle-btn active" id="btnToggleBrowse" onclick="switchMarketView('browse')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <span>Browse Catalog</span>
+            </button>
+            <button class="market-toggle-btn" id="btnToggleCreator" onclick="switchMarketView('creator')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+              <span>Creator Studio</span>
+            </button>
+          </div>
+
+          <!-- Subview 1: Browse Catalog -->
+          <div id="marketBrowseView">
+            <div class="market-search-wrap">
+              <input type="text" id="marketSearchInput" class="form-input market-search-input" placeholder="Search Grade, Subject, KNEC exams, SOW..." oninput="filterMarketCatalog()">
+            </div>
+
+            <!-- Filter Tags -->
+            <div class="market-tags-scroll">
+              <button class="market-tag-chip active" onclick="setMarketFilter('all', this)">All CBC</button>
+              <button class="market-tag-chip" onclick="setMarketFilter('jss', this)">JSS (Grades 7-9)</button>
+              <button class="market-tag-chip" onclick="setMarketFilter('exams', this)">Exams &amp; Rubrics</button>
+              <button class="market-tag-chip" onclick="setMarketFilter('sow', this)">Schemes of Work</button>
+              <button class="market-tag-chip" onclick="setMarketFilter('primary', this)">Primary (Grades 1-6)</button>
+            </div>
+
+            <div id="marketCatalogList" class="market-catalog-list">
+              <!-- Rendered via agent.js -->
+            </div>
+          </div>
+
+          <!-- Subview 2: Creator Studio -->
+          <div id="marketCreatorView" style="display: none;">
+            <div class="creator-stats-card">
+              <div class="creator-stats-top">
+                <div>
+                  <div class="creator-stats-label">CREATOR ROYALTIES EARNED</div>
+                  <div class="creator-stats-amount" id="creatorEarnedDisplay">KES 4,200</div>
+                </div>
+                <button class="creator-upload-btn" onclick="openUploadResourceModal()">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                  <span>+ Upload Content</span>
+                </button>
+              </div>
+              <div class="creator-stats-metrics">
+                <div>
+                  <span class="sub-label">TOTAL SALES</span>
+                  <span class="sub-val" id="creatorDownloadsCount">38</span>
+                </div>
+                <div class="divider"></div>
+                <div>
+                  <span class="sub-label">MY LISTINGS</span>
+                  <span class="sub-val" id="creatorListingsCount">3</span>
+                </div>
+                <div class="divider"></div>
+                <div>
+                  <span class="sub-label">ROYALTY</span>
+                  <span class="sub-val" style="color:var(--teal-700);">70% Wallet</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="section-header" style="margin-top: 16px;">
+              <h3 class="section-title">My Uploaded Resources</h3>
+              <span class="section-link" onclick="openUploadResourceModal()">+ Add New</span>
+            </div>
+
+            <div id="creatorUploadsList" class="market-catalog-list">
+              <!-- Rendered via agent.js -->
+            </div>
+          </div>
+        </section>
+
+      </main>
+
+      <!-- Bottom Navigation Bar -->
+      <nav class="bottom-nav">
+        <button class="nav-tab active" id="navDashboard" onclick="switchTab('dashboard')">
+          <svg viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+          Dashboard
+        </button>
+        <button class="nav-tab" id="navSchools" onclick="switchTab('schools')">
+          <svg viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+          Schools
+        </button>
+        <button class="nav-tab" id="navEarnings" onclick="switchTab('earnings')">
+          <svg viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          Earnings
+        </button>
+        <button class="nav-tab" id="navMarketplace" onclick="switchTab('marketplace')">
+          <svg viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+          Marketplace
+        </button>
+      </nav>
+
+    </div>
+
+    <!-- ── 3. REGISTER SCHOOL MODAL DRAWER ──────────────────────────────── -->
+    <div id="modalRegisterSchool" class="modal-overlay">
+      <div class="bottom-sheet">
+        <div class="sheet-handle"></div>
+        <div class="sheet-header">
+          <h3 class="sheet-title">Register Prospective School</h3>
+          <button class="icon-btn" onclick="closeRegisterSchoolModal()">✕</button>
+        </div>
+
+        <form id="formRegisterSchool" onsubmit="handleRegisterSchool(event)">
+          <div class="form-group">
+            <label class="form-label" for="regSchoolName">School Name *</label>
+            <input type="text" id="regSchoolName" class="form-input" placeholder="e.g. Alliance Academy" required>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="regCounty">County</label>
+            <input type="text" id="regCounty" class="form-input" placeholder="e.g. Nairobi, Kiambu, Nakuru">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="regContactPerson">Principal / Contact Person</label>
+            <input type="text" id="regContactPerson" class="form-input" placeholder="e.g. Mr. John Kamau">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="regContactPhone">Contact Phone Number</label>
+            <input type="tel" id="regContactPhone" class="form-input" placeholder="07...">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="regStudents">Estimated Number of Students</label>
+            <input type="number" id="regStudents" class="form-input" placeholder="e.g. 450">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="regNotes">Pitch Notes / Meeting Details</label>
+            <textarea id="regNotes" class="form-textarea" placeholder="Key decision makers, CBC needs, demo appointment..."></textarea>
+          </div>
+
+          <button type="submit" id="btnSubmitSchool" class="submit-btn" style="margin-top: 10px;">
+            <span>Save School & Add to Pipeline</span>
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- ── 4. NOTIFICATIONS MODAL DRAWER ─────────────────────────────────── -->
+    <div id="modalNotifications" class="modal-overlay">
+      <div class="bottom-sheet">
+        <div class="sheet-handle"></div>
+        <div class="sheet-header">
+          <h3 class="sheet-title">Notifications</h3>
+          <button class="icon-btn" onclick="closeNotificationsModal()">✕</button>
+        </div>
+        <div id="notificationsList" class="notif-list">
+          <!-- Injected via agent.js -->
+        </div>
+      </div>
+    </div>
+
+    <!-- ── 5. M-PESA WITHDRAWAL MODAL DRAWER ─────────────────────────────── -->
+    <div id="modalWithdraw" class="modal-overlay">
+      <div class="bottom-sheet">
+        <div class="sheet-handle"></div>
+        <div class="sheet-header">
+          <h3 class="sheet-title">Transfer to M-Pesa</h3>
+          <button class="icon-btn" onclick="closeWithdrawModal()">✕</button>
+        </div>
+
+        <form id="formWithdraw" onsubmit="handleWithdraw(event)">
+          <div class="dest-phone-box">
+            <div>
+              <div class="dest-phone-label">DESTINATION PHONE</div>
+              <div class="dest-phone-val" id="withdrawPhoneDisplay">07...</div>
+            </div>
+            <span class="status-badge onboarded">Verified</span>
+          </div>
+
+          <div class="form-group">
+            <div style="display:flex; justify-content:space-between; align-items:baseline;">
+              <label class="form-label" for="withdrawAmount">Amount (KES) *</label>
+              <span style="font-size:11px; color:var(--teal-700); font-weight:700;">Available: KES <span id="withdrawAvailBal">0</span></span>
+            </div>
+            <input type="number" id="withdrawAmount" class="form-input" min="500" step="50" placeholder="Minimum KES 500" required>
+            
+            <div class="quick-chips">
+              <button type="button" class="chip-btn" onclick="setWithdrawAmount(500)">500</button>
+              <button type="button" class="chip-btn" onclick="setWithdrawAmount(1000)">1,000</button>
+              <button type="button" class="chip-btn" onclick="setWithdrawAmount(2500)">2,500</button>
+              <button type="button" class="chip-btn" onclick="setWithdrawMax()">Max</button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="withdrawPin">4-Digit Security PIN *</label>
+            <input type="password" id="withdrawPin" class="form-input" placeholder="••••" maxlength="6" inputmode="numeric" required autocomplete="current-password">
+          </div>
+
+          <div class="fee-calc-box">
+            <strong>B2C Transfer Details:</strong>
+            <div>• Minimum withdrawal: <strong>KES 500</strong></div>
+            <div>• Disbursement: <strong>Instant to M-Pesa</strong></div>
+            <div>• B2C Fee: <strong style="color:var(--teal-700);">Absorbed by TrendSCORE (0 KES)</strong></div>
+          </div>
+
+          <button type="submit" id="btnSubmitWithdraw" class="submit-btn" style="background:var(--orange-600); border:1px solid var(--orange-700);">
+            <span>Authorize &amp; Transfer to M-Pesa</span>
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- ── 6. UPLOAD RESOURCE MODAL DRAWER ──────────────────────────────── -->
+    <div id="modalUploadResource" class="modal-overlay">
+      <div class="bottom-sheet" style="max-height: 90vh; overflow-y: auto;">
+        <div class="sheet-handle"></div>
+        <div class="sheet-header">
+          <h3 class="sheet-title">Upload Classroom Resource</h3>
+          <button class="icon-btn" onclick="closeUploadResourceModal()">✕</button>
+        </div>
+
+        <form id="formUploadResource" onsubmit="handleUploadResource(event)">
+          <div class="form-group">
+            <label class="form-label" for="resTitle">Resource Title *</label>
+            <input type="text" id="resTitle" class="form-input" placeholder="e.g. Grade 8 Science Term 1 Exam + Rubrics" required>
+          </div>
+
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div class="form-group">
+              <label class="form-label" for="resGrade">Grade Level *</label>
+              <select id="resGrade" class="form-input" required>
+                <option value="Grade 8">Grade 8 (JSS)</option>
+                <option value="Grade 7">Grade 7 (JSS)</option>
+                <option value="Grade 9">Grade 9 (JSS)</option>
+                <option value="Grade 6">Grade 6 (KPSEA)</option>
+                <option value="Grade 5">Grade 5</option>
+                <option value="Grade 4">Grade 4</option>
+                <option value="Grades 1-3">Grades 1-3</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="resTerm">Term *</label>
+              <select id="resTerm" class="form-input" required>
+                <option value="Term 1">Term 1</option>
+                <option value="Term 2">Term 2</option>
+                <option value="Term 3">Term 3</option>
+                <option value="Full Year">Full Year</option>
+              </select>
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div class="form-group">
+              <label class="form-label" for="resSubject">Subject *</label>
+              <select id="resSubject" class="form-input" required>
+                <option value="Integrated Science">Integrated Science</option>
+                <option value="Mathematics">Mathematics</option>
+                <option value="Pre-Technical Studies">Pre-Technical Studies</option>
+                <option value="English">English</option>
+                <option value="Kiswahili">Kiswahili</option>
+                <option value="Social Studies">Social Studies</option>
+                <option value="Agriculture &amp; Nutrition">Agriculture &amp; Nutrition</option>
+                <option value="Creative Arts &amp; Sports">Creative Arts &amp; Sports</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="resType">Resource Type *</label>
+              <select id="resType" class="form-input" required>
+                <option value="Exam &amp; Marking Scheme">Exam &amp; Marking Scheme</option>
+                <option value="Scheme of Work">Scheme of Work (SOW)</option>
+                <option value="Lesson Plan">Lesson Plan</option>
+                <option value="Revision Notes">Revision Notes</option>
+                <option value="Assessment Rubrics">Assessment Rubrics</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="resPrice">Price (KES) *</label>
+            <input type="number" id="resPrice" class="form-input" min="0" step="10" placeholder="0 for Free, or set price (e.g. 150)" value="150" required>
+            <div class="quick-chips">
+              <button type="button" class="chip-btn" onclick="setResPrice(0)">Free</button>
+              <button type="button" class="chip-btn" onclick="setResPrice(50)">KES 50</button>
+              <button type="button" class="chip-btn" onclick="setResPrice(150)">KES 150</button>
+              <button type="button" class="chip-btn" onclick="setResPrice(250)">KES 250</button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Attach Resource Document (PDF, DOCX, ZIP) *</label>
+            <label class="file-drop-area" for="resFileInput" id="fileDropLabel">
+              <input type="file" id="resFileInput" style="display:none;" accept=".pdf,.doc,.docx,.zip" onchange="onFileSelected(this)">
+              <div class="file-drop-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+              </div>
+              <div class="file-drop-text" id="fileDropName">Click to browse or drop file here</div>
+              <div class="file-drop-hint">PDF, Word documents or ZIP up to 25MB</div>
+            </label>
+          </div>
+
+          <div class="fee-calc-box" style="margin-bottom: 14px;">
+            <strong>Teacher Royalty Policy:</strong>
+            <div>• Creator Share: <strong style="color:var(--teal-700);">70% of every sale</strong></div>
+            <div>• TrendSCORE Service Fee: 30% (hosting, payment gateway, DRM)</div>
+            <div>• Direct Settlement: Auto-credited to your TrendSCORE Wallet</div>
+          </div>
+
+          <button type="submit" id="btnSubmitUpload" class="submit-btn" style="background:var(--teal-700); border:1px solid var(--teal-800);">
+            <span>Publish Resource to Marketplace</span>
+          </button>
+        </form>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="/agent/agent.js"></script>
+</body>
+</html>

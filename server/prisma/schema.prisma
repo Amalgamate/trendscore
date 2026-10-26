@@ -22,6 +22,7 @@ model User {
   phone                   String?
   role                    UserRole        @default(TEACHER)
   roles                   UserRole[]      @default([])
+  authVersion             Int             @default(0)
   status                  UserStatus      @default(ACTIVE)
   institutionType         InstitutionType @default(PRIMARY_CBC)
   archived                Boolean         @default(false)
@@ -69,6 +70,7 @@ model User {
   changeHistory              ChangeHistory[]
   schedules                  ClassSchedule[]             @relation("TeacherSchedules")
   classesAsTeacher           Class[]                     @relation("ClassTeacher")
+  classTeacherAssignments    ClassTeacherAssignment[]
   recordedCoCurricular       CoCurricularActivity[]      @relation("RecorderCoCurricular")
   createdContactGroups       ContactGroup[]              @relation("CreatedContactGroups")
   assessedCoreCompetencies   CoreCompetency[]            @relation("AssessorCoreCompetencies")
@@ -108,9 +110,9 @@ model User {
   subjectAssignments         SubjectAssignment[]
   timetableEntries           TimetableEntry[]
   timetableAvailabilities    TeacherAvailability[]
-  timetableChangeRequests    TimetableChangeRequest[]     @relation("TimetableChangeRequestor")
-  reviewedTimetableChanges   TimetableChangeRequest[]     @relation("TimetableChangeRequestReviewer")
-  taughtTimetableChanges     TimetableChangeRequest[]     @relation("TimetableChangeRequestTeacher")
+  timetableChangeRequests    TimetableChangeRequest[]    @relation("TimetableChangeRequestor")
+  reviewedTimetableChanges   TimetableChangeRequest[]    @relation("TimetableChangeRequestReviewer")
+  taughtTimetableChanges     TimetableChangeRequest[]    @relation("TimetableChangeRequestTeacher")
   summativeResultHistories   SummativeResultHistory[]    @relation("ChangedBy")
   recordedResults            SummativeResult[]           @relation("RecordedResults")
   approvedTests              SummativeTest[]             @relation("ApprovedTests")
@@ -236,8 +238,8 @@ model School {
   nemisConfig                            Json?
 
   // ── eReport Engine (Phase 2/3) ──────────────────────────────────────────────
-  reportEngine                           ReportEngine               @default(LEGACY)
-  reportTemplateId                       String?
+  reportEngine     ReportEngine @default(LEGACY)
+  reportTemplateId String?
 
   biometricDevices           BiometricDevice[]
   biometricCredentials       BiometricCredential[]
@@ -327,45 +329,61 @@ model Notice {
 }
 
 model Class {
-  id                  String               @id @default(uuid())
-  classCode           String               @unique
-  name                String
-  grade               String
-  stream              String?
-  teacherId           String?
+  id                      String                   @id @default(uuid())
+  classCode               String                   @unique
+  name                    String
+  grade                   String
+  stream                  String?
+  teacherId               String?
   // When true, the assigned class teacher is exempt from the attendance lock
   // window for this class. Toggled at assignment time by admins/head teachers.
-  attendanceLockExempt Boolean             @default(false)
-  academicYear        Int                  @default(2025)
-  term                Term                 @default(TERM_1)
-  capacity            Int                  @default(40)
-  room                String?
-  active              Boolean              @default(true)
-  archived            Boolean              @default(false)
-  archivedAt          DateTime?
-  archivedBy          String?
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
-  institutionType     InstitutionType      @default(PRIMARY_CBC)
-  assets              AssetAssignment[]    @relation("AssetClass")
-  attendances         Attendance[]
-  enrollments         ClassEnrollment[]
-  facilities          ClassFacility[]
-  schedules           ClassSchedule[]
-  timetableEntries    TimetableEntry[]
+  attendanceLockExempt    Boolean                  @default(false)
+  academicYear            Int                      @default(2025)
+  term                    Term                     @default(TERM_1)
+  capacity                Int                      @default(40)
+  room                    String?
+  active                  Boolean                  @default(true)
+  archived                Boolean                  @default(false)
+  archivedAt              DateTime?
+  archivedBy              String?
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  institutionType         InstitutionType          @default(PRIMARY_CBC)
+  assets                  AssetAssignment[]        @relation("AssetClass")
+  attendances             Attendance[]
+  enrollments             ClassEnrollment[]
+  facilities              ClassFacility[]
+  schedules               ClassSchedule[]
+  timetableEntries        TimetableEntry[]
   timetableChangeRequests TimetableChangeRequest[]
-  teacher             User?                @relation("ClassTeacher", fields: [teacherId], references: [id])
+  teacher                 User?                    @relation("ClassTeacher", fields: [teacherId], references: [id])
+  teacherAssignments      ClassTeacherAssignment[]
   // ── LMS Digital Learning Hub ────────────────────────────────────────────────
-  learningLessons     LearningLesson[]
-  learningAssignments LearningAssignment[]
-  learningResources   LearningResource[]
-  subjectAssignments  SubjectAssignment[]
+  learningLessons         LearningLesson[]
+  learningAssignments     LearningAssignment[]
+  learningResources       LearningResource[]
+  subjectAssignments      SubjectAssignment[]
 
   @@unique([grade, stream, academicYear, term])
   @@index([institutionType, grade, stream])
   @@index([teacherId])
   @@index([grade, stream])
   @@map("classes")
+}
+
+/// Additional class-teacher assignments. Class.teacherId remains the primary
+/// teacher for older consumers; this table stores every assigned teacher and
+/// is backfilled from that legacy column.
+model ClassTeacherAssignment {
+  classId   String
+  teacherId String
+  createdAt DateTime @default(now())
+  class     Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  teacher   User     @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  @@id([classId, teacherId])
+  @@index([teacherId])
+  @@map("class_teacher_assignments")
 }
 
 model ClassSchedule {
@@ -393,9 +411,9 @@ model ClassSchedule {
   //  1. The UI can show an amber indicator on the lesson card.
   //  2. The publish flow can warn how many overrides will be replaced.
   isOverride     Boolean       @default(false)
-  overrideNote   String?       // required reason supplied by the editor
-  overriddenAt   DateTime?     // when the override was made
-  overriddenBy   String?       // userId of the editor
+  overrideNote   String? // required reason supplied by the editor
+  overriddenAt   DateTime? // when the override was made
+  overriddenBy   String? // userId of the editor
   class          Class         @relation(fields: [classId], references: [id], onDelete: Cascade)
   learningArea   LearningArea? @relation(fields: [learningAreaId], references: [id])
   teacher        User?         @relation("TeacherSchedules", fields: [teacherId], references: [id])
@@ -701,7 +719,7 @@ model Learner {
   exitDate               DateTime?
   exitReason             String?
   previousSchool         String?
-  nationality             String?
+  nationality            String?
   religion               String?
   specialNeeds           String?
   isTransportStudent     Boolean                        @default(false)
@@ -1890,43 +1908,43 @@ model StreamConfig {
 }
 
 model CommunicationConfig {
-  id                      String   @id @default(uuid())
-  smsProvider             String?  @default("mobilesasa")
-  smsApiKey               String?
-  smsBaseUrl              String?  @default("https://api.mobilesasa.com")
-  smsSenderId             String?
-  smsEnabled              Boolean  @default(false)
-  hasApiKey               Boolean  @default(false)
-  smsCustomName           String?
-  smsCustomBaseUrl        String?
-  smsCustomAuthHeader     String?
-  smsCustomToken          String?
-  emailProvider           String?  @default("resend")
-  emailApiKey             String?
-  emailFrom               String?
-  emailFromName           String?
-  emailEnabled            Boolean  @default(false)
-  mpesaProvider           String?  @default("intasend")
-  mpesaPublicKey          String?
-  mpesaSecretKey          String?
-  mpesaBusinessNo         String?
-  mpesaSandbox            Boolean  @default(false)
-  mpesaApiKey             String?
-  mpesaPasskey            String?
-  mpesaEnabled            Boolean  @default(false)
+  id                       String    @id @default(uuid())
+  smsProvider              String?   @default("mobilesasa")
+  smsApiKey                String?
+  smsBaseUrl               String?   @default("https://api.mobilesasa.com")
+  smsSenderId              String?
+  smsEnabled               Boolean   @default(false)
+  hasApiKey                Boolean   @default(false)
+  smsCustomName            String?
+  smsCustomBaseUrl         String?
+  smsCustomAuthHeader      String?
+  smsCustomToken           String?
+  emailProvider            String?   @default("resend")
+  emailApiKey              String?
+  emailFrom                String?
+  emailFromName            String?
+  emailEnabled             Boolean   @default(false)
+  mpesaProvider            String?   @default("intasend")
+  mpesaPublicKey           String?
+  mpesaSecretKey           String?
+  mpesaBusinessNo          String?
+  mpesaSandbox             Boolean   @default(false)
+  mpesaApiKey              String?
+  mpesaPasskey             String?
+  mpesaEnabled             Boolean   @default(false)
   mpesaOnboardingChecklist Json?
   mpesaOnboardingUpdatedAt DateTime?
   mpesaOnboardingUpdatedBy String?
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
-  birthdayEnabled         Boolean  @default(false)
-  birthdayMessageTemplate String?  @default("Happy Birthday {learnerName}! Best wishes from {schoolName}.")
-  emailTemplates          Json?
-  smsUsername             String?
-  whatsappProvider        String?  @default("ultramsg")
-  whatsappApiKey          String?
-  whatsappInstanceId      String?
-  whatsappEnabled         Boolean  @default(false)
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+  birthdayEnabled          Boolean   @default(false)
+  birthdayMessageTemplate  String?   @default("Happy Birthday {learnerName}! Best wishes from {schoolName}.")
+  emailTemplates           Json?
+  smsUsername              String?
+  whatsappProvider         String?   @default("ultramsg")
+  whatsappApiKey           String?
+  whatsappInstanceId       String?
+  whatsappEnabled          Boolean   @default(false)
 
   @@map("communication_configs")
 }
@@ -2276,35 +2294,35 @@ model PrepAttendance {
 }
 
 model LearningArea {
-  id                   String                    @id @default(uuid())
-  name                 String
-  shortName            String?
-  gradeLevel           String
-  icon                 String                    @default("📚")
-  color                String                    @default("#3b82f6")
-  description          String?
-  createdAt            DateTime                  @default(now())
-  updatedAt            DateTime                  @updatedAt
-  institutionType      InstitutionType           @default(PRIMARY_CBC)
-  isCore               Boolean                   @default(false)
-  pathway              String?
-  category             String?
-  pathwayId            String?
-  categoryId           String?
-  schedules            ClassSchedule[]
-  timetableEntries     TimetableEntry[]
-  timetableAllocations InstructionalAllocation[]
+  id                      String                    @id @default(uuid())
+  name                    String
+  shortName               String?
+  gradeLevel              String
+  icon                    String                    @default("📚")
+  color                   String                    @default("#3b82f6")
+  description             String?
+  createdAt               DateTime                  @default(now())
+  updatedAt               DateTime                  @updatedAt
+  institutionType         InstitutionType           @default(PRIMARY_CBC)
+  isCore                  Boolean                   @default(false)
+  pathway                 String?
+  category                String?
+  pathwayId               String?
+  categoryId              String?
+  schedules               ClassSchedule[]
+  timetableEntries        TimetableEntry[]
+  timetableAllocations    InstructionalAllocation[]
   timetableChangeRequests TimetableChangeRequest[]
-  formativeAssessments FormativeAssessment[]
-  learnerSelections    LearnerSubjectSelection[]
-  categoryRef          SubjectCategory?          @relation(fields: [categoryId], references: [id])
-  pathwayRef           Pathway?                  @relation(fields: [pathwayId], references: [id])
-  subjectAssignments   SubjectAssignment[]
-  summativeTests       SummativeTest[]
+  formativeAssessments    FormativeAssessment[]
+  learnerSelections       LearnerSubjectSelection[]
+  categoryRef             SubjectCategory?          @relation(fields: [categoryId], references: [id])
+  pathwayRef              Pathway?                  @relation(fields: [pathwayId], references: [id])
+  subjectAssignments      SubjectAssignment[]
+  summativeTests          SummativeTest[]
   // ── LMS Digital Learning Hub ────────────────────────────────────────────────
-  learningLessons      LearningLesson[]
-  learningAssignments  LearningAssignment[]
-  learningResources    LearningResource[]
+  learningLessons         LearningLesson[]
+  learningAssignments     LearningAssignment[]
+  learningResources       LearningResource[]
 
   @@unique([name, gradeLevel])
   @@index([institutionType, gradeLevel])
@@ -2315,20 +2333,20 @@ model LearningArea {
 }
 
 model SubjectAssignment {
-  id             String       @id @default(uuid())
-  teacherId      String
-  learningAreaId String
-  grade          String
-  classId        String?
+  id                   String       @id @default(uuid())
+  teacherId            String
+  learningAreaId       String
+  grade                String
+  classId              String?
   // When true, the teacher is exempt from the attendance lock for this subject
   // assignment. Toggled at assignment time by admins/head teachers.
-  attendanceLockExempt Boolean @default(false)
-  active         Boolean      @default(true)
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  learningArea   LearningArea @relation(fields: [learningAreaId], references: [id])
-  teacher        User         @relation(fields: [teacherId], references: [id])
-  class          Class?       @relation(fields: [classId], references: [id], onDelete: SetNull)
+  attendanceLockExempt Boolean      @default(false)
+  active               Boolean      @default(true)
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+  learningArea         LearningArea @relation(fields: [learningAreaId], references: [id])
+  teacher              User         @relation(fields: [teacherId], references: [id])
+  class                Class?       @relation(fields: [classId], references: [id], onDelete: SetNull)
 
   @@index([teacherId])
   @@index([learningAreaId])
@@ -2530,6 +2548,11 @@ model Event {
   isParentVisible Boolean   @default(true) // controls parent portal visibility
   academicYear    Int? // e.g. 2025
   term            String? // TERM_1 | TERM_2 | TERM_3
+  // Who the event is for. Empty = everyone (still subject to isParentVisible for parents/students).
+  // Values: STAFF | TEACHERS | PARENTS | STUDENTS | DRIVERS
+  audience        String[]  @default([])
+  // Class targeting for parents/students. Empty = whole school.
+  classIds        String[]  @default([])
   creator         User      @relation("EventCreator", fields: [creatorId], references: [id], onDelete: Cascade)
 
   @@index([startDate])
@@ -2727,7 +2750,7 @@ model StaffAttendanceAttemptLog {
 // Used to detect a staff member leaving the school geofence (immediate alert)
 // or going silent for longer than presenceStaleThresholdMinutes (stale alert).
 model StaffPresencePing {
-  id             String    @id @default(uuid())
+  id             String   @id @default(uuid())
   userId         String
   schoolId       String?
   timestamp      DateTime
@@ -2737,9 +2760,9 @@ model StaffPresencePing {
   distanceMeters Float?
   withinGeofence Boolean
   reasonCode     String?
-  createdAt      DateTime  @default(now())
-  school         School?   @relation(fields: [schoolId], references: [id], onDelete: SetNull)
-  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+  school         School?  @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, timestamp])
   @@index([schoolId, timestamp])
@@ -3997,6 +4020,7 @@ enum UserRole {
   SUPER_ADMIN
   ADMIN
   HEAD_TEACHER
+  DEPUTY_HEAD_TEACHER
   TEACHER
   PARENT
   ACCOUNTANT
@@ -4493,6 +4517,13 @@ enum EventType {
   TERM_CLOSING
   MIDTERM_BREAK
   EXAM_WEEK
+  ASSESSMENT
+  FINANCE
+  TRIP
+  STAFF_EVENT
+  PARENT_EVENT
+  NATIONAL_EVENT
+  OTHER
 }
 
 enum LeaveStatus {

@@ -120,6 +120,10 @@ jobs:
           }
           set_env HTTPS_ONLY true
           set_env SECURE_COOKIES true
+          # This workflow installs one host Nginx reverse proxy in front of
+          # each school stack. Keep Express's trust count aligned with that
+          # verified ingress path (directly exposed stacks use 0 instead).
+          set_env TRUST_PROXY_HOPS 1
           set_env NODE_ENV production
           compose_file="/srv/zawadi/apps/$(jq -r '.defaults.stack_compose_file' "$manifest")"
           sudo docker compose --env-file "$env_file" -p "$project" -f "$compose_file" up -d --no-deps --force-recreate backend

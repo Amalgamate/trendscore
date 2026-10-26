@@ -463,7 +463,7 @@ export class TransportController {
             await prisma.$transaction(async (tx) => {
                 await tx.transportAssignment.update({
                     where: { id },
-                    data: { archived: true, status: 'INACTIVE' }
+                    data: { archived: true, status: 'INACTIVE', authVersion: { increment: 1 } }
                 });
 
                 if (passengerType === 'LEARNER') {

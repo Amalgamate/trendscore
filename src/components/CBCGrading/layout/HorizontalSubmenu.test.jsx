@@ -27,8 +27,12 @@ const mockNavSections = [
     id: 'planner',
     label: 'Planner',
     items: [
-      { id: 'planner-timetable', label: 'Timetable', path: 'planner-timetable' },
+      { id: 'annual-planner', label: 'Year Planner', path: 'annual-planner', params: { tab: 'dashboard' } },
+      { id: 'planner-calendar', label: 'Calendar', path: 'planner-calendar' },
+      { id: 'planner-term-setup', label: 'Term Setup', path: 'annual-planner', params: { tab: 'terms' } },
+      { id: 'planner-events', label: 'All Events', path: 'annual-planner', params: { tab: 'events' } },
       { id: 'planner-duty-roster', label: 'Duty Roster', path: 'planner-duty-roster' },
+      { id: 'planner-timetable', label: 'Timetable', path: 'planner-timetable' },
     ],
   },
 ];
@@ -128,5 +132,64 @@ describe('HorizontalSubmenu - Tutors Module', () => {
     expect(screen.getByText('Tutors')).toBeDefined();
     expect(screen.getByText('Staff Directory')).toBeDefined();
     expect(screen.getByText('Duty Roster')).toBeDefined();
+  });
+});
+
+describe('HorizontalSubmenu - Planner Module', () => {
+  it('shows planner sections before Timetable without duplicating Calendar or adding an Overview tab', () => {
+    render(
+      <HorizontalSubmenu
+        currentPage="annual-planner"
+        pageParams={{ tab: 'dashboard' }}
+        onNavigate={vi.fn()}
+      />
+    );
+
+    const labels = screen.getAllByRole('button').map((button) => button.textContent.trim());
+    expect(labels).toEqual(expect.arrayContaining(['Year Planner', 'Calendar', 'Term Setup', 'All Events', 'Duty Roster', 'Timetable']));
+    expect(labels.indexOf('Year Planner')).toBeLessThan(labels.indexOf('Calendar'));
+    expect(labels.indexOf('Calendar')).toBeLessThan(labels.indexOf('Term Setup'));
+    expect(labels.indexOf('All Events')).toBeLessThan(labels.indexOf('Duty Roster'));
+    expect(labels.indexOf('Duty Roster')).toBeLessThan(labels.indexOf('Timetable'));
+    expect(labels.filter((label) => label === 'Calendar')).toHaveLength(1);
+    expect(labels).not.toContain('Year Overview');
+  });
+
+  it('opens All Events in the Year Planner events tab', () => {
+    const handleNavigate = vi.fn();
+    render(
+      <HorizontalSubmenu
+        currentPage="annual-planner"
+        pageParams={{ tab: 'dashboard' }}
+        onNavigate={handleNavigate}
+      />
+    );
+
+    fireEvent.click(screen.getByText('All Events'));
+    expect(handleNavigate).toHaveBeenCalledWith('annual-planner', { tab: 'events' });
+  });
+
+  it('highlights only the matching Year Planner tab destination', () => {
+    const { rerender } = render(
+      <HorizontalSubmenu
+        currentPage="annual-planner"
+        pageParams={{ tab: 'events' }}
+        onNavigate={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('All Events').className).toContain('font-semibold');
+    expect(screen.getByText('Year Planner').className).not.toContain('font-semibold');
+
+    rerender(
+      <HorizontalSubmenu
+        currentPage="annual-planner"
+        pageParams={{ tab: 'dashboard' }}
+        onNavigate={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('Year Planner').className).toContain('font-semibold');
+    expect(screen.getByText('All Events').className).not.toContain('font-semibold');
   });
 });

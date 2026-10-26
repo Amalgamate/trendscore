@@ -11,9 +11,31 @@ import { NotificationService, NotificationType } from './notification.service';
 type AssignmentInput = {
   teacherId: string;
   dutyDate: string | Date;
-  role?: string;
-  notes?: string;
+  role?: string | null;
+  notes?: string | null;
 };
+
+function rosterDay(value: string | Date): string {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) throw new ApiError(400, 'Roster and assignment dates must be valid');
+  return date.toISOString().slice(0, 10);
+}
+
+function validateRosterDates(
+  startValue: string | Date,
+  endValue: string | Date | null | undefined,
+  assignments: AssignmentInput[] = []
+) {
+  const startDay = rosterDay(startValue);
+  const endDay = endValue ? rosterDay(endValue) : null;
+  if (endDay && endDay < startDay) throw new ApiError(400, 'Roster end date must be on or after its start date');
+  for (const assignment of assignments) {
+    const day = rosterDay(assignment.dutyDate);
+    if (day < startDay || (endDay && day > endDay)) {
+      throw new ApiError(400, `Duty assignment date ${day} must fall within the roster date range`);
+    }
+  }
+}
 
 function toStartOfDay(date: Date): Date {
   const d = new Date(date);
@@ -53,24 +75,36 @@ export class DutyRosterService {
     createdById: string;
     assignments?: AssignmentInput[];
   }) {
-    const roster = await prisma.dutyRoster.create({
-      data: {
-        title: params.title,
-        frequency: params.frequency,
-        startDate: new Date(params.startDate),
-        endDate: params.endDate ? new Date(params.endDate) : null,
-        isActive: params.isActive ?? true,
-        reminderEnabled: params.reminderEnabled ?? true,
-        createdById: params.createdById
+    const assignments = params.assignments ?? [];
+    validateRosterDates(params.startDate, params.endDate, assignments);
+    const rosterId = await prisma.$transaction(async (tx) => {
+      const roster = await tx.dutyRoster.create({
+        data: {
+          title: params.title,
+          frequency: params.frequency,
+          startDate: new Date(params.startDate),
+          endDate: params.endDate ? new Date(params.endDate) : null,
+          isActive: params.isActive ?? true,
+          reminderEnabled: params.reminderEnabled ?? true,
+          createdById: params.createdById
+        }
+      });
+      if (assignments.length) {
+        await tx.dutyRosterAssignment.createMany({
+          data: assignments.map((assignment) => ({
+            rosterId: roster.id,
+            teacherId: assignment.teacherId,
+            dutyDate: new Date(assignment.dutyDate),
+            role: assignment.role || null,
+            notes: assignment.notes || null
+          }))
+        });
       }
+      return roster.id;
     });
 
-    if (params.assignments?.length) {
-      await this.replaceAssignments(roster.id, params.assignments);
-    }
-
     return prisma.dutyRoster.findUnique({
-      where: { id: roster.id },
+      where: { id: rosterId },
       include: {
         assignments: {
           include: { teacher: { select: { id: true, firstName: true, lastName: true, email: true } } },
@@ -90,26 +124,51 @@ export class DutyRosterService {
       isActive?: boolean;
       reminderEnabled?: boolean;
       assignments?: AssignmentInput[];
-    }
+    },
+    actor?: { userId: string; canManageAll: boolean }
   ) {
-    const existing = await prisma.dutyRoster.findUnique({ where: { id: rosterId } });
-    if (!existing) throw new ApiError(404, 'Duty roster not found');
-
-    await prisma.dutyRoster.update({
+    const existing = await prisma.dutyRoster.findUnique({
       where: { id: rosterId },
-      data: {
-        title: params.title,
-        frequency: params.frequency,
-        startDate: params.startDate ? new Date(params.startDate) : undefined,
-        endDate: params.endDate === null ? null : params.endDate ? new Date(params.endDate) : undefined,
-        isActive: params.isActive,
-        reminderEnabled: params.reminderEnabled
+      include: { assignments: { select: { teacherId: true, dutyDate: true, role: true, notes: true } } },
+    });
+    if (!existing) throw new ApiError(404, 'Duty roster not found');
+    if (actor && !actor.canManageAll && existing.createdById !== actor.userId) {
+      throw new ApiError(403, 'You can only edit duty rosters you created');
+    }
+    const nextStart = params.startDate ?? existing.startDate;
+    const nextEnd = params.endDate === undefined ? existing.endDate : params.endDate;
+    const assignments = params.assignments;
+    validateRosterDates(nextStart, nextEnd, assignments ?? existing.assignments);
+
+    await prisma.$transaction(async (tx) => {
+      await tx.dutyRoster.update({
+        where: { id: rosterId },
+        data: {
+          title: params.title,
+          frequency: params.frequency,
+          startDate: params.startDate ? new Date(params.startDate) : undefined,
+          endDate: params.endDate === null ? null : params.endDate ? new Date(params.endDate) : undefined,
+          isActive: params.isActive,
+          reminderEnabled: params.reminderEnabled
+        }
+      });
+
+      if (assignments) {
+        await tx.dutyNotificationLog.deleteMany({ where: { assignment: { rosterId } } });
+        await tx.dutyRosterAssignment.deleteMany({ where: { rosterId } });
+        if (assignments.length) {
+          await tx.dutyRosterAssignment.createMany({
+            data: assignments.map((assignment) => ({
+              rosterId,
+              teacherId: assignment.teacherId,
+              dutyDate: new Date(assignment.dutyDate),
+              role: assignment.role || null,
+              notes: assignment.notes || null
+            }))
+          });
+        }
       }
     });
-
-    if (params.assignments) {
-      await this.replaceAssignments(rosterId, params.assignments);
-    }
 
     return prisma.dutyRoster.findUnique({
       where: { id: rosterId },
@@ -137,29 +196,6 @@ export class DutyRosterService {
         OR: [{ role: UserRole.TEACHER }, { roles: { has: UserRole.TEACHER } }]
       },
       select: { id: true, firstName: true, lastName: true, email: true }
-    });
-  }
-
-  static async replaceAssignments(rosterId: string, assignments: AssignmentInput[]) {
-    await prisma.$transaction(async (tx) => {
-      await tx.dutyNotificationLog.deleteMany({
-        where: {
-          assignment: { rosterId }
-        }
-      });
-      await tx.dutyRosterAssignment.deleteMany({ where: { rosterId } });
-
-      if (!assignments.length) return;
-
-      await tx.dutyRosterAssignment.createMany({
-        data: assignments.map((a) => ({
-          rosterId,
-          teacherId: a.teacherId,
-          dutyDate: new Date(a.dutyDate),
-          role: a.role || null,
-          notes: a.notes || null
-        }))
-      });
     });
   }
 
