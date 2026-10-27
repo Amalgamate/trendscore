@@ -100,6 +100,16 @@ jobs:
           sudo docker logs "$backend" --since "$SINCE" --timestamps 2>&1 | tail -n "$LOG_LINES"
 
           echo ""
+          echo "## 6. Redis container status & logs"
+          redis_container="$(sudo docker ps -a --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=redis' --format '{{.Names}}' | head -n1)"
+          if [[ -n "$redis_container" ]]; then
+            sudo docker ps -a --filter "name=^${redis_container}$" --format 'table {{.Names}}\t{{.Status}}\t{{.RunningFor}}'
+            sudo docker logs "$redis_container" --tail 30 2>&1 || true
+          else
+            echo "No redis container found for project $project"
+          fi
+
+          echo ""
           echo "================================================================"
           echo "  END OF REPORT"
           echo "================================================================"
