@@ -170,6 +170,26 @@ function createAgentsStore(dataDir) {
         totalEarnedAll: Number(counts.total_earned_all || 0),
         totalBalanceDue: Number(counts.total_balance_due || 0),
         totalPayoutsDisbursed: Number(counts.total_payouts_disbursed || 0),
+        latestSchool: db.prepare(`
+          SELECT s.school_name, s.created_at, a.full_name, a.agent_code
+          FROM agent_schools s
+          JOIN agents a ON a.id = s.agent_id
+          ORDER BY s.created_at DESC
+          LIMIT 1
+        `).get() || null,
+        latestAgent: db.prepare(`
+          SELECT id, full_name, agent_code, status, created_at
+          FROM agents
+          ORDER BY created_at DESC
+          LIMIT 1
+        `).get() || null,
+        latestPayout: db.prepare(`
+          SELECT p.amount_ksh, p.created_at, p.status, a.full_name, a.agent_code
+          FROM agent_payouts p
+          JOIN agents a ON a.id = p.agent_id
+          ORDER BY p.created_at DESC
+          LIMIT 1
+        `).get() || null,
       };
     },
 
