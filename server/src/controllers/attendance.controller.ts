@@ -113,7 +113,14 @@ export class AttendanceController {
     const exemptClassId = (classId as string | undefined) ||
       (currentUserRole === 'TEACHER'
         ? (await prisma.class.findFirst({
-            where: { teacherId: currentUserId, active: true, archived: false },
+            where: {
+              active: true,
+              archived: false,
+              OR: [
+                { teacherId: currentUserId },
+                { teacherAssignments: { some: { teacherId: currentUserId } } },
+              ],
+            },
             select: { id: true },
             orderBy: { createdAt: 'asc' },
           }))?.id

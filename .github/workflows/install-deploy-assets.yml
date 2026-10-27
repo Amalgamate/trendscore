@@ -1,0 +1,36 @@
+name: Install School Deployment Assets
+
+# Updates the host-side deployment script/manifest without pulling application
+# images, running migrations, or restarting school services.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: install-school-deployment-assets
+  cancel-in-progress: false
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    environment: deploy-production-school
+    steps:
+      - name: Checkout deployment tooling
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Install updated host-side deployment assets
+        run: bash scripts/ci/sync-deploy-assets.sh
+
+      - name: Report
+        run: |
+          echo "## Deployment assets installed" >> "$GITHUB_STEP_SUMMARY"
+          echo "The backup guard is installed. This workflow does not run migrations, pull app images, or restart school services." >> "$GITHUB_STEP_SUMMARY"

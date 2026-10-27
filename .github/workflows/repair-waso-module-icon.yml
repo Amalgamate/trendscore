@@ -1,0 +1,77 @@
+name: Repair Waso module access schema
+
+# One-school repair for the missing school-context columns blocking module
+# settings. It validates a full database dump before applying additive DDL.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    name: Repair Waso module catalog schema
+    runs-on: ubuntu-latest
+    environment: deploy-production-school
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Back up and repair Waso
+        run: |
+          set -euo pipefail
+          ssh production 'bash -se' <<'REMOTE'
+          set -euo pipefail
+
+          manifest=/srv/zawadi/apps/deploy/instances.manifest.json
+          instance="$(sudo jq -c '.instances[] | select(.id == "waso-cs" and .active == true and .deployment_allowed == true)' "$manifest")"
+          [[ -n "$instance" ]] || { echo 'Active deployable Waso instance not found'; exit 1; }
+          project="$(jq -r '.compose_project' <<<"$instance")"
+          [[ "$project" == 'zawadi-waso-cs' ]] || { echo "Unexpected Waso compose project: $project"; exit 1; }
+
+          db="$(sudo docker ps --filter "label=com.docker.compose.project=$project" --filter 'label=com.docker.compose.service=db' --format '{{.Names}}' | head -n1)"
+          [[ -n "$db" ]] || { echo 'Waso database container is not running'; exit 1; }
+
+          timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
+          backup_dir="/srv/zawadi/backups/waso-cs/$timestamp"
+          backup_file="$backup_dir/database.sql"
+          sudo mkdir -p "$backup_dir"
+          echo "Creating Waso database backup at $backup_file"
+          sudo docker exec "$db" sh -lc 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' | sudo tee "$backup_file" >/dev/null
+          sudo test -s "$backup_file"
+          sudo head -n 5 "$backup_file" | grep -q 'PostgreSQL database dump'
+          echo 'Backup verified: non-empty PostgreSQL dump.'
+
+          before="$(sudo docker exec "$db" sh -lc 'psql -At -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT column_name FROM information_schema.columns WHERE table_schema = '\''public'\'' AND table_name = '\''schools'\'' AND column_name IN ('\''reportEngine'\'', '\''reportTemplateId'\'') ORDER BY column_name;"')"
+          echo "School report settings present before repair: ${before:-none}"
+
+          sudo docker exec -i "$db" sh -lc 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' <<'SQL'
+          DO $$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ReportEngine') THEN
+              CREATE TYPE "ReportEngine" AS ENUM ('LEGACY', 'NEW');
+            END IF;
+          END $$;
+
+          ALTER TABLE public.schools
+            ADD COLUMN IF NOT EXISTS "reportEngine" "ReportEngine" NOT NULL DEFAULT 'LEGACY',
+            ADD COLUMN IF NOT EXISTS "reportTemplateId" TEXT;
+          SQL
+
+          after="$(sudo docker exec "$db" sh -lc 'psql -At -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = '\''public'\'' AND table_name = '\''schools'\'' AND column_name IN ('\''reportEngine'\'', '\''reportTemplateId'\'');"')"
+          [[ "$after" == '2' ]] || { echo "Verification failed: expected 2 school columns, found $after"; exit 1; }
+          echo 'Verified: schools.reportEngine and schools.reportTemplateId exist. Existing school rows and values were preserved.'
+          echo "Backup retained at $backup_file"
+          REMOTE
+
+      - name: Report success
+        if: success()
+        run: echo 'Waso school-context columns repaired and verified; backup retained on the deployment server.' >> "$GITHUB_STEP_SUMMARY"

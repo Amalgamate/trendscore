@@ -1,0 +1,54 @@
+name: Audit All School Databases
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audit-all-school-databases
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    environment: deploy-production-school
+    steps:
+      - name: Checkout audit tooling
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Upload read-only audit tools
+        run: |
+          set -euo pipefail
+          scp scripts/ci/audit-school-db.cjs scripts/ci/run-school-db-audit.remote.sh production:/tmp/
+
+      - name: Audit every active school database
+        id: audit
+        run: |
+          set +e
+          ssh production "AUDIT_RUN_ID='${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}' bash /tmp/run-school-db-audit.remote.sh" > school-db-audit.jsonl 2>&1
+          status=$?
+          set -e
+          cat school-db-audit.jsonl
+          exit "$status"
+
+      - name: Write detailed report
+        if: always()
+        run: node scripts/ci/summarize-school-db-audit.cjs school-db-audit.jsonl >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload JSON audit report
+        if: always() && hashFiles('school-db-audit.jsonl') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: school-db-health-audit-${{ github.run_id }}
+          path: school-db-audit.jsonl
+          if-no-files-found: warn
+          retention-days: 30
