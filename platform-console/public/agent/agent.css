@@ -1983,57 +1983,41 @@ body {
 
 /* ── Desktop Web App (>= 1024px) ────────────────────────────────────────── */
 @media (min-width: 1024px) {
-  /* Full-page Desktop Auth Layout */
+  /* Full-page Desktop Auth Layout — centered card on teal */
   .login-view {
     padding: 0;
-    align-items: stretch;
-    justify-content: stretch;
     background: #042f2e;
-    overflow-x: hidden;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
   }
 
   .auth-desktop-wrapper {
-    max-width: 100%;
     width: 100vw;
     min-height: 100vh;
-    border-radius: 0;
-    border: none;
-    box-shadow: none;
-    margin: 0;
     display: flex;
-    flex-direction: row;
-  }
-
-  .auth-hero-pane {
-    flex: 1.25;
-    min-height: 100vh;
-    padding: 60px 72px;
-    background-color: #042f2e;
-    background-image: url("data:image/svg+xml,%3Csvg width='48' height='48' viewBox='0 0 48 48' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0h48v48H0V0zm1 1h46v46H1V1z' fill='%230f766e' fill-opacity='0.16'/%3E%3C/svg%3E");
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
+    align-items: center;
+    justify-content: center;
   }
 
   .login-card {
-    flex: 1;
-    min-width: 480px;
-    max-width: 580px;
-    min-height: 100vh;
-    padding: 48px 56px;
+    width: 480px;
+    min-width: 420px;
+    max-width: 500px;
+    padding: 48px 52px;
     background: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.28), 0 4px 16px rgba(0, 0, 0, 0.12);
+    border: none;
     display: flex;
     flex-direction: column;
     justify-content: center;
-    align-items: center;
-    border: none;
-    border-left: 1px solid var(--border-color);
-    box-shadow: -10px 0 40px rgba(0, 0, 0, 0.08);
   }
 
   .login-card-inner {
     width: 100%;
-    max-width: 420px;
   }
 
   .app-container,
