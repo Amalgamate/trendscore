@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="manifest" href="/agent/manifest.json">
-  <link rel="stylesheet" href="/agent/agent.css?v=20261027c">
+  <link rel="stylesheet" href="/agent/agent.css?v=20261027d">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='10' fill='%230f766e'/><text x='50' y='67' font-size='48' font-weight='900' fill='%23f97316' text-anchor='middle' font-family='sans-serif'>TS</text></svg>">
 </head>
 <body>
@@ -27,9 +27,9 @@
   </div>
 
   <!-- ── 1. LOGIN & SELF-REGISTRATION VIEW (standalone full-screen) ─── -->
+  <!-- ── 1A. SIGN IN VIEW (standalone centered card on teal) ─── -->
   <div id="viewLogin" class="login-view">
       <div class="auth-desktop-wrapper">
-        <!-- Centered Form Pane -->
         <div class="login-card">
           <div class="login-card-inner">
             <div class="login-header">
@@ -40,53 +40,108 @@
               <p id="authSubheading">Access your school portfolio, commissions, and marketplace</p>
             </div>
 
-          <!-- Auth Switcher Tabs -->
-          <div class="auth-tab-switch">
-            <button type="button" id="tabBtnLogin" class="auth-tab-btn active" onclick="switchAuthTab('login')">
-              Sign In
-            </button>
-            <button type="button" id="tabBtnRegister" class="auth-tab-btn" onclick="switchAuthTab('register')">
-              Self-Register
-            </button>
-          </div>
-
-          <!-- 1A. SIGN IN FORM -->
-          <form id="formLogin" onsubmit="handleLogin(event)">
-            <div class="form-group">
-              <label class="form-label" for="loginPhone">Phone Number</label>
-              <input type="tel" id="loginPhone" class="form-input" placeholder="e.g. 0712345678" required autocomplete="tel">
+            <!-- Auth Switcher Tabs -->
+            <div class="auth-tab-switch">
+              <button type="button" id="tabBtnLogin" class="auth-tab-btn active" onclick="showAuthView('login')">
+                Sign In
+              </button>
+              <button type="button" id="tabBtnRegister" class="auth-tab-btn" onclick="showAuthView('register')">
+                Self-Register
+              </button>
             </div>
 
-            <div class="form-group">
-              <label class="form-label" for="loginPin">4-Digit Security PIN</label>
-              <input type="password" id="loginPin" class="form-input" placeholder="••••" maxlength="6" inputmode="numeric" required autocomplete="current-password">
-            </div>
-
-            <button type="submit" id="btnLogin" class="submit-btn login-btn-accent" style="margin-top: 14px;">
-              <span>Sign In to Portal</span>
-            </button>
-
-            <div class="auth-switch-prompt">
-              <span>New field agent?</span>
-              <a href="javascript:void(0)" onclick="switchAuthTab('register')">Register for an account →</a>
-            </div>
-          </form>
-
-          <!-- 1B. SELF-REGISTRATION FORM -->
-          <form id="formRegister" onsubmit="handleRegister(event)" style="display: none;">
-            <div class="form-group">
-              <label class="form-label" for="regFullName">Full Legal Name *</label>
-              <input type="text" id="regFullName" class="form-input" placeholder="e.g. Joe Doe" required autocomplete="name">
-            </div>
-
-            <div class="form-row-2">
+            <!-- SIGN IN FORM -->
+            <form id="formLogin" onsubmit="handleLogin(event)">
               <div class="form-group">
-                <label class="form-label" for="regPhone">Mobile Phone *</label>
-                <input type="tel" id="regPhone" class="form-input" placeholder="07... or 01..." required autocomplete="tel">
+                <label class="form-label" for="loginPhone">Phone Number</label>
+                <input type="tel" id="loginPhone" class="form-input" placeholder="e.g. 0712345678" required autocomplete="tel">
               </div>
 
               <div class="form-group">
-                <label class="form-label" for="regCounty">County *</label>
+                <label class="form-label" for="loginPin">4-Digit Security PIN</label>
+                <input type="password" id="loginPin" class="form-input" placeholder="••••" maxlength="6" inputmode="numeric" required autocomplete="current-password">
+              </div>
+
+              <button type="submit" id="btnLogin" class="submit-btn login-btn-accent" style="margin-top: 14px;">
+                <span>Sign In to Portal</span>
+              </button>
+
+              <div class="auth-switch-prompt">
+                <span>New field agent?</span>
+                <a href="javascript:void(0)" onclick="showAuthView('register')">Register for an account →</a>
+              </div>
+            </form>
+
+            <p style="text-align: center; font-size: 11px; color: var(--text-subtle); margin-top: 20px;">
+              TrendSCORE CBC Systems · For authorized agents only.
+            </p>
+          </div><!-- end .login-card-inner -->
+        </div>
+      </div>
+  </div><!-- end #viewLogin -->
+
+  <!-- ── 1B. FULL PAGE AGENT SELF-REGISTRATION VIEW ─── -->
+  <div id="viewRegister" class="register-view" style="display: none;">
+    <div class="register-page-container">
+      <div class="register-topbar">
+        <a href="javascript:void(0)" onclick="showAuthView('login')" class="register-back-link">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+          <span>Back to Sign In</span>
+        </a>
+        <span class="register-badge">OFFICIAL AGENTS NETWORK</span>
+      </div>
+
+      <div class="register-card">
+        <div class="register-header">
+          <div class="login-logo-container">
+            <img src="/agent/trendscore-logo.png" alt="TrendSCORE" class="login-logo-img">
+          </div>
+          <h2 class="register-title">Field Agent Self-Registration</h2>
+          <p class="register-desc">Join Kenya's CBC school analytics network across all 47 counties. Earn 10% recurring commission on onboarding and school subscription renewals.</p>
+        </div>
+
+        <form id="formRegister" onsubmit="handleRegister(event)" class="register-form">
+          <!-- Step 1: Personal Info -->
+          <div class="register-section">
+            <div class="register-section-header">
+              <span class="section-step-num">1</span>
+              <div>
+                <h3 class="section-step-title">Representative Details</h3>
+                <p class="section-step-sub">Your legal name and primary phone number used for portal login</p>
+              </div>
+            </div>
+
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label class="form-label" for="regFullName">Full Legal Name *</label>
+                <input type="text" id="regFullName" class="form-input" placeholder="e.g. Joe Doe" required autocomplete="name">
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="regPhone">Mobile Phone (Login) *</label>
+                <input type="tel" id="regPhone" class="form-input" placeholder="07... or 01..." required autocomplete="tel">
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="regEmail">Email Address (Optional)</label>
+              <input type="email" id="regEmail" class="form-input" placeholder="agent@email.com" autocomplete="email">
+            </div>
+          </div>
+
+          <!-- Step 2: Location & Payout -->
+          <div class="register-section">
+            <div class="register-section-header">
+              <span class="section-step-num">2</span>
+              <div>
+                <h3 class="section-step-title">Operating Territory &amp; Payout</h3>
+                <p class="section-step-sub">Your assigned county and M-Pesa line for instant commission cashouts</p>
+              </div>
+            </div>
+
+            <div class="form-grid-3">
+              <div class="form-group">
+                <label class="form-label" for="regCounty">Primary County *</label>
                 <select id="regCounty" class="form-select" required>
                   <option value="">Select County...</option>
                   <option value="Nairobi">Nairobi</option>
@@ -123,54 +178,66 @@
                   <option value="Other">Other County</option>
                 </select>
               </div>
-            </div>
 
-            <div class="form-row-2">
               <div class="form-group">
-                <label class="form-label" for="regBaseLocation">Base Location / Town</label>
-                <input type="text" id="regBaseLocation" class="form-input" placeholder="e.g. Town or Area">
+                <label class="form-label" for="regBaseLocation">Base Town / Operating Center</label>
+                <input type="text" id="regBaseLocation" class="form-input" placeholder="e.g. Nakuru Town, Westlands">
               </div>
 
               <div class="form-group">
-                <label class="form-label" for="regMpesa">M-Pesa Number</label>
+                <label class="form-label" for="regMpesa">M-Pesa Number for Payouts</label>
                 <input type="tel" id="regMpesa" class="form-input" placeholder="Same as phone if blank">
               </div>
             </div>
+          </div>
 
-            <div class="form-group">
-              <label class="form-label" for="regEmail">Email Address (Optional)</label>
-              <input type="email" id="regEmail" class="form-input" placeholder="agent@email.com" autocomplete="email">
+          <!-- Step 3: Security PIN -->
+          <div class="register-section">
+            <div class="register-section-header">
+              <span class="section-step-num">3</span>
+              <div>
+                <h3 class="section-step-title">Account Security PIN</h3>
+                <p class="section-step-sub">Create a 4-digit numeric PIN for logging into your agent portal</p>
+              </div>
             </div>
 
-            <div class="form-row-2">
+            <div class="form-grid-2">
               <div class="form-group">
                 <label class="form-label" for="regPin">Create 4-Digit PIN *</label>
                 <input type="password" id="regPin" class="form-input" placeholder="••••" maxlength="4" inputmode="numeric" required autocomplete="new-password">
               </div>
 
               <div class="form-group">
-                <label class="form-label" for="regPinConfirm">Confirm PIN *</label>
+                <label class="form-label" for="regPinConfirm">Confirm 4-Digit PIN *</label>
                 <input type="password" id="regPinConfirm" class="form-input" placeholder="••••" maxlength="4" inputmode="numeric" required autocomplete="new-password">
               </div>
             </div>
+          </div>
 
-            <button type="submit" id="btnRegister" class="submit-btn login-btn-accent" style="margin-top: 14px;">
-              <span>Create Account &amp; Start Earning</span>
-            </button>
+          <!-- Agent Perks Strip -->
+          <div class="register-perks-strip">
+            <div class="perk-pill">✓ 10% Recurring Commission</div>
+            <div class="perk-pill">✓ Instant M-Pesa Disbursals</div>
+            <div class="perk-pill">✓ Real-time Pipeline Tracker</div>
+            <div class="perk-pill">✓ CBC Digital Marketplace</div>
+          </div>
 
-            <div class="auth-switch-prompt">
-              <span>Already registered?</span>
-              <a href="javascript:void(0)" onclick="switchAuthTab('login')">Sign in here →</a>
-            </div>
-          </form>
+          <button type="submit" id="btnRegister" class="submit-btn register-submit-btn">
+            <span>Submit Application &amp; Create Agent Account</span>
+          </button>
 
-          <p style="text-align: center; font-size: 11px; color: var(--text-subtle); margin-top: 20px;">
-            TrendSCORE CBC Systems · For authorized agents only.
-          </p>
-          </div><!-- end .login-card-inner -->
-        </div>
+          <div class="auth-switch-prompt" style="margin-top: 18px;">
+            <span>Already registered as a field agent?</span>
+            <a href="javascript:void(0)" onclick="showAuthView('login')">Sign in here →</a>
+          </div>
+        </form>
+
+        <p style="text-align: center; font-size: 11px; color: var(--text-subtle); margin-top: 24px;">
+          TrendSCORE CBC Systems · Terms &amp; Conditions apply for official partner network.
+        </p>
       </div>
-  </div><!-- end #viewLogin -->
+    </div>
+  </div><!-- end #viewRegister -->
 
   <!-- Toast Notification Container -->
   <div id="toastNotice" class="toast-notice"></div>
@@ -810,6 +877,6 @@
   </div><!-- end #viewApp -->
 
 
-  <script src="/agent/agent.js?v=20261027c"></script>
+  <script src="/agent/agent.js?v=20261027d"></script>
 </body>
 </html>
