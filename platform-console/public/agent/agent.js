@@ -59,15 +59,51 @@ async function api(path, options = {}) {
 }
 
 // ── View Management ───────────────────────────────────────────────────────
+function showAuthView(view = 'login') {
+  const viewLogin = document.getElementById('viewLogin');
+  const viewRegister = document.getElementById('viewRegister');
+  const viewApp = document.getElementById('viewApp');
+  if (viewApp) viewApp.style.display = 'none';
+
+  const tabBtnLogin = document.getElementById('tabBtnLogin');
+  const tabBtnRegister = document.getElementById('tabBtnRegister');
+
+  if (view === 'register') {
+    if (viewLogin) viewLogin.style.display = 'none';
+    if (viewRegister) viewRegister.style.display = 'block';
+    if (tabBtnLogin) tabBtnLogin.classList.remove('active');
+    if (tabBtnRegister) tabBtnRegister.classList.add('active');
+    if (window.location.hash !== '#register') {
+      window.history.replaceState(null, '', '#register');
+    }
+  } else {
+    if (viewRegister) viewRegister.style.display = 'none';
+    if (viewLogin) viewLogin.style.display = 'flex';
+    if (tabBtnLogin) tabBtnLogin.classList.add('active');
+    if (tabBtnRegister) tabBtnRegister.classList.remove('active');
+    if (window.location.hash !== '#login' && window.location.hash !== '') {
+      window.history.replaceState(null, '', '#login');
+    }
+  }
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
 function showLoginView() {
-  document.getElementById('viewLogin').style.display = 'flex';
-  document.getElementById('viewApp').style.display = 'none';
+  if (window.location.hash === '#register') {
+    showAuthView('register');
+  } else {
+    showAuthView('login');
+  }
   currentAgent = null;
 }
 
 function showAppView() {
-  document.getElementById('viewLogin').style.display = 'none';
-  document.getElementById('viewApp').style.display = 'flex';
+  const viewLogin = document.getElementById('viewLogin');
+  const viewRegister = document.getElementById('viewRegister');
+  if (viewLogin) viewLogin.style.display = 'none';
+  if (viewRegister) viewRegister.style.display = 'none';
+  const viewApp = document.getElementById('viewApp');
+  if (viewApp) viewApp.style.display = 'flex';
   // Ensure pending screen is hidden by default until renderAgent decides
   const pending = document.getElementById('viewPending');
   if (pending) pending.style.display = 'none';
@@ -116,31 +152,12 @@ function switchTab(tab) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-
 // ── Authentication ────────────────────────────────────────────────────────
 function switchAuthTab(tab) {
-  const isLogin = tab === 'login';
-  const tabBtnLogin = document.getElementById('tabBtnLogin');
-  const tabBtnRegister = document.getElementById('tabBtnRegister');
-  const formLogin = document.getElementById('formLogin');
-  const formRegister = document.getElementById('formRegister');
-  const authHeading = document.getElementById('authHeading');
-  const authSubheading = document.getElementById('authSubheading');
-
-  if (tabBtnLogin) tabBtnLogin.classList.toggle('active', isLogin);
-  if (tabBtnRegister) tabBtnRegister.classList.toggle('active', !isLogin);
-  if (formLogin) formLogin.style.display = isLogin ? 'block' : 'none';
-  if (formRegister) formRegister.style.display = !isLogin ? 'block' : 'none';
-
-  if (authHeading) {
-    authHeading.textContent = isLogin ? 'Agents Portal' : 'Join Agents Network';
-  }
-  if (authSubheading) {
-    authSubheading.textContent = isLogin 
-      ? 'Access your school portfolio, commissions, and marketplace'
-      : 'Self-register to start onboarding schools and earning 10% commission';
-  }
+  showAuthView(tab);
 }
+window.showAuthView = showAuthView;
+window.switchAuthTab = switchAuthTab;
 
 async function handleLogin(e) {
   e.preventDefault();
