@@ -41,7 +41,7 @@ jobs:
           set -euo pipefail
           mkdir -p platform-console/deploy
           mkdir -p platform-console/scripts
-          cp scripts/deploy-release.sh platform-console/deploy/deploy-release.sh
+          cp deploy/deploy-release.sh platform-console/deploy/deploy-release.sh
           cp scripts/provision-instance.sh platform-console/scripts/provision-instance.sh
           cp deploy/instances.manifest.json platform-console/deploy/instances.manifest.json
           cp public/favicon-32x32.png platform-console/public/favicon-32x32.png
@@ -113,5 +113,5 @@ jobs:
           IMAGE_TAG: sha-${{ needs.build.outputs.commit_sha }}
         run: |
           set -euo pipefail
-          scp scripts/deploy-release.sh production:/tmp/trendscore-console-deploy-release.sh
+          scp deploy/deploy-release.sh production:/tmp/trendscore-console-deploy-release.sh
           ssh production "DEPLOY_CONSOLE_ONLY=true IMAGE_TAG='${IMAGE_TAG}' MANIFEST_PATH=/srv/zawadi/apps/deploy/instances.manifest.json bash /tmp/trendscore-console-deploy-release.sh"
