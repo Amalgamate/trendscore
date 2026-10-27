@@ -737,12 +737,7 @@ run_migrations() {
           done
           echo "  [baseline] marked ${count} migrations as applied"
         else
-          echo "  [baseline] fresh empty DB - skipping baseline, migrate deploy will build schema from scratch"
-          # Skip directly to migrate deploy; all repair steps and SKIP handling
-          # are irrelevant on an empty schema.
-          npx prisma migrate deploy
-          echo "[migrate] done (fresh DB path)"
-          exit 0
+          echo "  [baseline] no baseline needed - proceeding to repairs and migrations"
         fi
       fi
 
