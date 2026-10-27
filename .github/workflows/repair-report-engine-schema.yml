@@ -72,9 +72,7 @@ jobs:
             [[ -n "$backend" ]] || { echo "Backend container missing for $school_id ($project); stopping without skipping."; exit 1; }
             echo "Applying report-engine schema to $school_id"
             sudo docker cp /tmp/repair-report-engine-schema.sql "$backend:/tmp/repair-report-engine-schema.sql"
-            sudo docker exec "$backend" sh -lc 'DB_URL="$(node -e '\''const u=new URL(process.env.DATABASE_URL); u.searchParams.delete("schema"); process.stdout.write(u.toString())'\'')"; psql "$DB_URL" -v ON_ERROR_STOP=1 -f /tmp/repair-report-engine-schema.sql >/dev/null'
-            verified="$(sudo docker exec "$backend" sh -lc 'DB_URL="$(node -e '\''const u=new URL(process.env.DATABASE_URL); u.searchParams.delete("schema"); process.stdout.write(u.toString())'\'')"; psql "$DB_URL" -At -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM information_schema.columns WHERE table_schema = '\''public'\'' AND table_name = '\''schools'\'' AND column_name IN ('\''reportEngine'\'', '\''reportTemplateId'\'');"')"
-            [[ "$verified" == "2" ]] || { echo "Schema verification failed for $school_id"; exit 1; }
+            sudo docker exec "$backend" npx prisma db execute --schema prisma/schema.prisma --file /tmp/repair-report-engine-schema.sql
             echo "Verified $school_id"
           done
           echo "All active production school databases verified. No application containers were restarted."

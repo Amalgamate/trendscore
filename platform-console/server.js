@@ -1790,6 +1790,30 @@ app.delete('/api/agents/:id', requireAuth, requireRole('super_admin'), (req, res
   }
 });
 
+app.post('/api/agents/:id/approve', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  try {
+    const existing = agentsStore.getAgent(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Agent not found' });
+    const agent = agentsStore.updateAgent(req.params.id, { ...existing, status: 'active' });
+    pushAudit('AGENT_APPROVE', agent.agent_code, req.user.email, `Approved self-registered agent ${agent.full_name} (${agent.agent_code})`, 'Success');
+    return res.json({ ok: true, agent });
+  } catch (err) {
+    return res.status(400).json({ error: err.message || 'Failed to approve agent' });
+  }
+});
+
+app.post('/api/agents/:id/reject', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  try {
+    const existing = agentsStore.getAgent(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Agent not found' });
+    const agent = agentsStore.updateAgent(req.params.id, { ...existing, status: 'inactive' });
+    pushAudit('AGENT_REJECT', agent.agent_code, req.user.email, `Rejected self-registered agent ${agent.full_name} (${agent.agent_code})`, 'Warning');
+    return res.json({ ok: true, agent });
+  } catch (err) {
+    return res.status(400).json({ error: err.message || 'Failed to reject agent' });
+  }
+});
+
 app.post('/api/agents/:id/schools', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
   try {
     const school = agentsStore.addSchool(req.params.id, req.body || {});
@@ -1883,6 +1907,69 @@ function requireAgentAuth(req, res, next) {
     return res.status(401).json({ ok: false, error: 'Session expired, please sign in again' });
   }
 }
+
+app.post('/api/agent/register', (req, res) => {
+  const { full_name, phone, pin, email, county, base_location, mpesa_number } = req.body || {};
+  const cleanName = String(full_name || '').trim();
+  const cleanPhone = String(phone || '').replace(/[\s\-_]/g, '').trim();
+  const cleanPin = String(pin || '').trim();
+
+  if (!cleanName || cleanName.length < 2) {
+    return res.status(400).json({ ok: false, error: 'Full name is required (minimum 2 characters)' });
+  }
+  if (!cleanPhone || cleanPhone.length < 9) {
+    return res.status(400).json({ ok: false, error: 'A valid Kenyan phone number is required (e.g. 07... or 01...)' });
+  }
+  if (!/^\d{4}$/.test(cleanPin)) {
+    return res.status(400).json({ ok: false, error: 'Security PIN must be exactly 4 digits' });
+  }
+
+  try {
+    const existing = agentsStore.getAgentByPhone(cleanPhone);
+    if (existing) {
+      return res.status(409).json({
+        ok: false,
+        error: 'An agent with this phone number is already registered. Please sign in or use another number.'
+      });
+    }
+
+    const cleanMpesa = String(mpesa_number || cleanPhone).replace(/[\s\-_]/g, '').trim();
+    const agent = agentsStore.createAgent({
+      full_name: cleanName,
+      phone: cleanPhone,
+      email: String(email || '').trim().toLowerCase(),
+      county: String(county || '').trim(),
+      base_location: String(base_location || '').trim(),
+      mpesa_number: cleanMpesa,
+      pin: cleanPin,
+      status: 'pending',
+      commission_type: 'percentage',
+      commission_rate: 10.0,
+      notes: 'Self-registered via Field Agent Web Portal',
+    });
+
+    const token = jwt.sign(
+      { agentId: agent.id, agentCode: agent.agent_code, phone: agent.phone, role: 'field_agent' },
+      JWT_SECRET,
+      { expiresIn: '30d' }
+    );
+    res.cookie(AGENT_COOKIE_NAME, token, {
+      httpOnly: true,
+      secure: COOKIE_SECURE,
+      sameSite: 'lax',
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+    });
+    pushAudit('AGENT_SELF_REGISTER', agent.id, agent.phone, `Agent ${agent.full_name} (${agent.agent_code}) self-registered via Web Portal`, 'Success');
+    return res.status(201).json({
+      ok: true,
+      token,
+      agent,
+      message: 'Account created successfully! Welcome to TrendSCORE Field Agents.'
+    });
+  } catch (err) {
+    return res.status(400).json({ ok: false, error: err.message || 'Registration failed' });
+  }
+});
 
 app.post('/api/agent/login', (req, res) => {
   const { phone, pin } = req.body || {};
@@ -2959,6 +3046,10 @@ app.put('/api/billing/contracts/:id', requireAuth, requireRole('super_admin'), (
   } catch (error) {
     return res.status(400).json({ error: error.message });
   }
+});
+
+app.get('/health', (_req, res) => {
+  res.json({ ok: true, status: 'healthy', version: APP_VERSION });
 });
 
 // Only the public/ dir is served statically — server.js, auth-config.js, .env,

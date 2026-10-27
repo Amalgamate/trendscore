@@ -21,187 +21,462 @@
 
   <div class="app-container">
 
-    <!-- ── 1. LOGIN VIEW ─────────────────────────────────────────────────── -->
+    <!-- ── 1. LOGIN & SELF-REGISTRATION VIEW ────────────────────────────── -->
     <div id="viewLogin" class="login-view">
-      <div class="login-card">
-        <div class="login-header">
-          <div class="login-brand-banner">
-            <span class="brand-teal">Trend</span><span class="brand-orange">SCORE</span>
+      <div class="auth-desktop-wrapper">
+        <!-- Desktop Left Branding Hero (visible on tablets/laptops) -->
+        <div class="auth-hero-pane">
+          <div class="auth-hero-content">
+            <div class="auth-hero-badge">OFFICIAL FIELD AGENT NETWORK</div>
+            <h1 class="auth-hero-title">
+              <span class="brand-teal">Trend</span><span class="brand-orange">SCORE</span>
+            </h1>
+            <p class="auth-hero-subtitle">Where Analytics Meets Pathways</p>
+            <p class="auth-hero-desc">
+              Powering Kenya's Competency-Based Curriculum (CBC) assessment, school fees, and analytics ecosystem across all 47 counties.
+            </p>
+
+            <div class="auth-features-list">
+              <div class="auth-feature-item">
+                <div class="auth-feature-icon">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                </div>
+                <div class="auth-feature-text">
+                  <strong>10% Recurring Commission</strong>
+                  <span>Auto-credited on school onboarding and recurring subscription renewals</span>
+                </div>
+              </div>
+              <div class="auth-feature-item">
+                <div class="auth-feature-icon">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                </div>
+                <div class="auth-feature-text">
+                  <strong>Instant M-Pesa Disbursals</strong>
+                  <span>Cash out your earned commissions in real time to your Safaricom phone</span>
+                </div>
+              </div>
+              <div class="auth-feature-item">
+                <div class="auth-feature-icon">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+                </div>
+                <div class="auth-feature-text">
+                  <strong>Pipeline &amp; Lead Tracker</strong>
+                  <span>Register prospective schools on-the-go and track progress to closing</span>
+                </div>
+              </div>
+              <div class="auth-feature-item">
+                <div class="auth-feature-icon">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+                </div>
+                <div class="auth-feature-text">
+                  <strong>CBC Digital Marketplace</strong>
+                  <span>Publish and earn 70% royalties from Schemes of Work and KNEC exam prep</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="auth-hero-footer">
+              <span>Trusted by 17+ leading Kenyan academies and growing daily</span>
+            </div>
           </div>
-          <div style="font-size: 11px; font-weight: 700; color: var(--orange-600); letter-spacing: 0.5px;">Where Analytics Meets Pathways</div>
-          <h2>Field Agent Portal</h2>
-          <p>Sign in with your phone number and security PIN</p>
         </div>
 
-        <form id="formLogin" onsubmit="handleLogin(event)">
-          <div class="form-group">
-            <label class="form-label" for="loginPhone">Phone Number</label>
-            <input type="tel" id="loginPhone" class="form-input" placeholder="e.g. 0712345678" required autocomplete="tel">
+        <!-- Right / Mobile Form Pane -->
+        <div class="login-card">
+          <div class="login-header">
+            <div class="login-brand-banner">
+              <span class="brand-teal">Trend</span><span class="brand-orange">SCORE</span>
+            </div>
+            <div style="font-size: 11px; font-weight: 700; color: var(--orange-600); letter-spacing: 0.5px;">Where Analytics Meets Pathways</div>
+            <h2 id="authHeading">Field Agent Portal</h2>
+            <p id="authSubheading">Access your school portfolio, commissions, and marketplace</p>
           </div>
 
-          <div class="form-group">
-            <label class="form-label" for="loginPin">4-Digit Security PIN</label>
-            <input type="password" id="loginPin" class="form-input" placeholder="••••" maxlength="6" inputmode="numeric" required autocomplete="current-password">
+          <!-- Auth Switcher Tabs -->
+          <div class="auth-tab-switch">
+            <button type="button" id="tabBtnLogin" class="auth-tab-btn active" onclick="switchAuthTab('login')">
+              Sign In
+            </button>
+            <button type="button" id="tabBtnRegister" class="auth-tab-btn" onclick="switchAuthTab('register')">
+              Self-Register
+            </button>
           </div>
 
-          <button type="submit" id="btnLogin" class="submit-btn login-btn-accent" style="margin-top: 14px;">
-            <span>Sign In to Portal</span>
-          </button>
-        </form>
+          <!-- 1A. SIGN IN FORM -->
+          <form id="formLogin" onsubmit="handleLogin(event)">
+            <div class="form-group">
+              <label class="form-label" for="loginPhone">Phone Number</label>
+              <input type="tel" id="loginPhone" class="form-input" placeholder="e.g. 0712345678" required autocomplete="tel">
+            </div>
 
-        <p style="text-align: center; font-size: 11px; color: var(--text-subtle); margin-top: 24px;">
-          TrendSCORE CBC Systems · For authorized field representatives only.
-        </p>
+            <div class="form-group">
+              <label class="form-label" for="loginPin">4-Digit Security PIN</label>
+              <input type="password" id="loginPin" class="form-input" placeholder="••••" maxlength="6" inputmode="numeric" required autocomplete="current-password">
+            </div>
+
+            <button type="submit" id="btnLogin" class="submit-btn login-btn-accent" style="margin-top: 14px;">
+              <span>Sign In to Portal</span>
+            </button>
+
+            <div class="auth-switch-prompt">
+              <span>New field agent?</span>
+              <a href="javascript:void(0)" onclick="switchAuthTab('register')">Register for an account →</a>
+            </div>
+          </form>
+
+          <!-- 1B. SELF-REGISTRATION FORM -->
+          <form id="formRegister" onsubmit="handleRegister(event)" style="display: none;">
+            <div class="form-group">
+              <label class="form-label" for="regFullName">Full Legal Name *</label>
+              <input type="text" id="regFullName" class="form-input" placeholder="e.g. Grace Wambui Kariuki" required autocomplete="name">
+            </div>
+
+            <div class="form-row-2">
+              <div class="form-group">
+                <label class="form-label" for="regPhone">Mobile Phone *</label>
+                <input type="tel" id="regPhone" class="form-input" placeholder="07... or 01..." required autocomplete="tel">
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="regCounty">County *</label>
+                <select id="regCounty" class="form-select" required>
+                  <option value="">Select County...</option>
+                  <option value="Nairobi">Nairobi</option>
+                  <option value="Kiambu">Kiambu</option>
+                  <option value="Machakos">Machakos</option>
+                  <option value="Nakuru">Nakuru</option>
+                  <option value="Mombasa">Mombasa</option>
+                  <option value="Kisumu">Kisumu</option>
+                  <option value="Uasin Gishu">Uasin Gishu (Eldoret)</option>
+                  <option value="Kajiado">Kajiado</option>
+                  <option value="Nyeri">Nyeri</option>
+                  <option value="Meru">Meru</option>
+                  <option value="Kakamega">Kakamega</option>
+                  <option value="Kilifi">Kilifi</option>
+                  <option value="Murang'a">Murang'a</option>
+                  <option value="Kisii">Kisii</option>
+                  <option value="Kericho">Kericho</option>
+                  <option value="Embu">Embu</option>
+                  <option value="Trans Nzoia">Trans Nzoia</option>
+                  <option value="Bungoma">Bungoma</option>
+                  <option value="Kitui">Kitui</option>
+                  <option value="Makueni">Makueni</option>
+                  <option value="Laikipia">Laikipia</option>
+                  <option value="Nyandarua">Nyandarua</option>
+                  <option value="Narok">Narok</option>
+                  <option value="Bomet">Bomet</option>
+                  <option value="Homa Bay">Homa Bay</option>
+                  <option value="Migori">Migori</option>
+                  <option value="Siaya">Siaya</option>
+                  <option value="Busia">Busia</option>
+                  <option value="Vihiga">Vihiga</option>
+                  <option value="Nandi">Nandi</option>
+                  <option value="Garissa">Garissa</option>
+                  <option value="Other">Other County</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-row-2">
+              <div class="form-group">
+                <label class="form-label" for="regBaseLocation">Base Location / Town</label>
+                <input type="text" id="regBaseLocation" class="form-input" placeholder="e.g. Ruiru, Westlands, Naivasha">
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="regMpesa">M-Pesa Number</label>
+                <input type="tel" id="regMpesa" class="form-input" placeholder="Same as phone if blank">
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="regEmail">Email Address (Optional)</label>
+              <input type="email" id="regEmail" class="form-input" placeholder="agent@example.com" autocomplete="email">
+            </div>
+
+            <div class="form-row-2">
+              <div class="form-group">
+                <label class="form-label" for="regPin">Create 4-Digit PIN *</label>
+                <input type="password" id="regPin" class="form-input" placeholder="••••" maxlength="4" inputmode="numeric" required autocomplete="new-password">
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="regPinConfirm">Confirm PIN *</label>
+                <input type="password" id="regPinConfirm" class="form-input" placeholder="••••" maxlength="4" inputmode="numeric" required autocomplete="new-password">
+              </div>
+            </div>
+
+            <button type="submit" id="btnRegister" class="submit-btn login-btn-accent" style="margin-top: 14px;">
+              <span>Create Account &amp; Start Earning</span>
+            </button>
+
+            <div class="auth-switch-prompt">
+              <span>Already registered?</span>
+              <a href="javascript:void(0)" onclick="switchAuthTab('login')">Sign in here →</a>
+            </div>
+          </form>
+
+          <p style="text-align: center; font-size: 11px; color: var(--text-subtle); margin-top: 20px;">
+            TrendSCORE CBC Systems · For authorized field representatives only.
+          </p>
+        </div>
       </div>
     </div>
 
     <!-- ── 2. AUTHENTICATED APP SHELL ───────────────────────────────────── -->
-    <div id="viewApp" style="display: none; flex-direction: column; min-height: 100vh;">
+    <div id="viewApp" class="app-shell-container" style="display: none;">
       
-      <!-- Top Sticky Bar -->
-      <header class="app-header">
-        <div class="brand-wrapper">
+      <!-- Desktop Left Sidebar (>= 1024px) -->
+      <aside class="desktop-sidebar" id="desktopSidebar">
+        <div class="sidebar-brand">
           <div class="brand-logo" title="TrendSCORE">
             <span class="logo-t">T</span><span class="logo-s">S</span>
           </div>
           <div class="brand-info">
             <div class="brand-header-title">
               <span class="brand-teal">Trend</span><span class="brand-orange">SCORE</span>
-              <span class="header-portal-tag">FIELD AGENT</span>
             </div>
+            <span class="sidebar-tag">FIELD AGENT PORTAL</span>
           </div>
         </div>
-        <div class="header-actions">
-          <button class="icon-btn notif-btn" onclick="openNotificationsModal()" title="Notifications" id="btnNotif">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-              <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-            </svg>
-            <span class="notif-badge hidden" id="notifBadge">0</span>
+
+        <nav class="sidebar-nav">
+          <button class="sidebar-nav-item active" id="navDesktopDashboard" onclick="switchTab('dashboard')">
+            <svg viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+            <span>Dashboard</span>
           </button>
 
-          <!-- Avatar & Dropdown (Profile + Logout) -->
-          <div class="avatar-dropdown-wrap" id="avatarDropdownWrap">
-            <button class="avatar-btn" id="btnAvatar" onclick="toggleAvatarDropdown(event)" aria-haspopup="true" aria-expanded="false" title="Account Menu">
-              <span id="headerAvatarInitials">TS</span>
+          <button class="sidebar-nav-item" id="navDesktopSchools" onclick="switchTab('schools')">
+            <svg viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+            <span>Schools Pipeline</span>
+            <span class="sidebar-badge" id="sidebarSchoolsCount">0</span>
+          </button>
+
+          <button class="sidebar-nav-item" id="navDesktopEarnings" onclick="switchTab('earnings')">
+            <svg viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <span>Commission Ledger</span>
+          </button>
+
+          <button class="sidebar-nav-item" id="navDesktopMarketplace" onclick="switchTab('marketplace')">
+            <svg viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+            <span>CBC Marketplace</span>
+          </button>
+
+          <button class="sidebar-nav-item" id="navDesktopProfile" onclick="switchTab('profile')">
+            <svg viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+            <span>Profile &amp; Settings</span>
+          </button>
+        </nav>
+
+        <div class="sidebar-action-wrap">
+          <button class="sidebar-action-btn" onclick="openRegisterSchoolModal()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            <span>+ Register School</span>
+          </button>
+        </div>
+
+        <div class="sidebar-agent-card">
+          <div class="sidebar-agent-avatar" id="sidebarAvatarInitials">TS</div>
+          <div class="sidebar-agent-meta">
+            <div class="sidebar-agent-name" id="sidebarAgentName">Field Representative</div>
+            <div class="sidebar-agent-sub">
+              <span class="agent-badge-pill" id="sidebarAgentCode">AGT</span>
+              <span class="sidebar-agent-bal" id="sidebarBalanceDue">KES 0</span>
+            </div>
+          </div>
+          <button class="sidebar-logout-btn" onclick="handleLogout()" title="Sign Out">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+          </button>
+        </div>
+      </aside>
+
+      <!-- App Main Content Layout -->
+      <div class="app-main-layout">
+        <!-- Top Header Bar -->
+        <header class="app-header">
+          <div class="brand-wrapper">
+            <div class="brand-logo" title="TrendSCORE">
+              <span class="logo-t">T</span><span class="logo-s">S</span>
+            </div>
+            <div class="brand-info">
+              <div class="brand-header-title">
+                <span class="brand-teal">Trend</span><span class="brand-orange">SCORE</span>
+                <span class="header-portal-tag">FIELD AGENT</span>
+              </div>
+            </div>
+          </div>
+          <div class="header-actions">
+            <!-- Desktop Quick Add School Button -->
+            <button class="desktop-header-action-btn" onclick="openRegisterSchoolModal()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              <span>Register School</span>
             </button>
-            
-            <div class="avatar-menu" id="avatarMenu" role="menu">
-              <div class="avatar-menu-header">
-                <div class="avatar-menu-name" id="menuAgentName">Field Representative</div>
-                <div class="avatar-menu-code">
-                  <span id="menuAgentCode" class="agent-badge-pill">AGT</span>
-                  <span id="menuAgentPhone" class="avatar-menu-phone">07...</span>
+
+            <button class="icon-btn notif-btn" onclick="openNotificationsModal()" title="Notifications" id="btnNotif">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+              </svg>
+              <span class="notif-badge hidden" id="notifBadge">0</span>
+            </button>
+
+            <!-- Avatar & Dropdown (Profile + Logout) -->
+            <div class="avatar-dropdown-wrap" id="avatarDropdownWrap">
+              <button class="avatar-btn" id="btnAvatar" onclick="toggleAvatarDropdown(event)" aria-haspopup="true" aria-expanded="false" title="Account Menu">
+                <span id="headerAvatarInitials">TS</span>
+              </button>
+              
+              <div class="avatar-menu" id="avatarMenu" role="menu">
+                <div class="avatar-menu-header">
+                  <div class="avatar-menu-name" id="menuAgentName">Field Representative</div>
+                  <div class="avatar-menu-code">
+                    <span id="menuAgentCode" class="agent-badge-pill">AGT</span>
+                    <span id="menuAgentPhone" class="avatar-menu-phone">07...</span>
+                  </div>
+                </div>
+
+                <div class="avatar-menu-divider"></div>
+
+                <button class="avatar-menu-item" onclick="onMenuSelectProfile()">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+                  <span>Profile &amp; Payout Settings</span>
+                </button>
+
+                <button class="avatar-menu-item" onclick="onMenuSelectEarnings()">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                  <span>Commission Statement</span>
+                </button>
+
+                <button class="avatar-menu-item" onclick="onMenuRefreshData()">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                  <span>Refresh Data</span>
+                </button>
+
+                <div class="avatar-menu-divider"></div>
+
+                <button class="avatar-menu-item logout-item" onclick="handleLogout()">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+                  <span>Log Out</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <!-- Main Dynamic View Container -->
+        <main class="main-content">
+          
+          <!-- Pending Approval Screen (shown when agent.status === 'pending') -->
+          <section id="viewPending" class="tab-page" style="display:none;">
+            <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;text-align:center;padding:32px 20px;gap:20px;">
+              <div style="width:72px;height:72px;border-radius:50%;background:rgba(217,119,6,.12);display:flex;align-items:center;justify-content:center;">
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/>
+                  <polyline points="12 6 12 12 16 14"/>
+                </svg>
+              </div>
+              <div>
+                <h2 style="margin:0 0 8px;font-size:22px;font-weight:800;color:var(--ink)">Application Under Review</h2>
+                <p style="margin:0 0 6px;color:var(--muted);font-size:14px;max-width:340px;line-height:1.6">
+                  Your Field Agent account has been created and is awaiting approval from the TrendSCORE team.
+                </p>
+                <p style="margin:0;color:var(--muted);font-size:13px;max-width:340px;line-height:1.5">
+                  You'll receive a notification once approved. This typically takes 24–48 hours on business days.
+                </p>
+              </div>
+              <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 20px;max-width:340px;width:100%;text-align:left;">
+                <div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.05em;margin-bottom:10px;">YOUR REGISTRATION DETAILS</div>
+                <div style="font-size:13px;font-weight:700;color:var(--ink);margin-bottom:4px;" id="pendingAgentName">—</div>
+                <div style="font-size:12px;color:var(--muted);" id="pendingAgentPhone">—</div>
+                <div style="font-size:12px;color:var(--muted);margin-top:2px;" id="pendingAgentCode">—</div>
+              </div>
+              <button class="btn" style="padding:10px 24px;font-size:13px;border-radius:8px;" onclick="handleLogout()">
+                Sign Out
+              </button>
+            </div>
+          </section>
+
+          <!-- Tab 1: Dashboard -->
+          <section id="tabDashboard" class="tab-page">
+            <!-- Hero Balance Card -->
+            <div class="balance-card">
+              <div class="balance-meta">
+                <div class="balance-meta-left">
+                  <span class="balance-dot"></span>
+                  <span class="balance-label">AVAILABLE COMMISSION</span>
+                </div>
+                <span class="balance-status-tag" id="dashStatusTag">10% Commission</span>
+              </div>
+              <div class="balance-amount-wrap">
+                <span class="balance-currency">KES</span>
+                <span id="dashBalanceDue" class="balance-amount-num">0</span>
+              </div>
+
+              <div class="balance-action-row">
+                <button class="withdraw-btn" onclick="openWithdrawModal()">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                  <span>Transfer to M-Pesa</span>
+                </button>
+              </div>
+
+              <div class="balance-details-row">
+                <div class="balance-col">
+                  <div class="balance-sub">LIFETIME COMMISSIONS</div>
+                  <div class="balance-sub-val teal-accent" id="dashTotalEarned">KES 0</div>
+                </div>
+                <div class="balance-col-divider"></div>
+                <div class="balance-col">
+                  <div class="balance-sub">DISBURSED PAYOUTS</div>
+                  <div class="balance-sub-val orange-accent" id="dashTotalPaid">KES 0</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Quick Actions (Mobile / Tablet) -->
+            <div class="quick-actions">
+              <div class="action-btn-card" onclick="openRegisterSchoolModal()">
+                <div class="action-icon orange">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                </div>
+                <div class="action-text">
+                  <h4>Register School</h4>
+                  <p>New prospective lead</p>
+                </div>
+              </div>
+              <div class="action-btn-card" onclick="switchTab('earnings')">
+                <div class="action-icon teal">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                </div>
+                <div class="action-text">
+                  <h4>Commission Ledger</h4>
+                  <p>Track earnings &amp; payouts</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Dashboard Split Layout (Side-by-side on desktop) -->
+            <div class="dash-grid-split">
+              <div class="dash-split-main">
+                <div class="section-header">
+                  <h3 class="section-title">My School Portfolio <span id="dashSchoolsCount" class="section-count">0</span></h3>
+                  <span class="section-link" onclick="switchTab('schools')">View All →</span>
+                </div>
+                <div id="dashSchoolsList" class="school-list">
+                  <!-- Injected via agent.js -->
                 </div>
               </div>
 
-              <div class="avatar-menu-divider"></div>
-
-              <button class="avatar-menu-item" onclick="onMenuSelectProfile()">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
-                <span>Profile &amp; Payout Settings</span>
-              </button>
-
-              <button class="avatar-menu-item" onclick="onMenuSelectEarnings()">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                <span>Commission Statement</span>
-              </button>
-
-              <button class="avatar-menu-item" onclick="onMenuRefreshData()">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
-                <span>Refresh Data</span>
-              </button>
-
-              <div class="avatar-menu-divider"></div>
-
-              <button class="avatar-menu-item logout-item" onclick="handleLogout()">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
-                <span>Log Out</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <!-- Main Dynamic View Container -->
-      <main class="main-content">
-        
-        <!-- Tab 1: Dashboard -->
-        <section id="tabDashboard" class="tab-page">
-          <!-- Hero Balance Card -->
-          <div class="balance-card">
-            <div class="balance-meta">
-              <div class="balance-meta-left">
-                <span class="balance-dot"></span>
-                <span class="balance-label">AVAILABLE COMMISSION</span>
-              </div>
-              <span class="balance-status-tag" id="dashStatusTag">10% Commission</span>
-            </div>
-            <div class="balance-amount-wrap">
-              <span class="balance-currency">KES</span>
-              <span id="dashBalanceDue" class="balance-amount-num">0</span>
-            </div>
-
-            <div class="balance-action-row">
-              <button class="withdraw-btn" onclick="openWithdrawModal()">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                <span>Transfer to M-Pesa</span>
-              </button>
-            </div>
-
-            <div class="balance-details-row">
-              <div class="balance-col">
-                <div class="balance-sub">LIFETIME COMMISSIONS</div>
-                <div class="balance-sub-val teal-accent" id="dashTotalEarned">KES 0</div>
-              </div>
-              <div class="balance-col-divider"></div>
-              <div class="balance-col">
-                <div class="balance-sub">DISBURSED PAYOUTS</div>
-                <div class="balance-sub-val orange-accent" id="dashTotalPaid">KES 0</div>
+              <div class="dash-split-side">
+                <div class="section-header">
+                  <h3 class="section-title">Recent Commissions</h3>
+                  <span class="section-link" onclick="switchTab('earnings')">Ledger →</span>
+                </div>
+                <div id="dashRecentEarnings" class="ledger-list">
+                  <!-- Injected via agent.js -->
+                </div>
               </div>
             </div>
-          </div>
-
-          <!-- Quick Actions -->
-          <div class="quick-actions">
-            <div class="action-btn-card" onclick="openRegisterSchoolModal()">
-              <div class="action-icon orange">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-              </div>
-              <div class="action-text">
-                <h4>Register School</h4>
-                <p>New prospective lead</p>
-              </div>
-            </div>
-            <div class="action-btn-card" onclick="switchTab('earnings')">
-              <div class="action-icon teal">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-              </div>
-              <div class="action-text">
-                <h4>Commission Ledger</h4>
-                <p>Track earnings &amp; payouts</p>
-              </div>
-            </div>
-          </div>
-
-          <!-- Portfolio Summary -->
-          <div class="section-header">
-            <h3 class="section-title">My School Portfolio <span id="dashSchoolsCount" class="section-count">0</span></h3>
-            <span class="section-link" onclick="switchTab('schools')">View All →</span>
-          </div>
-          <div id="dashSchoolsList" class="school-list">
-            <!-- Injected via agent.js -->
-          </div>
-
-          <!-- Recent Commission Credits -->
-          <div class="section-header" style="margin-top: 14px;">
-            <h3 class="section-title">Recent Commissions</h3>
-            <span class="section-link" onclick="switchTab('earnings')">Ledger →</span>
-          </div>
-          <div id="dashRecentEarnings" class="ledger-list">
-            <!-- Injected via agent.js -->
-          </div>
-        </section>
+          </section>
 
         <!-- Tab 2: Schools List -->
         <section id="tabSchools" class="tab-page" style="display: none;">
@@ -342,6 +617,7 @@
         </section>
 
       </main>
+      </div>
 
       <!-- Bottom Navigation Bar -->
       <nav class="bottom-nav">

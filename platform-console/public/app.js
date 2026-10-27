@@ -3589,6 +3589,25 @@ function renderAgentsOverview(overview = {}) {
   if ($('metric-agents-earned')) $('metric-agents-earned').textContent = formatKsh(overview.totalEarnedAll || 0);
   if ($('metric-agents-balance')) $('metric-agents-balance').textContent = formatKsh(overview.totalBalanceDue || 0);
   if ($('metric-agents-disbursed-sub')) $('metric-agents-disbursed-sub').textContent = `Disbursed: ${formatKsh(overview.totalPayoutsDisbursed || 0)}`;
+
+  // Pending approval banner
+  const pendingCount = Number(overview.pendingAgents || 0);
+  let banner = $('agents-pending-banner');
+  if (pendingCount > 0) {
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'agents-pending-banner';
+      banner.style.cssText = 'display:flex;align-items:center;gap:10px;background:rgba(217,119,6,.1);border:1px solid rgba(217,119,6,.3);border-radius:8px;padding:10px 16px;margin-bottom:14px;font-size:13px;color:#92400e';
+      const heading = $('agents-table-body')?.closest('section') || document.querySelector('[data-section="agents"]');
+      const tableWrapper = $('agents-table-body')?.closest('.table-wrapper') || $('agents-table-body')?.parentElement;
+      if (tableWrapper) tableWrapper.parentElement?.insertBefore(banner, tableWrapper);
+    }
+    banner.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <strong>${pendingCount} agent${pendingCount !== 1 ? 's' : ''} awaiting approval</strong>
+      <span style="color:#a16207">— Self-registered via the Field Agent Portal. Review and approve below.</span>`;
+  } else if (banner) {
+    banner.remove();
+  }
 }
 
 function renderAgentsTable() {
@@ -3645,9 +3664,14 @@ function renderAgentsTable() {
         <td style="font-weight:700;font-size:13px;color:${balanceColor}">${formatKsh(agent.balance_due_ksh || 0)}</td>
         <td>${statusBadge}</td>
         <td>
-          <div style="display:flex;gap:4px">
+          <div style="display:flex;gap:4px;flex-wrap:wrap">
+            ${agent.status === 'pending' ? `
+              <button class="btn" style="padding:3px 8px;font-size:11px;background:rgba(5,150,105,.12);color:#059669;border-color:rgba(5,150,105,.3)" onclick="approveAgent('${agent.id}')" title="Approve self-registered agent">✓ Approve</button>
+              <button class="btn" style="padding:3px 8px;font-size:11px;background:rgba(220,38,38,.08);color:#dc2626;border-color:rgba(220,38,38,.2)" onclick="rejectAgent('${agent.id}')" title="Reject self-registered agent">✗ Reject</button>
+            ` : `
+              <button class="btn primary" style="padding:3px 8px;font-size:11px" onclick="openPayoutModal('${agent.id}')" title="Record Payout">Payout</button>
+            `}
             <button class="btn" style="padding:3px 8px;font-size:11px" onclick="openAgentDetailModal('${agent.id}')" title="View Profile & Statement">View</button>
-            <button class="btn primary" style="padding:3px 8px;font-size:11px" onclick="openPayoutModal('${agent.id}')" title="Record Payout">Payout</button>
             <button class="btn" style="padding:3px 8px;font-size:11px" onclick="openEditAgentModal('${agent.id}')" title="Edit Agent">Edit</button>
           </div>
         </td>
@@ -3655,6 +3679,31 @@ function renderAgentsTable() {
     `;
   }).join('');
 }
+
+async function approveAgent(agentId) {
+  if (!confirm('Approve this agent and give them access to the Field Agent Portal?')) return;
+  try {
+    await fetch(`/api/agents/${agentId}/approve`, { method: 'POST', credentials: 'same-origin' });
+    toast('Agent approved — they can now sign in to the portal');
+    loadAgentsData();
+  } catch (err) {
+    toast('Failed to approve agent: ' + err.message, true);
+  }
+}
+
+async function rejectAgent(agentId) {
+  if (!confirm('Reject this agent application? Their account will be set to inactive.')) return;
+  try {
+    await fetch(`/api/agents/${agentId}/reject`, { method: 'POST', credentials: 'same-origin' });
+    toast('Agent application rejected');
+    loadAgentsData();
+  } catch (err) {
+    toast('Failed to reject agent: ' + err.message, true);
+  }
+}
+
+window.approveAgent = approveAgent;
+window.rejectAgent = rejectAgent;
 
 function openNewAgentModal() {
   $('agent-form-id').value = '';

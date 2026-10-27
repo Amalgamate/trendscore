@@ -1,0 +1,108 @@
+name: Audit Server Storage (Read-Only)
+
+# Safe read-only audit: shows disk usage, Docker image inventory,
+# backup sizes, and identifies images not in use by any running container.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    environment: deploy-production-school
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: bash scripts/ci/configure-deploy-ssh.sh
+
+      - name: Audit disk and Docker storage
+        run: |
+          ssh production 'bash -s' <<'REMOTE'
+          set -euo pipefail
+
+          echo "================================================================"
+          echo "## 1. DISK USAGE OVERVIEW"
+          echo "================================================================"
+          df -h /srv/zawadi /var/lib/docker 2>/dev/null || df -h /
+
+          echo ""
+          echo "================================================================"
+          echo "## 2. DOCKER SYSTEM SUMMARY"
+          echo "================================================================"
+          sudo docker system df -v 2>/dev/null | head -80 || sudo docker system df
+
+          echo ""
+          echo "================================================================"
+          echo "## 3. ALL DOCKER IMAGES (repository | tag | id | size | created)"
+          echo "================================================================"
+          sudo docker images --format "{{.Repository}}|{{.Tag}}|{{.ID}}|{{.Size}}|{{.CreatedSince}}" \
+            | sort | column -t -s '|'
+
+          echo ""
+          echo "================================================================"
+          echo "## 4. IMAGES CURRENTLY IN USE BY RUNNING CONTAINERS"
+          echo "================================================================"
+          sudo docker ps --format "{{.Image}}" | sort -u
+
+          echo ""
+          echo "================================================================"
+          echo "## 5. DANGLING / UNUSED IMAGES (safe to delete)"
+          echo "================================================================"
+          echo "--- Dangling (untagged) images ---"
+          sudo docker images -f "dangling=true" --format "{{.ID}}|{{.Size}}|{{.CreatedSince}}" \
+            | column -t -s '|' || echo "(none)"
+
+          echo ""
+          echo "--- Images NOT referenced by any running container ---"
+          # Get all image IDs referenced by running containers
+          USED=$(sudo docker ps -q | xargs -r sudo docker inspect --format '{{.Image}}' | sort -u)
+          ALL=$(sudo docker images --format "{{.ID}}|{{.Repository}}:{{.Tag}}|{{.Size}}|{{.CreatedSince}}")
+          echo "$ALL" | while IFS='|' read -r id repo size age; do
+            if ! echo "$USED" | grep -q "$id"; then
+              echo "UNUSED  $id  $repo  $size  (created $age)"
+            fi
+          done || echo "(all images are in use)"
+
+          echo ""
+          echo "================================================================"
+          echo "## 6. OLD sha- TAGGED IMAGES (previous deployments)"
+          echo "================================================================"
+          sudo docker images --format "{{.Repository}}|{{.Tag}}|{{.ID}}|{{.Size}}|{{.CreatedSince}}" \
+            | grep 'sha-' | sort | column -t -s '|'
+
+          echo ""
+          echo "================================================================"
+          echo "## 7. BACKUP DIRECTORY SIZES"
+          echo "================================================================"
+          backup_root=/srv/zawadi/backups
+          if [[ -d "${backup_root}" ]]; then
+            sudo du -sh "${backup_root}"/* 2>/dev/null | sort -rh | head -30 || echo "(empty)"
+            echo ""
+            echo "--- Total backup space ---"
+            sudo du -sh "${backup_root}" 2>/dev/null || echo "(unknown)"
+          else
+            echo "(no backup directory found)"
+          fi
+
+          echo ""
+          echo "================================================================"
+          echo "## 8. LARGEST DIRECTORIES UNDER /srv/zawadi"
+          echo "================================================================"
+          sudo du -sh /srv/zawadi/*/ 2>/dev/null | sort -rh | head -20 || true
+
+          echo ""
+          echo "================================================================"
+          echo "## 9. STALE /tmp DEPLOY TARBALLS"
+          echo "================================================================"
+          find /tmp -maxdepth 1 -type f -name 'trendscore-deploy-assets-*.tgz' -ls 2>/dev/null \
+            || echo "(none)"
+          REMOTE

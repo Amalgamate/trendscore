@@ -152,6 +152,7 @@ function createAgentsStore(dataDir) {
         SELECT
           COUNT(DISTINCT a.id) AS total_agents,
           COUNT(DISTINCT CASE WHEN a.status = 'active' THEN a.id END) AS active_agents,
+          COUNT(DISTINCT CASE WHEN a.status = 'pending' THEN a.id END) AS pending_agents,
           COUNT(DISTINCT s.id) AS total_assigned_schools,
           COALESCE(SUM(CASE WHEN e.status IN ('pending', 'approved', 'paid') THEN e.earned_amount_ksh ELSE 0 END), 0) AS total_earned_all,
           COALESCE(SUM(CASE WHEN e.status IN ('pending', 'approved') THEN e.earned_amount_ksh ELSE 0 END), 0) AS total_balance_due,
@@ -164,6 +165,7 @@ function createAgentsStore(dataDir) {
       return {
         totalAgents: Number(counts.total_agents || 0),
         activeAgents: Number(counts.active_agents || 0),
+        pendingAgents: Number(counts.pending_agents || 0),
         totalAssignedSchools: Number(counts.total_assigned_schools || 0),
         totalEarnedAll: Number(counts.total_earned_all || 0),
         totalBalanceDue: Number(counts.total_balance_due || 0),
@@ -200,6 +202,13 @@ function createAgentsStore(dataDir) {
           balanceDueKsh: balanceDue,
         },
       };
+    },
+
+    getAgentByPhone(phone) {
+      if (!phone) return null;
+      const clean = String(phone).trim();
+      const match = db.prepare(`SELECT id FROM agents WHERE phone = ? OR mpesa_number = ? LIMIT 1`).get(clean, clean);
+      return match ? this.getAgent(match.id) : null;
     },
 
     createAgent(data) {

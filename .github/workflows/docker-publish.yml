@@ -96,7 +96,7 @@ jobs:
           set -euo pipefail
           mkdir -p platform-console/deploy
           mkdir -p platform-console/scripts
-          cp scripts/deploy-release.sh platform-console/deploy/deploy-release.sh
+          cp deploy/deploy-release.sh platform-console/deploy/deploy-release.sh
           cp scripts/provision-instance.sh platform-console/scripts/provision-instance.sh
           cp deploy/instances.manifest.json platform-console/deploy/instances.manifest.json
 

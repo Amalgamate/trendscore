@@ -82,16 +82,15 @@ if [[ "${DEPLOY_CONSOLE_ONLY}" == "true" ]]; then
   log "Console-only deploy (no school stacks)"
   log "  Image tag : ${IMAGE_TAG}"
   log "════════════════════════════════════════════════════════════"
-  deploy_console || fail "Console deploy failed"
-  log "SUCCESS: platform console deployed with tag ${IMAGE_TAG}"
-  exit 0
+  # Dispatch after the rest of this script has defined deploy_console.
 fi
-[[ -n "${DEPLOY_TARGET}" ]] || fail "DEPLOY_TARGET is required"
-if [[ "${DEPLOY_TARGET}" == "school" && -z "${SCHOOL_ID}" ]]; then
-  fail "SCHOOL_ID is required when DEPLOY_TARGET=school"
+if [[ "${DEPLOY_CONSOLE_ONLY}" != "true" ]]; then
+  [[ -n "${DEPLOY_TARGET}" ]] || fail "DEPLOY_TARGET is required"
+  if [[ "${DEPLOY_TARGET}" == "school" && -z "${SCHOOL_ID}" ]]; then
+    fail "SCHOOL_ID is required when DEPLOY_TARGET=school"
+  fi
+  log "Mode=${DEPLOY_TARGET} school_id=${SCHOOL_ID:-<unset>} manifest=${MANIFEST_PATH}"
 fi
-
-log "Mode=${DEPLOY_TARGET} school_id=${SCHOOL_ID:-<unset>} manifest=${MANIFEST_PATH}"
 
 discover_running_stacks() {
   docker_cmd ps \
@@ -737,12 +736,7 @@ run_migrations() {
           done
           echo "  [baseline] marked ${count} migrations as applied"
         else
-          echo "  [baseline] fresh empty DB - skipping baseline, migrate deploy will build schema from scratch"
-          # Skip directly to migrate deploy; all repair steps and SKIP handling
-          # are irrelevant on an empty schema.
-          npx prisma migrate deploy
-          echo "[migrate] done (fresh DB path)"
-          exit 0
+          echo "  [baseline] no baseline needed - proceeding to repairs and migrations"
         fi
       fi
 
@@ -804,10 +798,21 @@ SQL
       # the raw migration.sql which lacks IF NOT EXISTS and fails when the column already exists.
       npx prisma migrate resolve --applied "${SKIP2}" >/tmp/learner-resolve-applied.log 2>&1 || true
 
-      # 5. Repair presence-monitoring columns in installations whose migration
+      # 5. Repair presence-monitoring and report-engine columns in installations whose migration
       # history was baselined before this schema addition. Prisma may consider
       # the migration applied even while the physical columns are absent.
       cat >/tmp/repair-presence-monitoring.sql <<'SQL'
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ReportEngine') THEN
+    CREATE TYPE "ReportEngine" AS ENUM ('LEGACY', 'NEW');
+  END IF;
+END $$;
+
+ALTER TABLE "schools"
+  ADD COLUMN IF NOT EXISTS "reportEngine" "ReportEngine" NOT NULL DEFAULT 'LEGACY',
+  ADD COLUMN IF NOT EXISTS "reportTemplateId" TEXT;
+
 ALTER TABLE "users"
   ADD COLUMN IF NOT EXISTS "presenceConsentAcceptedAt" TIMESTAMP(3);
 ALTER TABLE "schools"
@@ -853,6 +858,12 @@ restart_services() {
   # cache and rate-limit state.
   if compose_with_pinned_images "${kind}" "${project}" "${env_file}" config --services \
     | grep -qx 'redis'; then
+    local redis_vol="${project}_redis_data"
+    if docker_cmd volume inspect "${redis_vol}" >/dev/null 2>&1; then
+      log "Verifying/repairing Redis AOF for ${project}..."
+      docker_cmd run --rm -v "${redis_vol}:/data" redis:7-alpine sh -c \
+        'for m in /data/appendonlydir/*.manifest; do [ -f "$m" ] && echo y | redis-check-aof --fix "$m" || true; done' 2>&1 | tail -5 || true
+    fi
     compose_with_pinned_images "${kind}" "${project}" "${env_file}" up -d redis || return 1
   fi
 
@@ -943,6 +954,12 @@ deploy_console() {
   log "Console health check failed on :${console_port}"
   return 1
 }
+
+if [[ "${DEPLOY_CONSOLE_ONLY}" == "true" ]]; then
+  deploy_console || fail "Console deploy failed"
+  log "SUCCESS: platform console deployed with tag ${IMAGE_TAG}"
+  exit 0
+fi
 
 deploy_one() {
   local id="$1"

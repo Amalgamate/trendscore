@@ -1,0 +1,148 @@
+{
+  "logs": [
+    {
+      "time": "17:28 EAT",
+      "isoTime": "2026-10-26T14:28:26.045Z",
+      "action": "AGENT_APP_LOGIN",
+      "instance": "agt_5e9b29e18a88613a",
+      "by": "0722100200",
+      "details": "Agent Grace Wanjiku Mwangi (AGT-1002) logged in via Mobile App",
+      "status": "Success"
+    },
+    {
+      "time": "15:56 EAT",
+      "isoTime": "2026-10-26T12:56:08.427Z",
+      "action": "AGENT_APP_LOGIN",
+      "instance": "agt_5e9b29e18a88613a",
+      "by": "0722100200",
+      "details": "Agent Grace Wanjiku Mwangi (AGT-1002) logged in via Mobile App",
+      "status": "Success"
+    },
+    {
+      "time": "15:53 EAT",
+      "isoTime": "2026-10-26T12:53:57.829Z",
+      "action": "LEAD_CREATE",
+      "instance": "Amalgamate Images",
+      "by": "admin@trendscore.co.ke",
+      "details": "Created lead Sharlynf mwangi M Chite",
+      "status": "Success"
+    },
+    {
+      "time": "14:21 EAT",
+      "isoTime": "2026-10-26T11:21:51.898Z",
+      "action": "AGENT_CREATE",
+      "instance": "AGT-1003",
+      "by": "admin@trendscore.co.ke",
+      "details": "Registered field agent Rico mwangi Kariuki (AGT-1003)",
+      "status": "Success"
+    },
+    {
+      "time": "14:19 EAT",
+      "isoTime": "2026-10-26T11:19:07.148Z",
+      "action": "AGENT_APP_SCHOOL_ADD",
+      "instance": "agt_5e9b29e18a88613a",
+      "by": "0722100200",
+      "details": "Agent registered prospective school: sss high",
+      "status": "Success"
+    },
+    {
+      "time": "14:17 EAT",
+      "isoTime": "2026-10-26T11:17:54.657Z",
+      "action": "AGENT_APP_LOGIN",
+      "instance": "agt_5e9b29e18a88613a",
+      "by": "0722100200",
+      "details": "Agent Grace Wanjiku Mwangi (AGT-1002) logged in via Mobile App",
+      "status": "Success"
+    },
+    {
+      "time": "12:18 EAT",
+      "isoTime": "2026-10-26T09:18:21.422Z",
+      "action": "AGENT_PAYOUT_RECORD",
+      "instance": "agt_5e9b29e18a88613a",
+      "by": "admin@trendscore.co.ke",
+      "details": "Recorded payout of KES 15000 via mpesa (4576bgvtfcre)",
+      "status": "Success"
+    },
+    {
+      "time": "12:13 EAT",
+      "isoTime": "2026-10-26T09:13:35.545Z",
+      "action": "AGENT_APP_LOGIN",
+      "instance": "agt_5e9b29e18a88613a",
+      "by": "0722100200",
+      "details": "Agent Grace Wanjiku Mwangi (AGT-1002) logged in via Mobile App",
+      "status": "Success"
+    },
+    {
+      "time": "12:12 EAT",
+      "isoTime": "2026-10-26T09:12:51.417Z",
+      "action": "AGENT_APP_LOGIN",
+      "instance": "agt_5e9b29e18a88613a",
+      "by": "0722100200",
+      "details": "Agent Grace Wanjiku Mwangi (AGT-1002) logged in via Mobile App",
+      "status": "Success"
+    },
+    {
+      "time": "11:10 EAT",
+      "isoTime": "2026-10-26T08:10:04.184Z",
+      "action": "AGENT_PAYOUT_RECORD",
+      "instance": "agt_e005e31980c77f10",
+      "by": "admin@trendscore.co.ke",
+      "details": "Recorded payout of KES 7500 via mpesa (QRT998811)",
+      "status": "Success"
+    },
+    {
+      "time": "11:10 EAT",
+      "isoTime": "2026-10-26T08:10:04.164Z",
+      "action": "AGENT_EARNING_RECORD",
+      "instance": "agt_e005e31980c77f10",
+      "by": "admin@trendscore.co.ke",
+      "details": "Recorded commission of KES 7500 for Brookside Academy",
+      "status": "Success"
+    },
+    {
+      "time": "11:10 EAT",
+      "isoTime": "2026-10-26T08:10:04.145Z",
+      "action": "AGENT_ASSIGN_SCHOOL",
+      "instance": "agt_e005e31980c77f10",
+      "by": "admin@trendscore.co.ke",
+      "details": "Assigned school Brookside Academy to agent",
+      "status": "Success"
+    },
+    {
+      "time": "11:10 EAT",
+      "isoTime": "2026-10-26T08:10:04.098Z",
+      "action": "LOGIN",
+      "instance": "Console",
+      "by": "admin@trendscore.co.ke",
+      "details": "User logged in",
+      "status": "Success"
+    },
+    {
+      "time": "11:09 EAT",
+      "isoTime": "2026-10-26T08:09:54.820Z",
+      "action": "AGENT_CREATE",
+      "instance": "AGT-1001",
+      "by": "admin@trendscore.co.ke",
+      "details": "Registered field agent Grace Wambui (AGT-1001)",
+      "status": "Success"
+    },
+    {
+      "time": "11:09 EAT",
+      "isoTime": "2026-10-26T08:09:54.722Z",
+      "action": "LOGIN",
+      "instance": "Console",
+      "by": "admin@trendscore.co.ke",
+      "details": "User logged in",
+      "status": "Success"
+    },
+    {
+      "time": "10:57 EAT",
+      "isoTime": "2026-10-26T07:57:09.040Z",
+      "action": "LOGIN",
+      "instance": "Console",
+      "by": "admin@trendscore.co.ke",
+      "details": "User logged in",
+      "status": "Success"
+    }
+  ]
+}

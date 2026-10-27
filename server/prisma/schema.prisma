@@ -3348,6 +3348,7 @@ model TransportAssignment {
   pickupPoint   String?
   dropoffPoint  String?
   status        String         @default("ACTIVE")
+  authVersion   Int            @default(0)
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   archived      Boolean        @default(false)
