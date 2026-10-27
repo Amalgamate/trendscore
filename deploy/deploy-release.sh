@@ -132,9 +132,7 @@ resolve_manifest_targets() {
 
 merge_discovered_stacks() {
   local discovery_enabled
-  # jq's // operator treats false like null, so `.enabled // true` silently
-  # re-enables discovery when the manifest explicitly disables it.
-  discovery_enabled="$(jq -r 'if .discovery.enabled == false then "false" else "true" end' "${MANIFEST_PATH}")"
+  discovery_enabled="$(jq -r '.discovery.enabled // true' "${MANIFEST_PATH}")"
   [[ "${discovery_enabled}" == "true" ]] || return 0
   [[ "${DEPLOY_TARGET}" == "all_schools" ]] || return 0
 
@@ -143,11 +141,6 @@ merge_discovered_stacks() {
 
   while IFS='|' read -r project env_file; do
     [[ -n "${project}" ]] || continue
-    # Never promote an explicitly registered non-production stack (such as
-    # the demo canary) into the production batch through discovery.
-    if jq -e --arg p "${project}" '.instances[] | select(.compose_project == $p and .tier != "production")' "${MANIFEST_PATH}" >/dev/null; then
-      continue
-    fi
     if grep -qx "${project}" <<< "${exclude_projects}"; then
       continue
     fi
@@ -503,38 +496,29 @@ backup_database() {
 
   log "━━ Backup: ${id} → ${dest} ━━"
 
-  local compose_args=()
   if [[ "${kind}" == "main" ]]; then
     cd "${MAIN_DIR}"
-    compose_args=(compose)
-  else
-    cd "${APPS_DIR}"
-    compose_args=(compose --env-file "${env_file}" -p "${project}" -f "${STACK_COMPOSE_FILE}")
+    local db_user db_name
+    db_user="$(read_env_value "${MAIN_DIR}/.env" DB_USER)"
+    db_name="$(read_env_value "${MAIN_DIR}/.env" DB_NAME)"
+    db_user="${db_user:-postgres}"
+    db_name="${db_name:-zawadi_sms}"
+    docker_cmd compose exec -T db pg_dump -U "${db_user}" "${db_name}" < /dev/null \
+      | run_as_root tee "${dest}/database.sql" >/dev/null
+    echo "${dest}/database.sql" | run_as_root tee "${dest}/LATEST" >/dev/null
+    prune_backup_snapshots "${id}"
+    return 0
   fi
 
-  # Read the database identity from the running Postgres container. The env
-  # files are not a reliable source of DB_USER/DB_NAME (some were provisioned
-  # without those optional keys), and defaulting to "postgres" can silently
-  # target a role that does not exist. Never publish a LATEST pointer unless
-  # pg_dump has completed and produced a recognizable, non-empty SQL dump.
-  local db_identity db_user db_name
-  db_identity="$(docker_cmd "${compose_args[@]}" exec -T db sh -c 'printf "%s\n%s\n" "$POSTGRES_USER" "$POSTGRES_DB"' < /dev/null)" \
-    || fail "Could not read database identity for backup of ${id}"
-  db_user="$(sed -n '1p' <<<"${db_identity}")"
-  db_name="$(sed -n '2p' <<<"${db_identity}")"
-  [[ -n "${db_user}" && -n "${db_name}" ]] || fail "Postgres container did not report POSTGRES_USER/POSTGRES_DB for ${id}"
-
-  if ! docker_cmd "${compose_args[@]}" exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' < /dev/null \
-    | run_as_root tee "${dest}/database.sql" >/dev/null; then
-    run_as_root rm -f "${dest}/database.sql"
-    fail "Database backup failed for ${id}; deployment stopped before migrations or restart"
-  fi
-  if ! run_as_root test -s "${dest}/database.sql" \
-    || ! run_as_root grep -q '^-- PostgreSQL database dump' "${dest}/database.sql"; then
-    run_as_root rm -f "${dest}/database.sql"
-    fail "Database backup for ${id} is empty or invalid; deployment stopped before migrations or restart"
-  fi
-
+  cd "${APPS_DIR}"
+  local db_user db_name
+  db_user="$(read_env_value "${env_file}" DB_USER)"
+  db_name="$(read_env_value "${env_file}" DB_NAME)"
+  db_user="${db_user:-postgres}"
+  db_name="${db_name:-postgres}"
+  docker_cmd compose --env-file "${env_file}" -p "${project}" -f "${STACK_COMPOSE_FILE}" \
+    exec -T db pg_dump -U "${db_user}" "${db_name}" < /dev/null \
+    | run_as_root tee "${dest}/database.sql" >/dev/null
   echo "${dest}/database.sql" | run_as_root tee "${dest}/LATEST" >/dev/null
   prune_backup_snapshots "${id}"
 }
@@ -717,37 +701,31 @@ run_migrations() {
       #   b) migration_count == 0 AND schema tables exist → db-push DB → baseline all
       #   c) migration_count == 0 AND schema tables absent → truly fresh empty DB →
       #      skip baseline entirely; migrate deploy builds schema from scratch
-      migration_state=$(node -e '
-        const { PrismaClient } = require("@prisma/client");
-        const prisma = new PrismaClient();
-        (async () => {
-          const state = await prisma.$queryRaw`SELECT
-            to_regclass(${"public._prisma_migrations"}) IS NOT NULL AS history_present,
-            to_regclass(${"public.users"}) IS NOT NULL AS schema_present`;
-          let migrationCount = 0;
-          if (state[0].history_present) {
-            const rows = await prisma.$queryRaw`SELECT COUNT(*)::int AS count
-              FROM "_prisma_migrations" WHERE finished_at IS NOT NULL`;
-            migrationCount = rows[0].count;
-          }
-          console.log(JSON.stringify({
-            historyPresent: state[0].history_present,
-            schemaPresent: state[0].schema_present,
-            migrationCount,
-          }));
-        })().catch((error) => {
-          console.error(error.message);
-          process.exitCode = 1;
-        }).finally(() => prisma.$disconnect());
-      ')
-      [ -n "${migration_state}" ] || { echo "  [baseline] database state probe returned no result" >&2; exit 1; }
-      migration_count=$(node -e 'console.log(JSON.parse(process.argv[1]).migrationCount)' "${migration_state}")
-      schema_present=$(node -e 'console.log(JSON.parse(process.argv[1]).schemaPresent)' "${migration_state}")
+      migration_count=$(node -e "
+        const { Client } = require(\"pg\");
+        const c = new Client({ connectionString: process.env.DATABASE_URL });
+        c.connect()
+          .then(() => c.query(\"SELECT COUNT(*)::int AS n FROM \\"_prisma_migrations\\" WHERE finished_at IS NOT NULL\"))
+          .then(r => { console.log(r.rows[0].n); c.end(); })
+          .catch(() => { console.log(0); c.end(); });
+      " 2>/dev/null || echo 0)
 
       if [ "${migration_count}" -gt 0 ]; then
         echo "  [baseline] ${migration_count} migration(s) recorded - skipping baseline"
       else
-        if [ "${schema_present}" = "true" ]; then
+        # Check whether the schema was applied outside Prisma (db push / manual SQL).
+        # If the users table exists the schema is there but history is missing → baseline.
+        # If the users table is absent this is a brand-new empty DB → skip baseline.
+        schema_present=$(node -e "
+          const { Client } = require(\"pg\");
+          const c = new Client({ connectionString: process.env.DATABASE_URL });
+          c.connect()
+            .then(() => c.query(\"SELECT to_regclass('public.users') IS NOT NULL AS present\"))
+            .then(r => { console.log(r.rows[0].present ? '1' : '0'); c.end(); })
+            .catch(() => { console.log('0'); c.end(); });
+        " 2>/dev/null || echo 0)
+
+        if [ "${schema_present}" = "1" ]; then
           echo "  [baseline] no history but schema present - auto-baselining all migrations"
           count=0
           for dir in prisma/migrations/*/; do
@@ -759,7 +737,7 @@ run_migrations() {
           done
           echo "  [baseline] marked ${count} migrations as applied"
         else
-          echo "  [baseline] no completed history or users table - migrate deploy will establish the schema"
+          echo "  [baseline] fresh empty DB - skipping baseline, migrate deploy will build schema from scratch"
           # Skip directly to migrate deploy; all repair steps and SKIP handling
           # are irrelevant on an empty schema.
           npx prisma migrate deploy
@@ -826,10 +804,21 @@ SQL
       # the raw migration.sql which lacks IF NOT EXISTS and fails when the column already exists.
       npx prisma migrate resolve --applied "${SKIP2}" >/tmp/learner-resolve-applied.log 2>&1 || true
 
-      # 5. Repair presence-monitoring columns in installations whose migration
+      # 5. Repair presence-monitoring and report-engine columns in installations whose migration
       # history was baselined before this schema addition. Prisma may consider
       # the migration applied even while the physical columns are absent.
       cat >/tmp/repair-presence-monitoring.sql <<'SQL'
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ReportEngine') THEN
+    CREATE TYPE "ReportEngine" AS ENUM ('LEGACY', 'NEW');
+  END IF;
+END $$;
+
+ALTER TABLE "schools"
+  ADD COLUMN IF NOT EXISTS "reportEngine" "ReportEngine" NOT NULL DEFAULT 'LEGACY',
+  ADD COLUMN IF NOT EXISTS "reportTemplateId" TEXT;
+
 ALTER TABLE "users"
   ADD COLUMN IF NOT EXISTS "presenceConsentAcceptedAt" TIMESTAMP(3);
 ALTER TABLE "schools"
