@@ -859,6 +859,12 @@ restart_services() {
   # cache and rate-limit state.
   if compose_with_pinned_images "${kind}" "${project}" "${env_file}" config --services \
     | grep -qx 'redis'; then
+    local redis_vol="${project}_redis_data"
+    if docker_cmd volume inspect "${redis_vol}" >/dev/null 2>&1; then
+      log "Verifying/repairing Redis AOF for ${project}..."
+      docker_cmd run --rm -v "${redis_vol}:/data" redis:7-alpine sh -c \
+        'for m in /data/appendonlydir/*.manifest; do [ -f "$m" ] && echo y | redis-check-aof --fix "$m" || true; done' 2>&1 | tail -5 || true
+    fi
     compose_with_pinned_images "${kind}" "${project}" "${env_file}" up -d redis || return 1
   fi
 
