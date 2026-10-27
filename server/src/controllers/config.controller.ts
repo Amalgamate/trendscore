@@ -6,6 +6,8 @@ import { Term, FormativeAssessmentType, Grade } from '@prisma/client';
 import prisma from '../config/database';
 import { ApiError } from '../utils/error.util';
 import { getInstitutionType } from '../utils/institutionNormalizer';
+import { broadcastKeyDatesChanged } from '../services/keyDates.service';
+import { assertValidTermRange, syncTermEvents } from '../services/termEvents.service';
 
 // Helper to safely parse dates
 const safeParseDate = (dateVal: any, defaultDate: Date): Date => {
@@ -95,22 +97,38 @@ export const upsertTermConfig = async (req: AuthRequest, res: Response) => {
   const fw = formativeWeight != null ? parseFloat(formativeWeight) : 30.0;
   const sw = summativeWeight != null ? parseFloat(summativeWeight) : 70.0;
 
+  // An invalid date must be rejected, not silently saved as today.
+  const parsedStart = safeParseDate(startDate, new Date(NaN));
+  const parsedEnd = safeParseDate(endDate, new Date(NaN));
+  await assertValidTermRange(parseInt(academicYear), term, parsedStart, parsedEnd);
+
   const config = await configService.upsertTermConfig({
     academicYear: parseInt(academicYear),
     term,
-    startDate: safeParseDate(startDate, new Date()),
-    endDate: safeParseDate(endDate, new Date()),
+    startDate: parsedStart,
+    endDate: parsedEnd,
     formativeWeight: fw,
     summativeWeight: sw,
     isActive: Boolean(isActive),
     createdBy: req.user!.userId,
   });
+  await syncTermEvents(config);
+  broadcastKeyDatesChanged();
   res.json({ success: true, data: config });
 };
 
 export const updateTermConfig = async (req: Request, res: Response) => {
   const { id } = req.params;
+  if (req.body.startDate !== undefined || req.body.endDate !== undefined) {
+    const current = await prisma.termConfig.findUnique({ where: { id } });
+    if (!current) throw new ApiError(404, 'Term configuration not found');
+    const start = req.body.startDate !== undefined ? new Date(req.body.startDate) : current.startDate;
+    const end = req.body.endDate !== undefined ? new Date(req.body.endDate) : current.endDate;
+    await assertValidTermRange(current.academicYear, current.term, start, end);
+  }
   const config = await configService.updateTermConfig(id, req.body);
+  await syncTermEvents(config);
+  broadcastKeyDatesChanged();
   res.json({ success: true, data: config });
 };
 

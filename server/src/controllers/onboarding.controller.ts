@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../config/database';
+import { invalidateAuthLookupCache } from '../services/auth-cache.service';
 import bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import type { InstitutionType } from '@prisma/client';
@@ -246,8 +247,9 @@ export class OnboardingController {
       }
       await prisma.user.update({
         where: { id: user.id },
-        data: { emailVerified: true, status: 'ACTIVE', emailVerificationToken: null },
+        data: { emailVerified: true, status: 'ACTIVE', emailVerificationToken: null, authVersion: { increment: 1 } },
       });
+      await invalidateAuthLookupCache();
       res.json({ success: true });
     } catch {
       res.status(500).json({ success: false, error: 'Verification failed' });

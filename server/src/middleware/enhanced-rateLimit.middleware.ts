@@ -6,6 +6,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { logRateLimitExceeded } from '../utils/security-logging.util';
 import { redisCacheService } from '../services/redis-cache.service';
+import { ApiError } from '../utils/error.util';
 
 export interface RateLimitConfig {
   windowMs: number; // Time window in milliseconds
@@ -29,30 +30,33 @@ interface AuthRateLimitOptions {
  * Get client identifier (IP address)
  */
 const getClientId = (req: Request): string => {
-  return (
-    (req.headers['x-forwarded-for'] as string)?.split(',')[0].trim() ||
-    (req.headers['x-real-ip'] as string) ||
-    req.socket.remoteAddress ||
-    'unknown'
-  );
+  // Express resolves forwarded addresses using the application's trusted
+  // proxy configuration. Do not key limits from caller-controlled headers.
+  return req.ip || req.socket.remoteAddress || 'unknown';
 };
 
-const getRateLimitEntry = async (key: string, windowMs: number): Promise<RateLimitEntry> => {
+const incrementRateLimitEntry = async (
+  key: string,
+  windowMs: number,
+  metadataKey = key,
+): Promise<RateLimitEntry> => {
   const now = Date.now();
-  const entry = await redisCacheService.get<RateLimitEntry>(key);
-  if (!entry || now > entry.resetAt) {
-    return {
-      count: 0,
-      resetAt: now + windowMs,
-      failedAttempts: 0
-    };
-  }
-  return entry;
+  const count = await redisCacheService.incrementSecurityCounter(key, Math.ceil(windowMs / 1000));
+  const metadata = await redisCacheService.get<RateLimitEntry>(metadataKey);
+  return {
+    count,
+    resetAt: metadata?.resetAt && metadata.resetAt > now ? metadata.resetAt : now + windowMs,
+    failedAttempts: metadata?.failedAttempts ?? 0,
+  };
 };
 
-const saveRateLimitEntry = async (key: string, entry: RateLimitEntry, windowMs: number) => {
-  // TTL is windowMs divided by 1000 to get seconds
-  await redisCacheService.set(key, entry, Math.ceil(windowMs / 1000));
+const handleRateLimitStoreFailure = (next: NextFunction, error: unknown): void => {
+  console.error('[RateLimit Error]', error);
+  if (process.env.NODE_ENV === 'production') {
+    next(new ApiError(503, 'Request protection is temporarily unavailable').withCode('RATE_LIMIT_UNAVAILABLE'));
+    return;
+  }
+  next();
 };
 
 /**
@@ -66,9 +70,7 @@ export const rateLimit = (config: RateLimitConfig) => {
       const routeKey = `${req.baseUrl || ''}${req.path || '/'}`.replace(/\/{2,}/g, '/') || '/';
       const key = `rl:${clientId}:${req.method}:${routeKey}`;
       
-      const entry = await getRateLimitEntry(key, config.windowMs);
-      entry.count++;
-      await saveRateLimitEntry(key, entry, config.windowMs);
+      const entry = await incrementRateLimitEntry(key, config.windowMs);
 
       // Set rate limit headers
       res.setHeader('RateLimit-Limit', config.maxRequests);
@@ -89,8 +91,7 @@ export const rateLimit = (config: RateLimitConfig) => {
 
       next();
     } catch (e) {
-      console.error('[RateLimit Error]', e);
-      next();
+      handleRateLimitStoreFailure(next, e);
     }
   };
 };
@@ -102,17 +103,25 @@ export const progressiveRateLimit = (config: RateLimitConfig) => {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
       const clientId = getClientId(req);
-      const key = `prl:${clientId}:${req.path}`;
-
-      const entry = await getRateLimitEntry(key, config.windowMs);
-      entry.count++;
+      const metadataKey = `prl:${clientId}:${req.path}`;
+      const counterKey = `${metadataKey}:count`;
+      const metadata = await redisCacheService.get<RateLimitEntry>(metadataKey);
+      const entry = await incrementRateLimitEntry(counterKey, config.windowMs, metadataKey);
+      const resetAt = metadata?.resetAt && metadata.resetAt > Date.now()
+        ? metadata.resetAt
+        : entry.resetAt;
+      const currentMetadata = metadata?.resetAt && metadata.resetAt > Date.now()
+        ? metadata
+        : { resetAt, failedAttempts: 0 };
+      await redisCacheService.set(metadataKey, {
+        ...currentMetadata,
+        count: entry.count,
+      }, Math.max(1, Math.ceil((resetAt - Date.now()) / 1000)));
 
       // Calculate dynamic limits based on failed attempts — only start
       // tightening after 3+ failures so a single typo doesn't lock you out.
       const failureMultiplier = Math.max(0, Math.min((entry.failedAttempts || 0) - 2, 5));
       const adjustedLimit = Math.max(3, Math.floor(config.maxRequests / (1 + failureMultiplier)));
-
-      await saveRateLimitEntry(key, entry, config.windowMs);
 
       // Set rate limit headers
       res.setHeader('RateLimit-Limit', adjustedLimit);
@@ -140,8 +149,7 @@ export const progressiveRateLimit = (config: RateLimitConfig) => {
 
       next();
     } catch (e) {
-      console.error('[RateLimit Error]', e);
-      next();
+      handleRateLimitStoreFailure(next, e);
     }
   };
 };
@@ -155,9 +163,7 @@ export const ipRateLimit = (config: RateLimitConfig) => {
       const clientId = getClientId(req);
       const key = `iprl:${clientId}`;
 
-      const entry = await getRateLimitEntry(key, config.windowMs);
-      entry.count++;
-      await saveRateLimitEntry(key, entry, config.windowMs);
+      const entry = await incrementRateLimitEntry(key, config.windowMs);
 
       res.setHeader('RateLimit-Limit', config.maxRequests);
       res.setHeader('RateLimit-Remaining', Math.max(0, config.maxRequests - entry.count));
@@ -177,8 +183,7 @@ export const ipRateLimit = (config: RateLimitConfig) => {
 
       next();
     } catch (e) {
-      console.error('[RateLimit Error]', e);
-      next();
+      handleRateLimitStoreFailure(next, e);
     }
   };
 };
@@ -203,8 +208,7 @@ export const authRateLimit = (
       const key = `authrl:${clientId}:${identifier}`;
       const now = Date.now();
 
-      const entry = await getRateLimitEntry(key, windowMs);
-      entry.count++;
+      const entry = await incrementRateLimitEntry(`${key}:count`, windowMs, key);
 
       res.setHeader('RateLimit-Limit', maxAttempts);
       res.setHeader('RateLimit-Remaining', Math.max(0, maxAttempts - entry.count));
@@ -225,11 +229,14 @@ export const authRateLimit = (
         return;
       }
 
-      await saveRateLimitEntry(key, entry, windowMs);
+      await redisCacheService.set(key, {
+        count: entry.count,
+        resetAt: entry.resetAt,
+        failedAttempts: entry.failedAttempts ?? 0,
+      }, Math.ceil(windowMs / 1000));
       next();
     } catch (e) {
-      console.error('[RateLimit Error]', e);
-      next();
+      handleRateLimitStoreFailure(next, e);
     }
   };
 };
@@ -241,13 +248,12 @@ export const recordAuthFailure = async (email: string, clientId: string): Promis
   try {
     const key = `authrl:${clientId}:${email}`;
     const entry = await redisCacheService.get<RateLimitEntry>(key);
-    
+
     if (entry) {
       entry.failedAttempts = (entry.failedAttempts || 0) + 1;
-      // Re-save with remaining TTL (approximate by using resetAt)
       const now = Date.now();
-      const remainingMs = Math.max(1000, entry.resetAt - now);
-      await saveRateLimitEntry(key, entry, remainingMs);
+      const remainingSeconds = Math.max(1, Math.ceil((entry.resetAt - now) / 1000));
+      await redisCacheService.set(key, entry, remainingSeconds);
     }
   } catch (e) {
     console.error('[RateLimit Error]', e);
@@ -262,6 +268,7 @@ export const clearRateLimit = async (clientId: string, identifier: string, type:
     const prefix = type === 'auth' ? 'authrl' : type;
     const key = `${prefix}:${clientId}:${identifier}`;
     await redisCacheService.delete(key);
+    await redisCacheService.delete(`${key}:count`);
   } catch (e) {
     console.error('[RateLimit Error]', e);
   }

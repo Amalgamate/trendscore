@@ -1,40 +1,23 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import api from '../../../../services/api';
 import CalendarView from './CalendarView';
-import ModuleTabNav from '../../shared/ModuleTabNav';
+import EventAudiencePicker from './EventAudiencePicker';
+import AcademicYearSetup from './AcademicYearSetup';
 import { getDynamicAcademicYears } from '../../utils/academicYear';
+import { usePermissions } from '../../../../hooks/usePermissions';
 import { 
   Plus, 
-  Edit2, 
-  Trash2, 
   Calendar, 
-  ChevronDown, 
-  ChevronUp, 
   Printer, 
-  Save, 
   FileText, 
   Filter, 
-  Check, 
-  Info, 
   Lock, 
-  Unlock,
-  Eye,
-  EyeOff,
   AlertCircle,
-  TrendingUp,
-  Clock,
-  Settings,
-  Layers,
   BookOpen,
   Award,
   Compass,
   Users,
   CheckCircle2,
-  MapPin,
-  Video,
-  ExternalLink,
-  HelpCircle,
-  CheckSquare
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
@@ -51,9 +34,14 @@ import { Label } from '../../../ui/label';
 import { Textarea } from '../../../ui/textarea';
 
 const EVENT_TYPES = {
+  GENERAL: { label: 'General', bg: 'bg-slate-50 text-slate-700 border-slate-200', dot: 'bg-slate-500', bar: 'bg-slate-500' },
   ACADEMIC: { label: 'Academic', bg: 'bg-blue-50 text-blue-700 border-blue-200', dot: 'bg-blue-500', bar: 'bg-blue-500' },
   ASSESSMENT: { label: 'Assessment', bg: 'bg-purple-50 text-purple-700 border-purple-200', dot: 'bg-purple-500', bar: 'bg-purple-500' },
-  EXAMINATION: { label: 'Examination', bg: 'bg-indigo-50 text-indigo-700 border-indigo-200', dot: 'bg-indigo-500', bar: 'bg-indigo-500' },
+  EXAM: { label: 'Examination', bg: 'bg-indigo-50 text-indigo-700 border-indigo-200', dot: 'bg-indigo-500', bar: 'bg-indigo-500' },
+  EXAM_WEEK: { label: 'Exam week', bg: 'bg-indigo-50 text-indigo-700 border-indigo-200', dot: 'bg-indigo-500', bar: 'bg-indigo-500' },
+  TERM_OPENING: { label: 'Term opening', bg: 'bg-emerald-50 text-emerald-700 border-emerald-200', dot: 'bg-emerald-500', bar: 'bg-emerald-500' },
+  TERM_CLOSING: { label: 'Term closing', bg: 'bg-amber-50 text-amber-700 border-amber-200', dot: 'bg-amber-500', bar: 'bg-amber-500' },
+  MIDTERM_BREAK: { label: 'Mid-term break', bg: 'bg-orange-50 text-orange-700 border-orange-200', dot: 'bg-orange-500', bar: 'bg-orange-500' },
   HOLIDAY: { label: 'Holiday', bg: 'bg-red-50 text-red-700 border-red-200', dot: 'bg-red-500', bar: 'bg-red-500' },
   FINANCE: { label: 'Finance', bg: 'bg-emerald-50 text-emerald-700 border-emerald-200', dot: 'bg-emerald-500', bar: 'bg-emerald-500' },
   SPORTS: { label: 'Sports', bg: 'bg-orange-50 text-orange-700 border-orange-200', dot: 'bg-orange-500', bar: 'bg-orange-500' },
@@ -71,6 +59,94 @@ const TERMS = [
   { id: 'TERM_3', label: 'Term 3' },
 ];
 
+const AUDIENCE_LABELS = {
+  STAFF: 'All staff',
+  TEACHERS: 'Teachers',
+  PARENTS: 'Parents',
+  STUDENTS: 'Students',
+  DRIVERS: 'Drivers',
+};
+
+/** Plain-language audience for tooltips, e.g. "Parents, 2 classes". */
+const describeAudience = (event) => {
+  const audience = Array.isArray(event.audience) ? event.audience : [];
+  const classCount = Array.isArray(event.classIds) ? event.classIds.length : 0;
+  const who = audience.length ? audience.map((a) => AUDIENCE_LABELS[a] || a).join(', ') : 'Everyone';
+  return classCount ? `${who}, ${classCount} class${classCount === 1 ? '' : 'es'}` : who;
+};
+
+const dateKey = (value) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};
+
+const formatDateKey = (key) => key
+  ? new Date(`${key}T00:00:00Z`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
+  : 'Dates not set';
+
+const countWeekdays = (startKey, endKey, excludedEvents = []) => {
+  if (!startKey || !endKey || startKey > endKey) return null;
+  const excludedDates = new Set();
+  excludedEvents.forEach((event) => {
+    if (!['HOLIDAY', 'MIDTERM_BREAK'].includes(event.type)) return;
+    const start = dateKey(event.startDate);
+    const end = dateKey(event.endDate) || start;
+    if (!start || !end) return;
+    for (let cursor = new Date(`${start}T12:00:00`); dateKey(cursor) <= end; cursor.setDate(cursor.getDate() + 1)) {
+      excludedDates.add(dateKey(cursor));
+    }
+  });
+  let total = 0;
+  for (let cursor = new Date(`${startKey}T12:00:00`); dateKey(cursor) <= endKey; cursor.setDate(cursor.getDate() + 1)) {
+    const weekday = cursor.getDay();
+    if (weekday !== 0 && weekday !== 6 && !excludedDates.has(dateKey(cursor))) total += 1;
+  }
+  return total;
+};
+
+const scopesOverlap = (a, b) => {
+  const aClasses = Array.isArray(a.classIds) ? a.classIds : [];
+  const bClasses = Array.isArray(b.classIds) ? b.classIds : [];
+  const aAudience = Array.isArray(a.audience) ? a.audience : [];
+  const bAudience = Array.isArray(b.audience) ? b.audience : [];
+  const classesOverlap = !aClasses.length || !bClasses.length || aClasses.some((id) => bClasses.includes(id));
+  const staffGroupsOverlap = (aAudience.includes('STAFF') && bAudience.some((audience) => ['STAFF', 'TEACHERS', 'DRIVERS'].includes(audience)))
+    || (bAudience.includes('STAFF') && aAudience.some((audience) => ['STAFF', 'TEACHERS', 'DRIVERS'].includes(audience)));
+  const audienceOverlap = !aAudience.length || !bAudience.length
+    || aAudience.some((audience) => bAudience.includes(audience))
+    || staffGroupsOverlap;
+  const sharedClassFamilyEvent = aClasses.length > 0 && bClasses.length > 0 && classesOverlap
+    && [...aAudience, ...bAudience].some((audience) => ['PARENTS', 'STUDENTS'].includes(audience));
+  const locationA = String(a.location || '').trim().toLowerCase();
+  const locationB = String(b.location || '').trim().toLowerCase();
+  const locationOverlap = Boolean(locationA && locationA === locationB);
+  return (classesOverlap && (audienceOverlap || sharedClassFamilyEvent)) || locationOverlap;
+};
+
+const findEventConflicts = (events) => {
+  const conflicts = [];
+  const sorted = [...events].filter((event) => event.startDate && event.endDate && !['TERM_OPENING', 'TERM_CLOSING'].includes(event.type))
+    .sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
+  for (let i = 0; i < sorted.length; i += 1) {
+    const first = sorted[i];
+    const firstStart = new Date(first.startDate);
+    const firstEnd = new Date(first.endDate);
+    for (let j = i + 1; j < sorted.length; j += 1) {
+      const second = sorted[j];
+      const secondStart = new Date(second.startDate);
+      if (first.allDay ? dateKey(secondStart) > dateKey(firstEnd) : secondStart > firstEnd) break;
+      const secondEnd = new Date(second.endDate);
+      const overlap = first.allDay || second.allDay
+        ? dateKey(firstStart) <= dateKey(secondEnd) && dateKey(secondStart) <= dateKey(firstEnd)
+        : firstStart < secondEnd && secondStart < firstEnd;
+      if (overlap && scopesOverlap(first, second)) conflicts.push({ first, second });
+    }
+  }
+  return conflicts;
+};
+
 const INITIAL_TERM_FORM = {
   openingDate: '',
   closingDate: '',
@@ -81,12 +157,18 @@ const INITIAL_TERM_FORM = {
   isParentVisible: true,
 };
 
-export default function AnnualPlannerPage() {
+export default function AnnualPlannerPage({ initialTab = 'dashboard' } = {}) {
+  // Term dates are term settings, which only school admins may change.
+  const { isAnyRole } = usePermissions();
+  const canSetUpYear = isAnyRole(['ADMIN', 'SUPER_ADMIN']);
+  const canManageEvents = isAnyRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'TEACHER']);
+  const canDeleteEvents = isAnyRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER']);
   const [academicYear, setAcademicYear] = useState(new Date().getFullYear());
-  const [activeTab, setActiveTab] = useState('calendar'); // 'calendar', 'terms', 'events', 'reports'
+  const [activeTab, setActiveTab] = useState(initialTab === 'terms' && canSetUpYear ? 'terms' : initialTab === 'events' ? 'events' : 'dashboard');
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [openTerms, setOpenTerms] = useState({ TERM_1: true, TERM_2: false, TERM_3: false });
+  const [setupDirty, setSetupDirty] = useState(false);
+  const eventRequestSequence = useRef(0);
   
   // Term Setup forms state
   const [termForms, setTermForms] = useState({
@@ -107,7 +189,8 @@ export default function AnnualPlannerPage() {
     type: 'GENERAL',
     location: '',
     meetingLink: '',
-    isParentVisible: true,
+    audience: [],
+    classIds: [],
     academicYear: '',
     term: '',
   });
@@ -131,10 +214,12 @@ export default function AnnualPlannerPage() {
   };
 
   const fetchEvents = useCallback(async () => {
+    const requestId = ++eventRequestSequence.current;
     setLoading(true);
     try {
       const response = await api.planner.getEvents({ academicYear });
       const data = response?.data ?? response ?? [];
+      if (requestId !== eventRequestSequence.current) return;
       setEvents(data);
 
       // Populate Term Setup forms
@@ -167,10 +252,12 @@ export default function AnnualPlannerPage() {
 
       setTermForms(termsData);
     } catch (error) {
-      console.error('Failed to fetch events', error);
-      toast.error('Failed to load academic events');
+      if (requestId === eventRequestSequence.current) {
+        console.error('Failed to fetch events', error);
+        toast.error('Failed to load academic events');
+      }
     } finally {
-      setLoading(false);
+      if (requestId === eventRequestSequence.current) setLoading(false);
     }
   }, [academicYear]);
 
@@ -179,95 +266,21 @@ export default function AnnualPlannerPage() {
   }, []);
 
   useEffect(() => {
+    if (initialTab === 'terms' && canSetUpYear) {
+      setActiveTab('terms');
+    } else if (initialTab === 'events') {
+      setActiveTab('events');
+    } else if (initialTab === 'dashboard' || !initialTab) {
+      setActiveTab('dashboard');
+    }
+  }, [initialTab, canSetUpYear]);
+
+  useEffect(() => {
     fetchEvents();
   }, [fetchEvents]);
 
-  const handleTermFormChange = (termId, field, value) => {
-    setTermForms(prev => ({
-      ...prev,
-      [termId]: {
-        ...prev[termId],
-        [field]: value
-      }
-    }));
-  };
-
-  const handleSaveTermSetup = async (termId) => {
-    const form = termForms[termId];
-    if (!form.openingDate || !form.closingDate) {
-      toast.error('Opening and closing dates are required');
-      return;
-    }
-
-    const payloadEvents = [];
-    const termLabel = termId.replace('_', ' ');
-
-    payloadEvents.push({
-      title: `${termLabel} Opens`,
-      startDate: new Date(form.openingDate).toISOString(),
-      endDate: new Date(form.openingDate).toISOString(),
-      allDay: true,
-      type: 'ACADEMIC',
-      term: termId,
-      academicYear,
-      isParentVisible: form.isParentVisible,
-      description: `Official opening date for ${termLabel}`,
-    });
-
-    payloadEvents.push({
-      title: `${termLabel} Closes`,
-      startDate: new Date(form.closingDate).toISOString(),
-      endDate: new Date(form.closingDate).toISOString(),
-      allDay: true,
-      type: 'ACADEMIC',
-      term: termId,
-      academicYear,
-      isParentVisible: form.isParentVisible,
-      description: `Official closing date for ${termLabel}`,
-    });
-
-    if (form.midtermStart && form.midtermEnd) {
-      payloadEvents.push({
-        title: `${termLabel} Midterm Break`,
-        startDate: new Date(form.midtermStart).toISOString(),
-        endDate: new Date(form.midtermEnd).toISOString(),
-        allDay: true,
-        type: 'HOLIDAY',
-        term: termId,
-        academicYear,
-        isParentVisible: form.isParentVisible,
-        description: `Midterm break recess for ${termLabel}`,
-      });
-    }
-
-    if (form.examStart && form.examEnd) {
-      payloadEvents.push({
-        title: `${termLabel} Examinations`,
-        startDate: new Date(form.examStart).toISOString(),
-        endDate: new Date(form.examEnd).toISOString(),
-        allDay: true,
-        type: 'EXAMINATION',
-        term: termId,
-        academicYear,
-        isParentVisible: form.isParentVisible,
-        description: `Summative exams and assessment week for ${termLabel}`,
-      });
-    }
-
-    setLoading(true);
-    try {
-      await api.planner.bulkCreateAnnualPlan(payloadEvents);
-      toast.success(`${termLabel} dates saved successfully`);
-      fetchEvents();
-    } catch (error) {
-      console.error(error);
-      toast.error(`Failed to save ${termLabel} dates`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleOpenAddModal = (type = 'GENERAL', term = '') => {
+    if (!canManageEvents) return;
     setModalEvent(null);
     setEventForm({
       title: '',
@@ -278,7 +291,8 @@ export default function AnnualPlannerPage() {
       type,
       location: '',
       meetingLink: '',
-      isParentVisible: true,
+      audience: [],
+      classIds: [],
       academicYear: academicYear.toString(),
       term,
     });
@@ -286,6 +300,7 @@ export default function AnnualPlannerPage() {
   };
 
   const handleOpenEditModal = (event) => {
+    if (!canManageEvents) return;
     setModalEvent(event);
     setEventForm({
       title: event.title || '',
@@ -296,7 +311,8 @@ export default function AnnualPlannerPage() {
       type: event.type || 'GENERAL',
       location: event.location || '',
       meetingLink: event.meetingLink || '',
-      isParentVisible: event.isParentVisible !== undefined ? event.isParentVisible : true,
+      audience: Array.isArray(event.audience) ? event.audience : [],
+      classIds: Array.isArray(event.classIds) ? event.classIds : [],
       academicYear: event.academicYear ? event.academicYear.toString() : academicYear.toString(),
       term: event.term || '',
     });
@@ -304,6 +320,7 @@ export default function AnnualPlannerPage() {
   };
 
   const handleDeleteEvent = async (id) => {
+    if (!canDeleteEvents) return;
     if (!window.confirm('Are you sure you want to delete this event?')) return;
     setLoading(true);
     try {
@@ -320,6 +337,7 @@ export default function AnnualPlannerPage() {
 
   const handleSaveCustomEvent = async (e) => {
     e.preventDefault();
+    if (!canManageEvents) return;
     if (!eventForm.title || !eventForm.startDate || !eventForm.endDate) {
       toast.error('Title, start, and end dates are required');
       return;
@@ -354,53 +372,51 @@ export default function AnnualPlannerPage() {
 
   // Memoized stats calculations for year planner
   const stats = useMemo(() => {
+    const byType = (...types) => events.filter((event) => types.includes(event.type)).length;
     const counts = {
       total: events.length,
-      academic: events.filter(e => e.type === 'ACADEMIC').length,
-      assessment: events.filter(e => e.type === 'ASSESSMENT').length,
-      examination: events.filter(e => e.type === 'EXAMINATION').length,
-      holiday: events.filter(e => e.type === 'HOLIDAY').length,
-      finance: events.filter(e => e.type === 'FINANCE').length,
-      sports: events.filter(e => e.type === 'SPORTS').length,
-      trip: events.filter(e => e.type === 'TRIP').length,
-      meeting: events.filter(e => e.type === 'MEETING').length,
-      staff: events.filter(e => e.type === 'STAFF_EVENT').length,
-      parent: events.filter(e => e.type === 'PARENT_EVENT').length,
-      national: events.filter(e => e.type === 'NATIONAL_EVENT').length,
-      other: events.filter(e => e.type === 'OTHER').length,
+      academic: byType('ACADEMIC', 'TERM_OPENING', 'TERM_CLOSING'),
+      assessment: byType('ASSESSMENT'),
+      examination: byType('EXAM', 'EXAM_WEEK'),
+      holiday: byType('HOLIDAY', 'MIDTERM_BREAK'),
+      finance: byType('FINANCE'),
+      sports: byType('SPORTS'),
+      trip: byType('TRIP'),
+      meeting: byType('MEETING'),
+      staff: byType('STAFF_EVENT'),
+      parent: byType('PARENT_EVENT'),
+      national: byType('NATIONAL_EVENT'),
+      other: byType('OTHER', 'GENERAL'),
     };
 
-    // Calculate school days from term dates configuration
-    let totalSchoolDays = 0;
-    TERMS.forEach(t => {
-      const form = termForms[t.id];
-      if (form.openingDate && form.closingDate) {
-        const start = new Date(form.openingDate);
-        const end = new Date(form.closingDate);
-        const diff = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
-        if (diff > 0) totalSchoolDays += diff;
-      }
+    const termDays = TERMS.map((term) => {
+      const form = termForms[term.id];
+      return { ...term, days: countWeekdays(form.openingDate, form.closingDate, events) };
     });
-
-    if (totalSchoolDays === 0) totalSchoolDays = 267; // fallback default representation
-
-    return { ...counts, schoolDays: totalSchoolDays };
+    const completeTerms = termDays.filter((term) => term.days !== null).length;
+    const schoolDays = completeTerms === TERMS.length
+      ? termDays.reduce((sum, term) => sum + (term.days || 0), 0)
+      : null;
+    return { ...counts, schoolDays, termDays, completeTerms };
   }, [events, termForms]);
+
+  const conflicts = useMemo(() => findEventConflicts(events), [events]);
 
   // Compliance checklists & progress percentage
   const compliance = useMemo(() => {
     const list = [
-      { id: 'year', label: 'Academic Year Configured', status: true },
-      { id: 'terms', label: 'Term Opening/Closing Boundaries Set', status: !!(termForms.TERM_1.openingDate && termForms.TERM_2.openingDate && termForms.TERM_3.openingDate) },
+      { id: 'year', label: 'All three term dates configured', status: stats.completeTerms === TERMS.length },
+      { id: 'agenda', label: 'Upcoming events are scheduled', status: events.some((event) => new Date(event.startDate) >= new Date()) },
       { id: 'assessments', label: 'Assessment Calendars Active', status: stats.assessment > 0 },
       { id: 'exams', label: 'Examination Schedule Created', status: stats.examination > 0 },
-      { id: 'holidays', label: 'Public Holidays Registered', status: stats.holiday > 0 },
+      { id: 'holidays', label: 'Holidays and mid-term breaks recorded', status: stats.holiday > 0 },
       { id: 'meetings', label: 'Parent Interaction Events Scheduled', status: stats.parent > 0 },
+      { id: 'conflicts', label: 'No overlapping audiences, classes, or locations', status: conflicts.length === 0 },
     ];
     const completedCount = list.filter(item => item.status).length;
     const pct = Math.round((completedCount / list.length) * 100);
     return { list, percentage: pct };
-  }, [termForms, stats]);
+  }, [stats, conflicts, events]);
 
   // Group events for horizontal yearly timeline visualization
   const monthsData = useMemo(() => {
@@ -437,13 +453,13 @@ export default function AnnualPlannerPage() {
     // Group events counts by YYYY-MM-DD
     const dateCounts = {};
     events.forEach(e => {
-      const key = new Date(e.startDate).toISOString().split('T')[0];
+      const key = dateKey(e.startDate);
       dateCounts[key] = (dateCounts[key] || 0) + 1;
     });
 
     let current = new Date(startDate);
     while (current <= endDate) {
-      const key = current.toISOString().split('T')[0];
+      const key = dateKey(current);
       days.push({
         dateStr: key,
         day: current.getDate(),
@@ -463,47 +479,53 @@ export default function AnnualPlannerPage() {
       .slice(0, 10);
   }, [events]);
 
-  const plannerTabs = [
-    { id: 'calendar', label: 'Calendar View', icon: <Calendar size={13} /> },
-    { id: 'terms', label: 'Term Setup', icon: <CheckSquare size={13} /> },
-    { id: 'events', label: 'All Events', icon: <FileText size={13} /> },
-  ];
+  // Unsaved term-setup edits are lost when the year or tab changes, so ask first.
+  const confirmDiscardSetup = () =>
+    !(activeTab === 'terms' && setupDirty) ||
+    window.confirm('You have unsaved changes to the academic year. Discard them?');
+
+  const handleYearChange = (e) => {
+    if (!confirmDiscardSetup()) return;
+    setAcademicYear(parseInt(e.target.value, 10));
+  };
+
+  const handleTabChange = (tabId) => {
+    if (tabId !== activeTab && !confirmDiscardSetup()) return;
+    setActiveTab(tabId);
+  };
 
   return (
     <div className="min-h-screen bg-[var(--app-page-bg)] text-slate-800 print:bg-white pb-24">
-      <div className="print:hidden">
-        <ModuleTabNav
-          sectionLabel="ANNUAL PLANNER"
-          variant="dropdown"
-          tabs={plannerTabs}
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-        />
-      </div>
-
       <div className="p-6 lg:p-8 print:p-0">
-      <div className="mb-6 flex justify-end print:hidden">
+      <div className="mb-6 flex flex-col gap-3 print:hidden sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-black text-slate-900">Annual Planner</h1>
+          </div>
           <div className="flex items-center gap-3 bg-white p-2 rounded-2xl shadow-sm border border-slate-200">
             <label htmlFor="year-select" className="text-xs font-bold text-slate-400 uppercase tracking-wider pl-2">Academic Year</label>
             <select 
               id="year-select"
               value={academicYear} 
-              onChange={(e) => setAcademicYear(parseInt(e.target.value, 10))}
+              onChange={handleYearChange}
               className="font-extrabold text-slate-800 bg-transparent border-0 focus:ring-0 focus:outline-none cursor-pointer pr-8 text-sm"
             >
               {getDynamicAcademicYears({ minPast: 4, minFuture: 6, extraYears: [academicYear], order: 'desc' }).map(yr => (
                 <option key={yr} value={yr}>{yr}</option>
               ))}
             </select>
+            <Button type="button" variant="outline" onClick={() => window.print()} className="gap-2"><Printer size={15} /> Print report</Button>
           </div>
       </div>
 
-      {/* Active Tab Container */}
-      {loading ? (
-        <div className="flex justify-center items-center py-24 print:hidden">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-600"></div>
-        </div>
-      ) : (
+      {/* Active Tab Container. Content stays mounted while events reload, so unsaved forms survive. */}
+      {loading && (
+        <div
+          className="fixed top-0 inset-x-0 h-1 bg-blue-600/70 animate-pulse z-50 print:hidden"
+          role="status"
+          aria-label="Loading"
+        />
+      )}
+      {(
         <div>
 
           {/* TAB 1: COMMAND CENTER (DASHBOARD HUB) */}
@@ -528,20 +550,20 @@ export default function AnnualPlannerPage() {
                   
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-6 border-t border-white/10 pt-4">
                     <div>
-                      <p className="text-2xl font-black text-white">{stats.schoolDays}</p>
-                      <p className="text-[10px] text-blue-200 uppercase font-extrabold tracking-wider mt-0.5">School Days</p>
+                      <p className="text-2xl font-black text-white">{stats.schoolDays ?? '—'}</p>
+                      <p className="text-[10px] text-blue-200 uppercase font-extrabold tracking-wider mt-0.5">Estimated Teaching Weekdays</p>
                     </div>
                     <div>
                       <p className="text-2xl font-black text-white">{stats.total}</p>
                       <p className="text-[10px] text-blue-200 uppercase font-extrabold tracking-wider mt-0.5">Total Events</p>
                     </div>
                     <div>
-                      <p className="text-2xl font-black text-white">3</p>
-                      <p className="text-[10px] text-blue-200 uppercase font-extrabold tracking-wider mt-0.5">Terms Set</p>
+                      <p className="text-2xl font-black text-white">{stats.completeTerms}/3</p>
+                      <p className="text-[10px] text-blue-200 uppercase font-extrabold tracking-wider mt-0.5">Terms Dated</p>
                     </div>
                     <div>
                       <p className="text-2xl font-black text-white">{compliance.percentage}%</p>
-                      <p className="text-[10px] text-blue-200 uppercase font-extrabold tracking-wider mt-0.5">Compliance</p>
+                      <p className="text-[10px] text-blue-200 uppercase font-extrabold tracking-wider mt-0.5">Readiness</p>
                     </div>
                   </div>
                 </div>
@@ -551,34 +573,25 @@ export default function AnnualPlannerPage() {
                   <div>
                     <h3 className="text-xs font-bold text-blue-200 uppercase tracking-wider mb-3">Academic Timeline</h3>
                     <div className="space-y-2.5">
-                      
-                      <div className="flex items-center justify-between text-xs font-semibold text-white">
-                        <span>Term 1</span>
-                        <span className="text-blue-200">Jan ─ Apr</span>
-                      </div>
-                      
-                      <div className="flex items-center justify-between text-xs font-semibold text-white">
-                        <span>Term 2</span>
-                        <span className="text-blue-200">May ─ Aug</span>
-                      </div>
-                      
-                      <div className="flex items-center justify-between text-xs font-semibold text-white">
-                        <span>Term 3</span>
-                        <span className="text-blue-200">Sep ─ Dec</span>
-                      </div>
-
+                      {stats.termDays.map((term) => {
+                        const form = termForms[term.id];
+                        const range = form.openingDate && form.closingDate
+                          ? `${new Date(`${form.openingDate}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} – ${new Date(`${form.closingDate}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`
+                          : 'Dates not set';
+                        return <div key={term.id} className="flex items-center justify-between text-xs font-semibold text-white"><span>{term.label}</span><span className="text-blue-200">{range}</span></div>;
+                      })}
                     </div>
                   </div>
 
                   <div className="mt-6">
                     <div className="flex justify-between text-xs font-bold text-blue-200 uppercase mb-2">
-                      <span>Year Progress</span>
-                      <span className="text-white">{compliance.percentage}% Complete</span>
+                      <span>Planning Readiness</span>
+                      <span className="text-white">{compliance.percentage}%</span>
                     </div>
                     <div className="w-full bg-white/20 rounded-full h-2 overflow-hidden">
                       <div 
                         className="bg-white h-full rounded-full transition-all duration-500" 
-                        style={{ width: `${compliance.percentage}%` }}
+                style={{ width: `${compliance.percentage}%` }}
                       />
                     </div>
                   </div>
@@ -588,12 +601,13 @@ export default function AnnualPlannerPage() {
               {/* Quick Statistics (6 KPI Cards) */}
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
                 {[
-                  { label: 'Academic Days', count: stats.schoolDays, icon: BookOpen, color: 'text-blue-600 bg-blue-50 border-blue-100' },
+                  { label: 'Teaching Weekdays*', count: stats.schoolDays ?? '—', icon: BookOpen, color: 'text-blue-600 bg-blue-50 border-blue-100' },
                   { label: 'Total Events', count: stats.total, icon: Calendar, color: 'text-slate-600 bg-slate-50 border-slate-200' },
                   { label: 'Assessments', count: stats.assessment, icon: Award, color: 'text-purple-600 bg-purple-50 border-purple-100' },
                   { label: 'Examinations', count: stats.examination, icon: FileText, color: 'text-indigo-600 bg-indigo-50 border-indigo-100' },
                   { label: 'School Trips', count: stats.trip, icon: Compass, color: 'text-cyan-600 bg-cyan-50 border-cyan-100' },
-                  { label: 'Public Holidays', count: stats.holiday, icon: AlertCircle, color: 'text-rose-600 bg-rose-50 border-rose-100' },
+                  { label: 'Holidays & Breaks', count: stats.holiday, icon: AlertCircle, color: 'text-rose-600 bg-rose-50 border-rose-100' },
+                  { label: 'Possible Overlaps', count: conflicts.length, icon: AlertCircle, color: conflicts.length ? 'text-amber-700 bg-amber-50 border-amber-200' : 'text-emerald-700 bg-emerald-50 border-emerald-100' },
                 ].map((kpi, idx) => {
                   const Icon = kpi.icon;
                   return (
@@ -613,6 +627,47 @@ export default function AnnualPlannerPage() {
                 })}
               </div>
 
+              <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                <section className="xl:col-span-2 bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+                  <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                    <div><h3 className="font-extrabold text-slate-900">Term at a glance</h3><p className="text-xs text-slate-500 mt-1">Weekday estimate excludes weekends, holidays, and mid-term breaks.</p></div>
+                    {canSetUpYear && <button type="button" onClick={() => handleTabChange('terms')} className="text-xs font-bold text-blue-700 hover:underline">Edit term dates</button>}
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left">
+                      <thead className="bg-slate-50 text-[10px] uppercase tracking-wider text-slate-500"><tr><th className="px-5 py-3">Term</th><th className="px-5 py-3">Dates</th><th className="px-5 py-3">Teaching weekdays*</th><th className="px-5 py-3">Events</th><th className="px-5 py-3">Exams</th></tr></thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {stats.termDays.map((term) => {
+                          const form = termForms[term.id];
+                          const termEvents = events.filter((event) => {
+                            const eventDay = dateKey(event.startDate);
+                            return eventDay && form.openingDate && form.closingDate && eventDay >= form.openingDate && eventDay <= form.closingDate;
+                          });
+                          const dateRange = form.openingDate && form.closingDate
+                            ? `${formatDateKey(form.openingDate)} – ${formatDateKey(form.closingDate)}`
+                            : 'Dates not set';
+                          return (
+                            <tr key={term.id}>
+                              <td className="px-5 py-3 font-bold text-slate-800">{term.label}</td>
+                              <td className="px-5 py-3 text-slate-600">{dateRange}</td>
+                              <td className="px-5 py-3 font-semibold text-slate-800">{term.days ?? '—'}</td>
+                              <td className="px-5 py-3 text-slate-600">{termEvents.length}</td>
+                              <td className="px-5 py-3 text-slate-600">{termEvents.filter((event) => ['EXAM', 'EXAM_WEEK'].includes(event.type)).length}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+                <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+                  <div className="px-5 py-4 border-b border-slate-100"><h3 className="font-extrabold text-slate-900">Schedule checks</h3><p className="text-xs text-slate-500 mt-1">Time overlaps for shared audiences, classes, or locations.</p></div>
+              <div className="p-4 space-y-3 max-h-64 overflow-y-auto">{conflicts.length === 0 ? <p className="text-sm text-emerald-700 flex items-center gap-2"><CheckCircle2 size={16} />No overlapping events found.</p> : conflicts.slice(0, 8).map(({ first, second }) => <div key={`${first.id}-${second.id}`} className="rounded-xl border border-amber-200 bg-amber-50 p-3"><p className="text-xs font-bold text-amber-900">{first.title} overlaps {second.title}</p><p className="text-[11px] text-amber-800 mt-1">{new Date(first.startDate).toLocaleDateString()} · {describeAudience(first)}. Review whether they can run together.</p>{canManageEvents && <button type="button" onClick={() => handleOpenEditModal(first)} className="mt-2 text-[11px] font-bold text-blue-700 hover:underline">Review first event</button>}</div>)}</div>
+                </section>
+              </div>
+
+              <p className="text-[11px] text-slate-500">* Estimate counts Monday–Friday within saved term dates, less scheduled holidays and mid-term breaks. It does not account for school-specific Saturday instruction or unscheduled closures.</p>
+
               {/* Main Content Dashboard Layout Grid */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 
@@ -629,13 +684,19 @@ export default function AnnualPlannerPage() {
                       {monthsData.map((m, idx) => {
                         const hasOpening = m.events.some(e => e.type === 'TERM_OPENING');
                         const hasClosing = m.events.some(e => e.type === 'TERM_CLOSING');
-                        const hasExams = m.events.some(e => e.type === 'EXAM_WEEK' || e.type === 'EXAMINATION');
+                        const hasExams = m.events.some(e => e.type === 'EXAM' || e.type === 'EXAM_WEEK');
                         const hasHolidays = m.events.some(e => e.type === 'HOLIDAY');
 
-                        let activeLineColor = 'bg-slate-200';
-                        if (idx < 4) activeLineColor = 'bg-blue-500'; // Term 1 bounds
-                        else if (idx < 8) activeLineColor = 'bg-purple-500'; // Term 2 bounds
-                        else activeLineColor = 'bg-indigo-500'; // Term 3 bounds
+                        const monthStart = new Date(academicYear, idx, 1);
+                        const monthEnd = new Date(academicYear, idx + 1, 0);
+                        const termIndex = stats.termDays.findIndex((term) => {
+                          const range = termForms[term.id];
+                          return range.openingDate && range.closingDate
+                            && new Date(`${range.openingDate}T00:00:00`) <= monthEnd
+                            && new Date(`${range.closingDate}T23:59:59`) >= monthStart;
+                        });
+                        const termColors = ['bg-blue-500', 'bg-purple-500', 'bg-indigo-500'];
+                        const activeLineColor = termIndex >= 0 ? termColors[termIndex] : 'bg-slate-200';
 
                         return (
                           <div key={idx} className="flex flex-col items-center group relative flex-1">
@@ -719,8 +780,8 @@ export default function AnnualPlannerPage() {
                       {[
                         { type: 'ACADEMIC', label: 'Academic Events', count: stats.academic, total: stats.total, color: 'bg-blue-500' },
                         { type: 'ASSESSMENT', label: 'Assessments', count: stats.assessment, total: stats.total, color: 'bg-purple-500' },
-                        { type: 'EXAMINATION', label: 'Examinations', count: stats.examination, total: stats.total, color: 'bg-indigo-500' },
-                        { type: 'HOLIDAY', label: 'Public Holidays', count: stats.holiday, total: stats.total, color: 'bg-red-500' },
+                        { type: 'EXAM', label: 'Examinations', count: stats.examination, total: stats.total, color: 'bg-indigo-500' },
+                        { type: 'HOLIDAY', label: 'Holidays & Breaks', count: stats.holiday, total: stats.total, color: 'bg-red-500' },
                         { type: 'FINANCE', label: 'Finance Calendar', count: stats.finance, total: stats.total, color: 'bg-emerald-500' },
                         { type: 'SPORTS', label: 'Sports Slots', count: stats.sports, total: stats.total, color: 'bg-orange-500' },
                       ].map((item, idx) => {
@@ -779,8 +840,8 @@ export default function AnnualPlannerPage() {
                       </div>
 
                       <div className="text-xs text-slate-500 leading-relaxed">
-                        <span className="font-bold text-slate-800 text-sm block">System Score</span>
-                        Calendar setup validation complete. Ready to publish.
+                        <span className="font-bold text-slate-800 text-sm block">Planning readiness</span>
+                        {conflicts.length ? `${conflicts.length} possible event overlap${conflicts.length === 1 ? '' : 's'} need review.` : 'No overlapping events found for shared audiences.'}
                       </div>
                     </div>
 
@@ -815,7 +876,7 @@ export default function AnnualPlannerPage() {
                               <div className={`absolute -left-[23px] top-1 h-3.5 w-3.5 rounded-full border-2 border-white shadow-sm ${conf.dot}`} />
                               
                               <div className="flex flex-col gap-0.5 text-xs">
-                                <span className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors cursor-pointer" onClick={() => handleOpenEditModal(event)}>
+                <span className={`font-bold text-slate-900 transition-colors ${canManageEvents ? 'group-hover:text-blue-600 cursor-pointer' : ''}`} onClick={canManageEvents ? () => handleOpenEditModal(event) : undefined}>
                                   {event.title}
                                 </span>
                                 <span className="text-[10px] text-slate-400 uppercase tracking-wide font-bold">
@@ -834,7 +895,7 @@ export default function AnnualPlannerPage() {
               </div>
 
               {/* Floating Action Bar */}
-              <div className="fixed bottom-6 right-6 z-40 bg-slate-900/90 text-white px-4 py-3 rounded-2xl shadow-xl flex items-center gap-3 backdrop-blur-md border border-slate-800 print:hidden animate-in fade-in slide-in-from-bottom-4 duration-300">
+              {canManageEvents && <div className="fixed bottom-6 right-6 z-40 bg-slate-900/90 text-white px-4 py-3 rounded-2xl shadow-xl flex items-center gap-3 backdrop-blur-md border border-slate-800 print:hidden animate-in fade-in slide-in-from-bottom-4 duration-300">
                 <span className="text-xs font-bold text-slate-400 uppercase pl-1 border-r border-slate-700 pr-3">Quick Creator</span>
                 <div className="flex gap-2">
                   <button 
@@ -852,7 +913,7 @@ export default function AnnualPlannerPage() {
                     <Award className="h-4.5 w-4.5" />
                   </button>
                   <button 
-                    onClick={() => handleOpenAddModal('EXAMINATION')} 
+                    onClick={() => handleOpenAddModal('EXAM')}
                     className="p-2 hover:bg-slate-800 rounded-xl transition-colors text-indigo-400"
                     title="Add Exam"
                   >
@@ -873,57 +934,8 @@ export default function AnnualPlannerPage() {
                   <Plus className="h-4 w-4" />
                   Schedule Slot
                 </button>
-              </div>
+              </div>}
 
-            </div>
-          )}
-
-          {/* TAB 2: YEAR TIMELINE TAB */}
-          {activeTab === 'timeline' && (
-            <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm space-y-8">
-              <div>
-                <h3 className="text-lg font-extrabold text-slate-900">Yearly Planning Board</h3>
-                <p className="text-slate-500 text-sm mt-0.5">Complete month-by-month planning timeline representing spans of terms, recesses, and exams.</p>
-              </div>
-
-              <div className="space-y-6">
-                {monthsData.map(m => (
-                  <div key={m.index} className="flex gap-4 items-start border-b border-slate-100 pb-5 last:border-0 last:pb-0">
-                    <div className="w-24 shrink-0 font-extrabold text-slate-400 uppercase tracking-wide pt-1">{m.fullName}</div>
-                    
-                    <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {m.events.length === 0 ? (
-                        <div 
-                          onClick={() => handleOpenAddModal('GENERAL')} 
-                          className="border border-dashed border-slate-200 rounded-2xl p-4 text-center cursor-pointer hover:bg-slate-50/50 hover:border-slate-300 text-xs text-slate-400 flex items-center justify-center gap-1.5 transition-all"
-                        >
-                          <Plus className="h-4 w-4" /> Schedule event in {m.fullName}
-                        </div>
-                      ) : (
-                        m.events.map(event => {
-                          const style = EVENT_TYPES[event.type] || EVENT_TYPES.OTHER;
-                          return (
-                            <div 
-                              key={event.id}
-                              onClick={() => handleOpenEditModal(event)}
-                              className={`border rounded-2xl p-4 cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all flex flex-col justify-between min-h-[90px] ${style.bg}`}
-                            >
-                              <div className="flex justify-between items-start">
-                                <span className="font-extrabold text-xs text-slate-900 leading-tight line-clamp-1">{event.title}</span>
-                                <span className={`h-1.5 w-1.5 rounded-full ${style.dot}`} />
-                              </div>
-                              <div className="flex justify-between text-[10px] text-slate-500 font-bold uppercase mt-4">
-                                <span>Day {event.day}</span>
-                                <span>{style.label}</span>
-                              </div>
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
             </div>
           )}
 
@@ -934,161 +946,9 @@ export default function AnnualPlannerPage() {
             </div>
           )}
 
-          {/* TAB 4: TERM SETUP CONFIGURATIONS */}
-          {activeTab === 'terms' && (
-            <div className="max-w-4xl mx-auto flex flex-col gap-6">
-              <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 flex gap-3 text-sm text-blue-800">
-                <Info className="h-5 w-5 shrink-0 text-blue-600 mt-0.5" />
-                <div>
-                  <p className="font-bold">Term Date Setup</p>
-                  <p className="mt-1 text-blue-700">
-                    Define term start and end boundaries. This action automatically creates opening, closing, exams, and midterm events.
-                  </p>
-                </div>
-              </div>
-
-              {TERMS.map(term => {
-                const isOpen = openTerms[term.id];
-                const form = termForms[term.id];
-                return (
-                  <div key={term.id} className="bg-white border border-slate-200 shadow-sm rounded-2xl overflow-hidden">
-                    <button
-                      onClick={() => setOpenTerms(prev => ({ ...prev, [term.id]: !prev[term.id] }))}
-                      className="w-full flex justify-between items-center px-6 py-4.5 bg-slate-50 hover:bg-slate-100 transition-colors border-b border-slate-200"
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="p-2 bg-blue-100 text-blue-700 rounded-xl">
-                          <Layers className="h-5 w-5" />
-                        </span>
-                        <span className="font-extrabold text-slate-800 text-base">{term.label} Boundaries</span>
-                      </div>
-                      {isOpen ? <ChevronUp className="h-5 w-5 text-slate-500" /> : <ChevronDown className="h-5 w-5 text-slate-500" />}
-                    </button>
-
-                    {isOpen && (
-                      <div className="p-6 flex flex-col gap-6">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          
-                          <div className="flex flex-col gap-4">
-                            <h4 className="font-extrabold text-slate-700 border-b pb-2 flex items-center gap-2 text-sm uppercase tracking-wide">
-                              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                              Duration
-                            </h4>
-                            
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                              <div className="flex flex-col gap-1.5">
-                                <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Opening Date</Label>
-                                <Input 
-                                  type="date"
-                                  value={form.openingDate}
-                                  onChange={(e) => handleTermFormChange(term.id, 'openingDate', e.target.value)}
-                                />
-                              </div>
-                              <div className="flex flex-col gap-1.5">
-                                <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Closing Date</Label>
-                                <Input 
-                                  type="date"
-                                  value={form.closingDate}
-                                  onChange={(e) => handleTermFormChange(term.id, 'closingDate', e.target.value)}
-                                />
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="flex flex-col gap-4">
-                            <h4 className="font-extrabold text-slate-700 border-b pb-2 flex items-center gap-2 text-sm uppercase tracking-wide">
-                              <Calendar className="h-4 w-4 text-amber-600" />
-                              Midterm Break (Optional)
-                            </h4>
-                            
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                              <div className="flex flex-col gap-1.5">
-                                <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Start Date</Label>
-                                <Input 
-                                  type="date"
-                                  value={form.midtermStart}
-                                  onChange={(e) => handleTermFormChange(term.id, 'midtermStart', e.target.value)}
-                                />
-                              </div>
-                              <div className="flex flex-col gap-1.5">
-                                <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">End Date</Label>
-                                <Input 
-                                  type="date"
-                                  value={form.midtermEnd}
-                                  onChange={(e) => handleTermFormChange(term.id, 'midtermEnd', e.target.value)}
-                                />
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="flex flex-col gap-4">
-                            <h4 className="font-extrabold text-slate-700 border-b pb-2 flex items-center gap-2 text-sm uppercase tracking-wide">
-                              <FileText className="h-4 w-4 text-indigo-600" />
-                              Assessment Week (Optional)
-                            </h4>
-                            
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                              <div className="flex flex-col gap-1.5">
-                                <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Start Date</Label>
-                                <Input 
-                                  type="date"
-                                  value={form.examStart}
-                                  onChange={(e) => handleTermFormChange(term.id, 'examStart', e.target.value)}
-                                />
-                              </div>
-                              <div className="flex flex-col gap-1.5">
-                                <Label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">End Date</Label>
-                                <Input 
-                                  type="date"
-                                  value={form.examEnd}
-                                  onChange={(e) => handleTermFormChange(term.id, 'examEnd', e.target.value)}
-                                />
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="flex flex-col gap-4">
-                            <h4 className="font-extrabold text-slate-700 border-b pb-2 flex items-center gap-2 text-sm uppercase tracking-wide">
-                              <Unlock className="h-4 w-4 text-blue-600" />
-                              Permissions
-                            </h4>
-                            
-                            <div className="flex items-center justify-between p-3.5 bg-slate-50 border rounded-2xl">
-                              <div className="flex flex-col">
-                                <span className="font-bold text-sm text-slate-800">Publish to Parents</span>
-                                <span className="text-[10px] text-slate-400 mt-0.5">Toggle visibility on parent portal dashboards</span>
-                              </div>
-                              
-                              <button
-                                onClick={() => handleTermFormChange(term.id, 'isParentVisible', !form.isParentVisible)}
-                                className={`p-2.5 rounded-xl border transition-colors ${
-                                  form.isParentVisible 
-                                    ? 'bg-blue-50 text-blue-600 border-blue-200' 
-                                    : 'bg-slate-100 text-slate-400 border-slate-200'
-                                }`}
-                              >
-                                {form.isParentVisible ? <Eye className="h-5 w-5" /> : <EyeOff className="h-5 w-5" />}
-                              </button>
-                            </div>
-                          </div>
-
-                        </div>
-
-                        <div className="flex justify-end border-t pt-5 mt-4">
-                          <Button 
-                            onClick={() => handleSaveTermSetup(term.id)} 
-                            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white"
-                          >
-                            <Save className="h-4 w-4" />
-                            Save {term.label} Boundaries
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+          {/* TAB 4: ACADEMIC YEAR SETUP (terms, breaks and exam weeks in one save) */}
+          {activeTab === 'terms' && canSetUpYear && (
+            <AcademicYearSetup academicYear={academicYear} onSaved={fetchEvents} onDirtyChange={setSetupDirty} />
           )}
 
           {/* TAB 5: EVENTS MANAGER TAB */}
@@ -1129,10 +989,10 @@ export default function AnnualPlannerPage() {
                   </div>
                 </div>
 
-                <Button onClick={() => handleOpenAddModal('GENERAL')} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white">
+                {canManageEvents && <Button onClick={() => handleOpenAddModal('GENERAL')} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white">
                   <Plus className="h-4 w-4" />
                   Add Event Custom
-                </Button>
+                </Button>}
               </div>
 
               {/* Grid month cards */}
@@ -1158,11 +1018,10 @@ export default function AnnualPlannerPage() {
                       <div className="p-4 flex-1 flex flex-col gap-2 overflow-y-auto max-h-[240px]">
                         {monthEvents.length === 0 ? (
                           <div 
-                            onClick={() => handleOpenAddModal('GENERAL')} 
-                            className="text-slate-400 text-xs italic my-auto text-center cursor-pointer hover:text-blue-500"
+                            onClick={canManageEvents ? () => handleOpenAddModal('GENERAL') : undefined}
+                            className={`text-slate-400 text-xs italic my-auto text-center ${canManageEvents ? 'cursor-pointer hover:text-blue-500' : ''}`}
                           >
-                            No Scheduled Events<br />
-                            <span className="font-bold text-[10px] uppercase text-blue-600">+ Add Event</span>
+                            No Scheduled Events{canManageEvents && <><br /><span className="font-bold text-[10px] uppercase text-blue-600">+ Add Event</span></>}
                           </div>
                         ) : (
                           monthEvents.map(event => {
@@ -1170,8 +1029,8 @@ export default function AnnualPlannerPage() {
                             return (
                               <div 
                                 key={event.id}
-                                onClick={() => handleOpenEditModal(event)}
-                                className={`group text-xs border rounded-xl p-2.5 cursor-pointer transition-all hover:shadow-md flex justify-between items-start gap-2 ${conf.bg}`}
+                                onClick={canManageEvents ? () => handleOpenEditModal(event) : undefined}
+                                className={`group text-xs border rounded-xl p-2.5 transition-all flex justify-between items-start gap-2 ${conf.bg} ${canManageEvents ? 'cursor-pointer hover:shadow-md' : ''}`}
                               >
                                 <div className="flex flex-col gap-1">
                                   <span className="font-extrabold line-clamp-1 group-hover:text-blue-900 transition-colors">
@@ -1181,9 +1040,9 @@ export default function AnnualPlannerPage() {
                                     {new Date(event.startDate).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
                                   </span>
                                 </div>
-                                {!event.isParentVisible && (
-                                  <span className="text-slate-400 shrink-0">
-                                    <Lock className="h-3 w-3" />
+                                {(event.audience?.length > 0 || event.classIds?.length > 0) && (
+                                  <span className="text-slate-400 shrink-0" title={`Visible to: ${describeAudience(event)}`}>
+                                    {event.isParentVisible ? <Users className="h-3 w-3" /> : <Lock className="h-3 w-3" />}
                                   </span>
                                 )}
                               </div>
@@ -1304,24 +1163,11 @@ export default function AnnualPlannerPage() {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between p-3.5 bg-slate-50 border rounded-2xl mt-2">
-                <div className="flex flex-col">
-                  <span className="font-bold text-sm text-slate-800">Publish to Parent Portal</span>
-                  <span className="text-[10px] text-slate-400 mt-0.5">Allow parents and student accounts to view this event</span>
-                </div>
-                
-                <button
-                  type="button"
-                  onClick={() => setEventForm(prev => ({ ...prev, isParentVisible: !prev.isParentVisible }))}
-                  className={`p-2.5 rounded-xl border transition-colors ${
-                    eventForm.isParentVisible 
-                      ? 'bg-blue-50 text-blue-600 border-blue-200' 
-                      : 'bg-slate-100 text-slate-400 border-slate-200'
-                  }`}
-                >
-                  {eventForm.isParentVisible ? <Eye className="h-5 w-5" /> : <EyeOff className="h-5 w-5" />}
-                </button>
-              </div>
+              <EventAudiencePicker
+                audience={eventForm.audience}
+                classIds={eventForm.classIds}
+                onChange={({ audience, classIds }) => setEventForm(prev => ({ ...prev, audience, classIds }))}
+              />
 
             </div>
 
@@ -1329,7 +1175,7 @@ export default function AnnualPlannerPage() {
               <Button type="button" onClick={() => setIsModalOpen(false)} variant="outline">
                 Cancel
               </Button>
-              {modalEvent && (
+              {modalEvent && canDeleteEvents && (
                 <Button 
                   type="button" 
                   onClick={() => {

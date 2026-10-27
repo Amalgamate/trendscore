@@ -10,6 +10,7 @@ import { clearSchoolCache } from '../middleware/schoolContext.middleware';
 import { applyModulePackageToSchool, normalizePackageId } from '../services/moduleCatalog.service';
 import { buildInstalledAppName } from '../utils/pwa.util';
 import { resolveCurrentSchool } from '../services/school-resolver.service';
+import { invalidateAuthLookupCache } from '../services/auth-cache.service';
 
 import logger from '../utils/logger';
 const VALID_INSTITUTION_TYPES = new Set(['PRIMARY_CBC', 'SECONDARY', 'TERTIARY']);
@@ -559,7 +560,7 @@ export const resetWholeInstitution = async (req: AuthRequest, res: Response) => 
     // Keep super-admins usable immediately after reset.
     await tx.user.updateMany({
       where: { id: { in: superAdminIds } },
-      data: { status: 'ACTIVE', loginAttempts: 0, lockedUntil: null }
+      data: { status: 'ACTIVE', authVersion: { increment: 1 }, loginAttempts: 0, lockedUntil: null }
     });
 
     // Return school context to fresh-setup mode so super-admin can choose institution type again.
@@ -573,6 +574,7 @@ export const resetWholeInstitution = async (req: AuthRequest, res: Response) => 
       }
     });
   });
+  await invalidateAuthLookupCache();
 
   res.json({
     success: true,

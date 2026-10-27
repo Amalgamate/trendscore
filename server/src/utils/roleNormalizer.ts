@@ -22,9 +22,10 @@ export const ROLE_ALIAS_MAP: Readonly<Record<string, string>> = {
   SYSTEM_ADMINISTRATOR: 'SUPER_ADMIN',
   SUPERADMIN:           'SUPER_ADMIN',
   HEADTEACHER:          'HEAD_TEACHER',
-  DEPUTY_HEAD_TEACHER:  'HEAD_TEACHER',
-  DEPUTYHEADTEACHER:    'HEAD_TEACHER',
-  DEPUTY_PRINCIPAL:     'HEAD_TEACHER',
+  // Deputy is a distinct, lower-authority role. Keep legacy spellings mapped
+  // to that role so it cannot inherit head-teacher-only permissions.
+  DEPUTYHEADTEACHER:    'DEPUTY_HEAD_TEACHER',
+  DEPUTY_PRINCIPAL:     'DEPUTY_HEAD_TEACHER',
   HEADOFCURRICULUM:     'HEAD_OF_CURRICULUM',
 };
 

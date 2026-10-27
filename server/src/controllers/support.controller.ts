@@ -5,6 +5,7 @@ import prisma from '../config/database';
 import { getIO } from '../services/socket.service';
 import { EmailService } from '../services/email-resend.service';
 import { PRODUCT_DISPLAY_NAME } from '../config/productIdentity';
+import { hasAnyRole } from '../utils/roleNormalizer';
 
 import logger from '../utils/logger';
 export const createTicket = async (req: AuthRequest, res: Response) => {
@@ -82,13 +83,13 @@ export const createTicket = async (req: AuthRequest, res: Response) => {
 export const getTickets = async (req: AuthRequest, res: Response) => {
     try {
         const userId = req.user?.userId;
-        const userRole = req.user?.role;
+        const isSupportAdmin = hasAnyRole(req.user, ['SUPER_ADMIN']);
 
         if (!userId) return res.status(401).json({ message: 'Unauthorized' });
 
         let whereClause: any = {};
 
-        if (userRole === 'SUPER_ADMIN') {
+        if (isSupportAdmin) {
             // Super Admin sees all tickets
             whereClause = {};
         } else {
@@ -116,7 +117,7 @@ export const getTicket = async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
         const userId = req.user?.userId;
-        const userRole = req.user?.role;
+        const isSupportAdmin = hasAnyRole(req.user, ['SUPER_ADMIN']);
 
         if (!userId) return res.status(401).json({ message: 'Unauthorized' });
 
@@ -139,7 +140,7 @@ export const getTicket = async (req: AuthRequest, res: Response) => {
         }
 
         // Access Control
-        if (userRole !== 'SUPER_ADMIN' && ticket.userId !== userId) {
+        if (!isSupportAdmin && ticket.userId !== userId) {
             return res.status(403).json({ message: 'Access denied' });
         }
 
@@ -164,6 +165,10 @@ export const addMessage = async (req: AuthRequest, res: Response) => {
         });
 
         if (!ticket) return res.status(404).json({ message: 'Ticket not found' });
+
+        if (!hasAnyRole(req.user, ['SUPER_ADMIN']) && ticket.userId !== userId) {
+            return res.status(403).json({ message: 'Access denied' });
+        }
 
         const newMessage = await prisma.supportMessage.create({
             data: {
@@ -201,11 +206,22 @@ export const updateTicket = async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
         const { status, priority, assignedToId } = req.body;
-        const userRole = req.user?.role;
+        const userId = req.user?.userId;
+        const isSupportAdmin = hasAnyRole(req.user, ['SUPER_ADMIN']);
 
-        if (!userRole) return res.status(401).json({ message: 'Unauthorized' });
+        if (!userId) return res.status(401).json({ message: 'Unauthorized' });
 
-        if (userRole !== 'SUPER_ADMIN') {
+        const existingTicket = await prisma.supportTicket.findUnique({
+            where: { id },
+            select: { userId: true },
+        });
+        if (!existingTicket) return res.status(404).json({ message: 'Ticket not found' });
+
+        if (!isSupportAdmin && existingTicket.userId !== userId) {
+            return res.status(403).json({ message: 'Access denied' });
+        }
+
+        if (!isSupportAdmin) {
             // Basic users can only close tickets maybe?
             if (status !== 'CLOSED' && status !== 'RESOLVED') {
                 return res.status(403).json({ message: "Only admins can update ticket details" });
@@ -215,9 +231,9 @@ export const updateTicket = async (req: AuthRequest, res: Response) => {
         const ticket = await prisma.supportTicket.update({
             where: { id },
             data: {
-                status,
-                priority,
-                assignedToId
+                ...(status !== undefined ? { status } : {}),
+                ...(isSupportAdmin && priority !== undefined ? { priority } : {}),
+                ...(isSupportAdmin && assignedToId !== undefined ? { assignedToId } : {})
             }
         });
 

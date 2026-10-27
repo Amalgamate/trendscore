@@ -5,6 +5,7 @@ import { SmsService } from './sms.service';
 import { EmailService } from './email.service';
 import { UserStatus } from '@prisma/client';
 import { PRODUCT_EMAIL_DOMAIN, PRODUCT_PARENT_PORTAL_URL } from '../config/productIdentity';
+import { invalidateAuthLookupCache } from './auth-cache.service';
 
 export const normalizeParentPhoneForLogin = (phone?: string | null): string | null => {
   const digits = String(phone || '').replace(/\D/g, '');
@@ -253,6 +254,8 @@ export class ParentService {
       where: { userId: parent.id },
       select: { id: true, familyAccountId: true },
     });
+    const authStateChanged = parent.role !== 'PARENT' ||
+      parent.roles.some(role => role !== 'PARENT') || parent.status !== 'ACTIVE' || parent.archived;
 
     await prisma.$transaction(async (tx) => {
       await tx.user.update({
@@ -265,6 +268,9 @@ export class ParentService {
           roles: ['PARENT'],
           status: 'ACTIVE',
           archived: false,
+          ...((parent.role !== 'PARENT' || parent.roles.some(role => role !== 'PARENT') || parent.status !== 'ACTIVE' || parent.archived)
+            ? { authVersion: { increment: 1 } }
+            : {}),
         },
       });
 
@@ -324,6 +330,8 @@ export class ParentService {
         });
       }
     });
+
+    if (authStateChanged) await invalidateAuthLookupCache();
 
     return parent;
   }

@@ -491,12 +491,11 @@ const PageRouter = ({
 
           // Annual Planner
           case 'annual-planner':
-            return <AnnualPlannerPage onNavigate={handleNavigate} user={user} />;
+            return <AnnualPlannerPage onNavigate={handleNavigate} user={user} initialTab={pageParams?.tab} />;
 
           // Planner Module
           case 'planner-calendar':
           case 'planner-timetable':
-          case 'planner-agenda':
           case 'planner-schemes':
             return <PlannerLayout currentPage={currentPage === 'events-calendar' ? 'planner-calendar' : currentPage} onNavigate={handleNavigate} />;
           case 'planner-duty-roster':

@@ -20,6 +20,7 @@ import { SMS_MESSAGES } from '../config/communication.messages';
 import { generateStaffId, getNextStaffIdPreview, autoAssignMissingStaffIds } from '../services/staffId.service';
 import { redisCacheService } from '../services/redis-cache.service';
 import { buildParentLoginEmail } from '../services/parent.service';
+import { invalidateAuthLookupCache } from '../services/auth-cache.service';
 
 const VALID_ROLES = [...USER_ROLES];
 
@@ -551,6 +552,10 @@ export class UserController {
       updateData.password = await bcrypt.hash(password, 12);
     }
 
+    if (role || roles !== undefined || status || password) {
+      updateData.authVersion = { increment: 1 };
+    }
+
     const updatedUser = await prisma.user.update({
       where: { id },
       data: updateData,
@@ -565,6 +570,8 @@ export class UserController {
         staffId: true
       }
     });
+
+    await invalidateAuthLookupCache();
 
     res.json({ success: true, data: updatedUser });
   }
@@ -588,8 +595,9 @@ export class UserController {
 
     const archivedUser = await prisma.user.update({
       where: { id },
-      data: { archived: true, archivedAt: new Date(), archivedBy: currentUserId, status: 'INACTIVE' },
+      data: { archived: true, archivedAt: new Date(), archivedBy: currentUserId, status: 'INACTIVE', authVersion: { increment: 1 } },
     });
+    await invalidateAuthLookupCache();
 
     res.json({ success: true, message: 'User archived', data: archivedUser });
   }
@@ -604,8 +612,9 @@ export class UserController {
 
     const updated = await prisma.user.update({
       where: { id },
-      data: { archived: false, archivedAt: null, archivedBy: null, status: 'ACTIVE' },
+      data: { archived: false, archivedAt: null, archivedBy: null, status: 'ACTIVE', authVersion: { increment: 1 } },
     });
+    await invalidateAuthLookupCache();
 
     res.json({ success: true, message: 'User unarchived', data: updated });
   }
@@ -630,6 +639,7 @@ export class UserController {
     try {
       await prisma.user.delete({ where: { id } });
       await redisCacheService.delete(`auth:user:${targetUser.email}`);
+      await invalidateAuthLookupCache();
       res.json({ success: true, message: 'Permanently deleted' });
     } catch (error: any) {
       // Teachers with attendance, results, schedules, or other history are
@@ -639,9 +649,10 @@ export class UserController {
 
       const archivedUser = await prisma.user.update({
         where: { id },
-        data: { archived: true, archivedAt: new Date(), archivedBy: currentUserId, status: 'INACTIVE' },
+        data: { archived: true, archivedAt: new Date(), archivedBy: currentUserId, status: 'INACTIVE', authVersion: { increment: 1 } },
       });
       await redisCacheService.delete(`auth:user:${targetUser.email}`);
+      await invalidateAuthLookupCache();
       res.json({
         success: true,
         message: 'User archived because they have existing school records',
@@ -813,8 +824,9 @@ export class UserController {
     const hashedPassword = await bcrypt.hash(newPassword, 12);
     await prisma.user.update({
       where: { id },
-      data: { password: hashedPassword, loginAttempts: 0, lockedUntil: null }
+      data: { password: hashedPassword, authVersion: { increment: 1 }, loginAttempts: 0, lockedUntil: null }
     });
+    await invalidateAuthLookupCache();
 
     const requestedChannels = [sendWhatsApp && 'WhatsApp', sendSms && 'SMS'].filter(Boolean) as string[];
     if (requestedChannels.length === 0) {

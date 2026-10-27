@@ -1,14 +1,21 @@
-name: Promote Release
+name: Deploy Schools
 
-# Manual-only school deployment. Operators type a school slug and the workflow
-# validates it against deploy/instances.manifest.json before touching servers.
+# Single source of truth for manual school deployments. Select one school or
+# all active production schools; targets are validated against the manifest.
 
 on:
   workflow_dispatch:
     inputs:
+      target:
+        description: 'Deployment scope'
+        required: true
+        type: choice
+        options:
+          - school
+          - all_schools
       school_slug:
         description: 'School slug to deploy, e.g. demo, lions-complex, zawadi-junior'
-        required: true
+        required: false
         type: string
       environment:
         description: 'Deployment environment, e.g. demo, pilot, production'
@@ -25,9 +32,14 @@ on:
         required: false
         type: string
         default: ''
+      confirm:
+        description: 'For all_schools only, type deploy to confirm the production rollout'
+        required: false
+        type: string
+        default: ''
 
 concurrency:
-  group: promote-release-${{ inputs.environment }}-${{ inputs.school_slug }}
+  group: deploy-schools-${{ inputs.target }}-${{ inputs.environment }}-${{ inputs.school_slug || 'all' }}
   cancel-in-progress: false
 
 permissions:
@@ -49,6 +61,17 @@ jobs:
       image_tag: ${{ steps.image.outputs.image_tag }}
       commit_sha: ${{ steps.image.outputs.commit_sha }}
     steps:
+      - name: Confirm batch deployment
+        env:
+          DEPLOY_SCOPE: ${{ inputs.target }}
+          CONFIRMATION: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          if [[ "${DEPLOY_SCOPE}" == "all_schools" && "${CONFIRMATION}" != "deploy" ]]; then
+            echo "::error::Type 'deploy' in confirm to proceed with all production schools."
+            exit 1
+          fi
+
       - name: Checkout selected branch
         uses: actions/checkout@v4
         with:
@@ -73,14 +96,26 @@ jobs:
 
       - name: Validate deployment target
         id: target
+        env:
+          DEPLOY_SCOPE: ${{ inputs.target }}
+          SCHOOL_SLUG: ${{ inputs.school_slug }}
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+          DEPLOY_BRANCH: ${{ inputs.branch }}
         run: |
           set -euo pipefail
-          node scripts/validate-deployment-target.js "${{ inputs.school_slug }}" \
-            --environment "${{ inputs.environment }}" \
-            --branch "${{ inputs.branch }}" \
+          if [[ "${DEPLOY_SCOPE}" == "all_schools" ]]; then
+            target=all_schools
+            environment=production
+          else
+            target="${SCHOOL_SLUG}"
+            environment="${DEPLOY_ENVIRONMENT}"
+          fi
+          node scripts/validate-deployment-target.js "${target}" \
+            --environment "${environment}" \
+            --branch "${DEPLOY_BRANCH}" \
             --manifest deploy/instances.manifest.json
 
-  promote:
+  deploy:
     runs-on: ubuntu-latest
     needs: validate
     environment: ${{ needs.validate.outputs.github_environment }}
@@ -91,10 +126,10 @@ jobs:
           ref: ${{ needs.validate.outputs.branch }}
           fetch-depth: 0
 
-      - name: Print matched school details
+      - name: Print deployment details
         run: |
           {
-            echo "## Matched school deployment"
+            echo "## School deployment"
             echo ""
             echo "| Field | Value |"
             echo "|-------|-------|"
@@ -161,7 +196,7 @@ jobs:
           AWS_REKOGNITION_LIVENESS_ROLE_ARN: ${{ vars.AWS_REKOGNITION_LIVENESS_ROLE_ARN }}
         run: bash scripts/ci/sync-school-aws-config.sh
 
-      - name: Deploy matched school only
+      - name: Deploy selected target
         env:
           IMAGE_TAG: ${{ needs.validate.outputs.image_tag }}
           DEPLOY_TARGET: ${{ needs.validate.outputs.deploy_target }}

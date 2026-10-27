@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { ArrowLeft, Plus, Edit, Trash2, Eye, Loader, Database, ChevronDown, GraduationCap, RefreshCw, Search, X } from 'lucide-react';
+import { ArrowLeft, Plus, Edit, Trash2, Eye, Loader, Database, ChevronDown, GraduationCap, RefreshCw, Search, X, Check } from 'lucide-react';
 import { useNotifications } from '../hooks/useNotifications';
 import { useAuth } from '../../../hooks/useAuth';
 import { assessmentAPI, classAPI } from '../../../services/api';
@@ -122,6 +122,8 @@ const SummativeTests = ({ onNavigate, defaultTestType = null }) => {
   const [tests, setTests] = useState([]);
   const [selectedTest, setSelectedTest] = useState(null);
   const [selectedIds, setSelectedIds] = useState([]);
+  const [bulkTestType, setBulkTestType] = useState('');
+  const [bulkTypeSaving, setBulkTypeSaving] = useState(false);
 
   const [showConfirm, setShowConfirm] = useState(false);
   const [confirmConfig, setConfirmConfig] = useState({ title: '', message: '', onConfirm: () => { } });
@@ -411,6 +413,31 @@ const SummativeTests = ({ onNavigate, defaultTestType = null }) => {
     setShowConfirm(true);
   };
 
+  const handleBulkTypeChange = async () => {
+    if (selectedIds.length === 0 || !bulkTestType || bulkTypeSaving) return;
+    const targetLabel = CANONICAL_TEST_TYPE_OPTIONS.find((option) => option.value === bulkTestType)?.label || formatTestTypeLabel(bulkTestType);
+    setBulkTypeSaving(true);
+    try {
+      const response = await assessmentAPI.updateTestsBulk(selectedIds, bulkTestType);
+      const updatedCount = response?.data?.updatedCount ?? response?.updatedCount ?? selectedIds.length;
+      const skippedCount = response?.data?.skippedCount ?? response?.skippedCount ?? 0;
+      const conflicts = response?.data?.conflicts ?? response?.conflicts ?? [];
+      setSelectedIds([]);
+      setBulkTestType('');
+      await fetchTests();
+      if (skippedCount > 0) {
+        showError(`Changed ${updatedCount} tests to ${targetLabel}; skipped ${skippedCount} because matching tests already exist: ${conflicts.join(', ')}.`);
+      } else {
+        showSuccess(`Changed ${updatedCount} ${updatedCount === 1 ? 'test' : 'tests'} to ${targetLabel}. Scores were kept.`);
+      }
+    } catch (error) {
+      console.error('Bulk test type update failed:', error);
+      showError('Failed to change exam type: ' + error.message);
+    } finally {
+      setBulkTypeSaving(false);
+    }
+  };
+
   // handleBulkApprove removed — approval workflow disabled.
 
   const stats = useMemo(() => ({ total: tests.length }), [tests]);
@@ -479,9 +506,31 @@ const SummativeTests = ({ onNavigate, defaultTestType = null }) => {
       <div className="toolbar-card">
         <div className="flex flex-col md:flex-row gap-4 justify-between items-start">
           {selectedIds.length > 0 ? (
-            <div className="flex items-center gap-4 bg-brand-purple/5 px-4 py-2 rounded-lg border border-brand-purple/10">
+            <div className="flex flex-wrap items-center gap-3 bg-brand-purple/5 px-4 py-2 rounded-lg border border-brand-purple/10">
               <span className="text-sm font-medium text-brand-purple">{selectedIds.length} Selected</span>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="sr-only" htmlFor="bulk-test-type">Change exam type for selected tests</label>
+                <select
+                  id="bulk-test-type"
+                  value={bulkTestType}
+                  onChange={(event) => setBulkTestType(event.target.value)}
+                  disabled={bulkTypeSaving}
+                  className="px-3 py-1.5 bg-white text-xs font-medium rounded-md border border-gray-200 focus:ring-2 focus:ring-brand-purple"
+                >
+                  <option value="">Change exam type…</option>
+                  {CANONICAL_TEST_TYPE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={handleBulkTypeChange}
+                  disabled={!bulkTestType || bulkTypeSaving}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-brand-purple text-white text-xs font-medium rounded-md hover:bg-brand-purple/90 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {bulkTypeSaving ? <Loader size={14} className="animate-spin" /> : <Check size={14} />}
+                  {bulkTypeSaving ? 'Updating…' : 'Apply Type'}
+                </button>
                 <button onClick={handleBulkDelete} className="flex items-center gap-2 px-3 py-1.5 bg-red-600 text-white text-xs font-medium rounded-md hover:bg-red-700 transition">
                   <Trash2 size={14} /> Bulk Delete
                 </button>

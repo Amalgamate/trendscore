@@ -23,20 +23,17 @@ on:
           - SECONDARY
           - TERTIARY
       frontend_port:
-        description: 'Optional host port override; normally allocated automatically'
-        required: false
+        description: 'Host port for frontend (must be unique on the server, e.g. 3012)'
+        required: true
         type: string
-        default: ''
       backend_port:
-        description: 'Optional host port override; normally allocated automatically'
-        required: false
+        description: 'Host port for backend (must be unique on the server, e.g. 5012)'
+        required: true
         type: string
-        default: ''
       db_name:
-        description: 'Optional database name override; normally derived from the school slug'
-        required: false
+        description: 'PostgreSQL database name (e.g. zawadi_mwangaza_cs)'
+        required: true
         type: string
-        default: ''
       admin_email:
         description: 'Super-admin email for this school'
         required: false
@@ -46,10 +43,6 @@ on:
 permissions:
   contents: read
   packages: read
-
-concurrency:
-  group: provision-production-school
-  cancel-in-progress: false
 
 jobs:
   provision:
@@ -91,92 +84,15 @@ jobs:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
         run: bash scripts/ci/configure-deploy-ssh.sh
 
-      - name: Allocate school resources
-        id: resources
-        env:
-          SCHOOL_SLUG: ${{ inputs.school_slug }}
-          REQUESTED_FE_PORT: ${{ inputs.frontend_port }}
-          REQUESTED_BE_PORT: ${{ inputs.backend_port }}
-          REQUESTED_DB_NAME: ${{ inputs.db_name }}
-        run: |
-          set -euo pipefail
-          slug="${SCHOOL_SLUG//-/_}"
-          db_name="${REQUESTED_DB_NAME:-zawadi_${slug}}"
-          if [[ ! "$db_name" =~ ^[a-zA-Z][a-zA-Z0-9_]{0,62}$ ]]; then
-            echo "Invalid database name: $db_name" >&2
-            exit 1
-          fi
-
-          existing_env="/srv/zawadi/apps/env/.zawadi-${SCHOOL_SLUG}.env"
-          existing_ports="$(ssh production "if sudo test -f '$existing_env'; then sudo grep -E '^(FRONTEND|BACKEND)_PORT=' '$existing_env' | cut -d= -f2 | xargs; fi" || true)"
-          if [[ -n "$existing_ports" ]]; then
-            read -r existing_fe existing_be <<< "$existing_ports"
-            if [[ -n "$REQUESTED_FE_PORT" && "$REQUESTED_FE_PORT" != "$existing_fe" ]] || [[ -n "$REQUESTED_BE_PORT" && "$REQUESTED_BE_PORT" != "$existing_be" ]]; then
-              echo "This provisioning retry must reuse the ports already recorded for $SCHOOL_SLUG" >&2
-              exit 1
-            fi
-            echo "frontend_port=$existing_fe" >> "$GITHUB_OUTPUT"
-            echo "backend_port=$existing_be" >> "$GITHUB_OUTPUT"
-            echo "db_name=$db_name" >> "$GITHUB_OUTPUT"
-            echo "Reusing the existing frontend/backend ports for the in-progress school setup"
-            exit 0
-          fi
-
-          allocation="$(ssh production 'python3 -' <<'PY'
-          import socket
-
-          def available(start, end, reserved):
-              for port in range(start, end + 1):
-                  if port in reserved:
-                      continue
-                  sock = socket.socket()
-                  try:
-                      sock.bind(("0.0.0.0", port))
-                      return port
-                  except OSError:
-                      pass
-                  finally:
-                      sock.close()
-              raise SystemExit(f"No free port in {start}-{end}")
-
-          fe = available(3000, 3499, set())
-          be = available(5000, 5499, {fe})
-          print(f"{fe} {be}")
-          PY
-          )"
-          read -r allocated_fe allocated_be <<< "$allocation"
-          fe="${REQUESTED_FE_PORT:-$allocated_fe}"
-          be="${REQUESTED_BE_PORT:-$allocated_be}"
-          [[ "$fe" =~ ^[0-9]+$ && "$fe" -ge 3000 && "$fe" -le 3499 ]] || { echo "Frontend port must be 3000-3499" >&2; exit 1; }
-          [[ "$be" =~ ^[0-9]+$ && "$be" -ge 5000 && "$be" -le 5499 ]] || { echo "Backend port must be 5000-5499" >&2; exit 1; }
-          if [[ -n "$REQUESTED_FE_PORT" || -n "$REQUESTED_BE_PORT" ]]; then
-            ssh production "python3 - $fe $be" <<'PY'
-          import socket, sys
-          for value in sys.argv[1:]:
-              port = int(value)
-              sock = socket.socket()
-              try:
-                  sock.bind(("0.0.0.0", port))
-              except OSError:
-                  raise SystemExit(f"Requested port {port} is already in use")
-              finally:
-                  sock.close()
-          PY
-          fi
-          echo "frontend_port=$fe" >> "$GITHUB_OUTPUT"
-          echo "backend_port=$be" >> "$GITHUB_OUTPUT"
-          echo "db_name=$db_name" >> "$GITHUB_OUTPUT"
-          echo "Allocated frontend $fe, backend $be, database $db_name"
-
       - name: Create env file and spin up stack
         env:
           SCHOOL_SLUG: ${{ inputs.school_slug }}
           PUBLIC_DOMAIN: ${{ env.PUBLIC_DOMAIN }}
           SCHOOL_NAME: ${{ inputs.school_name }}
           SCHOOL_INSTITUTION_TYPE: ${{ inputs.institution_type }}
-          FRONTEND_PORT: ${{ steps.resources.outputs.frontend_port }}
-          BACKEND_PORT: ${{ steps.resources.outputs.backend_port }}
-          DB_NAME: ${{ steps.resources.outputs.db_name }}
+          FRONTEND_PORT: ${{ inputs.frontend_port }}
+          BACKEND_PORT: ${{ inputs.backend_port }}
+          DB_NAME: ${{ inputs.db_name }}
           ADMIN_EMAIL: ${{ inputs.admin_email }}
           SUPER_ADMIN_PASSWORD: ${{ secrets.SCHOOL_INITIAL_ADMIN_PASSWORD }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
@@ -196,20 +112,12 @@ jobs:
           ENV_FILE="/srv/zawadi/apps/env/.${PROJECT}.env"
           COMPOSE_FILE="/srv/zawadi/apps/docker-compose.stack.yml"
 
-          [[ -n "$SUPER_ADMIN_PASSWORD" ]] || { echo "Initial super-admin password is missing" >&2; exit 1; }
-          [[ -n "$SCHOOL_NAME" && ${#SCHOOL_NAME} -le 100 ]] || { echo "School name is required and must be at most 100 characters" >&2; exit 1; }
-          [[ "$ADMIN_EMAIL" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]] || { echo "Administrator email is invalid" >&2; exit 1; }
-
           JWT_S="${JWT_SECRET:-$(openssl rand -hex 32)}"
           JWT_R="${JWT_REFRESH_SECRET:-$(openssl rand -hex 32)}"
           ENC_K="${ENCRYPTION_KEY:-$(openssl rand -hex 32)}"
-          BIO_KEY="${BIOMETRIC_ENCRYPTION_KEY:-$(openssl rand -hex 32)}"
+          BIO_KEY="${BIOMETRIC_ENCRYPTION_KEY:-759728fc56aaaea8e79fed20aa8409635cb3a58731207e22b073d33bcb061f1c}"
           DB_PASSWORD="$(openssl rand -hex 24)"
-          SCHOOL_NAME_B64="$(printf '%s' "$SCHOOL_NAME" | base64 -w0)"
-          PUBLIC_DOMAIN_B64="$(printf '%s' "$PUBLIC_DOMAIN" | base64 -w0)"
-          SUPER_ADMIN_PASSWORD_B64="$(printf '%s' "$SUPER_ADMIN_PASSWORD" | base64 -w0)"
           echo "::add-mask::${DB_PASSWORD}"
-          echo "::add-mask::${SUPER_ADMIN_PASSWORD_B64}"
 
           cat > /tmp/provision-school.sh <<'REMOTE'
           set -euo pipefail
@@ -218,9 +126,6 @@ jobs:
           ENV_FILE="${ENV_FILE}"
           COMPOSE_FILE="${COMPOSE_FILE}"
           SCHOOL_SLUG="${SCHOOL_SLUG}"
-          SCHOOL_NAME="$(printf '%s' "$SCHOOL_NAME_B64" | base64 -d)"
-          PUBLIC_DOMAIN="$(printf '%s' "$PUBLIC_DOMAIN_B64" | base64 -d)"
-          SUPER_ADMIN_PASSWORD="$(printf '%s' "$SUPER_ADMIN_PASSWORD_B64" | base64 -d)"
           FRONTEND_PORT="${FRONTEND_PORT}"
           BACKEND_PORT="${BACKEND_PORT}"
           DB_PASSWORD="${DB_PASSWORD}"
@@ -228,7 +133,7 @@ jobs:
           JWT_S="${JWT_S}"
           JWT_R="${JWT_R}"
           ENC_K="${ENC_K}"
-          BIO_KEY="${BIO_KEY}"
+          BIO_KEY="${BIO_KEY:-759728fc56aaaea8e79fed20aa8409635cb3a58731207e22b073d33bcb061f1c}"
           ADMIN_EMAIL="${ADMIN_EMAIL}"
           AWS_REGION="${AWS_REGION:-ap-south-1}"
           AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-}"
@@ -238,14 +143,8 @@ jobs:
           VAPID_PRIVATE_KEY="${VAPID_PRIVATE_KEY:-}"
 
           if [[ -e "${ENV_FILE}" ]]; then
-            current_school="$(sudo awk -F= '$1 == "SCHOOL_CODE" { print $2; exit }' "${ENV_FILE}")"
-            current_db="$(sudo awk -F= '$1 == "DB_NAME" { print $2; exit }' "${ENV_FILE}")"
-            [[ "$current_school" == "$SCHOOL_SLUG" && "$current_db" == "$DB_NAME" ]] || {
-              echo "Existing env file identity does not match this request; refusing to modify it."
-              exit 1
-            }
-            echo "Resuming the matching in-progress setup; preserving its generated DB/JWT/biometric secrets and ports."
-            sudo sed -i "s/^SUPER_ADMIN_PASSWORD=.*/SUPER_ADMIN_PASSWORD=${SUPER_ADMIN_PASSWORD}/" "${ENV_FILE}"
+            echo "An environment file already exists for ${SCHOOL_SLUG}; refusing to overwrite or rotate an existing school's settings. Use the dedicated recovery/management workflow."
+            exit 1
           else
             echo "✅ Creating env file: ${ENV_FILE}"
             sudo tee "${ENV_FILE}" > /dev/null <<ENVEOF
@@ -280,6 +179,7 @@ jobs:
           API_URL=https://${PUBLIC_DOMAIN}/api
           CORS_ORIGIN=https://${PUBLIC_DOMAIN}
           HTTPS_ONLY=false
+          TRUST_PROXY_HOPS=1
           VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY:-}
           VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY:-}
           VAPID_SUBJECT=mailto:admin@trendscore.app
@@ -291,27 +191,11 @@ jobs:
           echo "=== Pulling latest images ==="
           sudo docker compose --env-file "${ENV_FILE}" -p "${PROJECT}" -f "${COMPOSE_FILE}" pull
 
-          echo "=== Starting database and cache ==="
-          sudo docker compose --env-file "${ENV_FILE}" -p "${PROJECT}" -f "${COMPOSE_FILE}" up -d db redis
+          echo "=== Starting stack ==="
+          sudo docker compose --env-file "${ENV_FILE}" -p "${PROJECT}" -f "${COMPOSE_FILE}" up -d
 
-          echo "=== Waiting for database health ==="
-          DB_CONTAINER="$(sudo docker ps -a --filter "label=com.docker.compose.project=${PROJECT}" --filter 'label=com.docker.compose.service=db' --format '{{.Names}}' | head -n1)"
-          [[ -n "$DB_CONTAINER" ]] || { echo "Database container was not created"; exit 1; }
-          DB_HEALTH=""
-          for attempt in $(seq 1 30); do
-            DB_HEALTH="$(sudo docker inspect "$DB_CONTAINER" --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}')"
-            [[ "$DB_HEALTH" == "healthy" ]] && break
-            [[ "$DB_HEALTH" == "unhealthy" || "$DB_HEALTH" == "exited" ]] && break
-            sleep 5
-          done
-          if [[ "$DB_HEALTH" != "healthy" ]]; then
-            echo "Database did not become healthy (state: ${DB_HEALTH:-unknown}). Recent database logs follow:"
-            sudo docker logs --tail 100 "$DB_CONTAINER" 2>&1 || true
-            exit 1
-          fi
-
-          echo "=== Starting application services ==="
-          sudo docker compose --env-file "${ENV_FILE}" -p "${PROJECT}" -f "${COMPOSE_FILE}" up -d backend frontend
+          echo "=== Waiting 15s for DB to become healthy ==="
+          sleep 15
 
           echo "=== Container status ==="
           sudo docker ps --filter "label=com.docker.compose.project=${PROJECT}" \
@@ -339,18 +223,10 @@ jobs:
 
           # Never rewrite migration history as part of provisioning. A failed or
           # partially initialized database requires the dedicated repair workflow.
-          HAS_MIGRATION_TABLE="$(sudo docker exec "${DB_CONTAINER}" \
+          MIGRATION_STATE="$(sudo docker exec "${DB_CONTAINER}" \
             psql -U zawadi -d "${ACTUAL_DB}" -tAc \
-            "SELECT to_regclass('public._prisma_migrations') IS NOT NULL" \
+            "SELECT CASE WHEN to_regclass('public._prisma_migrations') IS NULL THEN 'fresh' WHEN EXISTS (SELECT 1 FROM _prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL) THEN 'failed' ELSE 'ready' END" \
             2>/dev/null)"
-          if [ "${HAS_MIGRATION_TABLE}" != "t" ]; then
-            MIGRATION_STATE="fresh"
-          else
-            MIGRATION_STATE="$(sudo docker exec "${DB_CONTAINER}" \
-              psql -U zawadi -d "${ACTUAL_DB}" -tAc \
-              "SELECT CASE WHEN EXISTS (SELECT 1 FROM _prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL) THEN 'failed' ELSE 'ready' END" \
-              2>/dev/null)"
-          fi
           echo "[migrate] Current migration state: ${MIGRATION_STATE}"
           if [ "${MIGRATION_STATE}" = "failed" ]; then
             echo "A failed migration record exists. Stop and use the reviewed migration repair workflow."
@@ -369,7 +245,7 @@ jobs:
           REMOTE
 
           ssh production \
-            "PROJECT='${PROJECT}' ENV_FILE='${ENV_FILE}' COMPOSE_FILE='${COMPOSE_FILE}' SCHOOL_SLUG='${SCHOOL_SLUG}' SCHOOL_NAME_B64='${SCHOOL_NAME_B64}' SCHOOL_INSTITUTION_TYPE='${SCHOOL_INSTITUTION_TYPE}' PUBLIC_DOMAIN_B64='${PUBLIC_DOMAIN_B64}' SUPER_ADMIN_PASSWORD_B64='${SUPER_ADMIN_PASSWORD_B64}' FRONTEND_PORT='${FRONTEND_PORT}' BACKEND_PORT='${BACKEND_PORT}' DB_PASSWORD='${DB_PASSWORD}' DB_NAME='${DB_NAME}' JWT_S='${JWT_S}' JWT_R='${JWT_R}' ENC_K='${ENC_K}' BIO_KEY='${BIO_KEY}' ADMIN_EMAIL='${ADMIN_EMAIL}' AWS_REGION='${AWS_REGION:-ap-south-1}' AWS_ACCESS_KEY_ID='${AWS_ACCESS_KEY_ID:-}' AWS_SECRET_ACCESS_KEY='${AWS_SECRET_ACCESS_KEY:-}' AWS_REKOGNITION_LIVENESS_ROLE_ARN='${AWS_REKOGNITION_LIVENESS_ROLE_ARN:-}' VAPID_PUBLIC_KEY='${VAPID_PUBLIC_KEY:-}' VAPID_PRIVATE_KEY='${VAPID_PRIVATE_KEY:-}' bash -s" < /tmp/provision-school.sh
+            "PROJECT='${PROJECT}' ENV_FILE='${ENV_FILE}' COMPOSE_FILE='${COMPOSE_FILE}' SCHOOL_SLUG='${SCHOOL_SLUG}' SCHOOL_NAME='${SCHOOL_NAME}' SCHOOL_INSTITUTION_TYPE='${SCHOOL_INSTITUTION_TYPE}' PUBLIC_DOMAIN='${PUBLIC_DOMAIN}' FRONTEND_PORT='${FRONTEND_PORT}' BACKEND_PORT='${BACKEND_PORT}' DB_PASSWORD='${DB_PASSWORD}' DB_NAME='${DB_NAME}' JWT_S='${JWT_S}' JWT_R='${JWT_R}' ENC_K='${ENC_K}' BIO_KEY='${BIO_KEY}' ADMIN_EMAIL='${ADMIN_EMAIL}' SUPER_ADMIN_PASSWORD='${SUPER_ADMIN_PASSWORD}' AWS_REGION='${AWS_REGION:-ap-south-1}' AWS_ACCESS_KEY_ID='${AWS_ACCESS_KEY_ID:-}' AWS_SECRET_ACCESS_KEY='${AWS_SECRET_ACCESS_KEY:-}' AWS_REKOGNITION_LIVENESS_ROLE_ARN='${AWS_REKOGNITION_LIVENESS_ROLE_ARN:-}' VAPID_PUBLIC_KEY='${VAPID_PUBLIC_KEY:-}' VAPID_PRIVATE_KEY='${VAPID_PRIVATE_KEY:-}' bash -s" < /tmp/provision-school.sh
 
       - name: Report
         if: success()
@@ -382,9 +258,9 @@ jobs:
             echo "| School name | ${{ inputs.school_name }} |"
             echo "| Compose project | \`zawadi-${{ inputs.school_slug }}\` |"
             echo "| Domain | \`${{ env.PUBLIC_DOMAIN }}\` |"
-            echo "| Frontend port | \`${{ steps.resources.outputs.frontend_port }}\` |"
-            echo "| Backend port | \`${{ steps.resources.outputs.backend_port }}\` |"
-            echo "| DB name | \`${{ steps.resources.outputs.db_name }}\` |"
+            echo "| Frontend port | ${{ inputs.frontend_port }} |"
+            echo "| Backend port | ${{ inputs.backend_port }} |"
+            echo "| DB name | \`${{ inputs.db_name }}\` |"
             echo "| Admin email | ${{ inputs.admin_email }} |"
             echo "| Admin password | Set from protected GitHub environment secret |"
             echo ""

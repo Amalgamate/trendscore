@@ -104,10 +104,15 @@ export const configAPI = {
     return fetchWithAuth('/config/streams/seed', { method: 'POST' });
   },
 
-  getClasses: async () => {
+  getClasses: async ({ fresh = false } = {}) => {
     const suffix = institutionCacheKeySuffix();
+    const cacheKey = `config:classes:${suffix}`;
+    if (fresh) {
+      cacheDel(cacheKey);
+      return fetchWithAuth('/config/classes');
+    }
     return cachedFetch(
-      `config:classes:${suffix}`,
+      cacheKey,
       () => fetchWithAuth('/config/classes'),
       TTL.LONG,
     );

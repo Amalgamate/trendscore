@@ -14,13 +14,13 @@ type IssuedTokenPayload = {
 
 export async function markGlobalForceLogout(): Promise<number> {
   const forcedAfter = Date.now();
-  await redisCacheService.set(
+  await redisCacheService.setSecurityValue(
     GLOBAL_FORCE_LOGOUT_KEY,
     forcedAfter.toString(),
     GLOBAL_FORCE_LOGOUT_TTL_SECONDS
   );
 
-  const persistedValue = await redisCacheService.get<string | number>(GLOBAL_FORCE_LOGOUT_KEY);
+  const persistedValue = await redisCacheService.getSecurityValue<string | number>(GLOBAL_FORCE_LOGOUT_KEY);
   if (Number(persistedValue) !== forcedAfter) {
     throw new Error('Global force logout marker could not be persisted');
   }
@@ -29,7 +29,7 @@ export async function markGlobalForceLogout(): Promise<number> {
 }
 
 export async function isTokenGloballyInvalidated(payload: IssuedTokenPayload): Promise<boolean> {
-  const forcedAfter = await redisCacheService.get<string | number>(GLOBAL_FORCE_LOGOUT_KEY);
+  const forcedAfter = await redisCacheService.getSecurityValue<string | number>(GLOBAL_FORCE_LOGOUT_KEY);
   if (!forcedAfter || !payload?.iat) return false;
 
   const forcedAfterMs = Number(forcedAfter);

@@ -43,8 +43,10 @@ app.use(cookieParser());
 app.use(schoolContextMiddleware);
 app.use(institutionContextResolver);
 
-// Trust proxy
-app.set('trust proxy', 1);
+// Set to the exact number of trusted reverse-proxy hops. Public deployments
+// without an ingress proxy should use 0 to prevent spoofed X-Forwarded-For IPs.
+const trustProxyHops = Number(process.env.TRUST_PROXY_HOPS ?? (isDev ? 1 : 0));
+app.set('trust proxy', Number.isInteger(trustProxyHops) && trustProxyHops >= 0 ? trustProxyHops : 0);
 
 // Security middleware
 app.use(helmet());
@@ -56,14 +58,16 @@ app.use(compression({
 }));
 
 // CORS - allow configured origins and local development
-const allowedOrigins = [
+const configuredOrigins = [process.env.FRONTEND_URL]
+  .filter((origin): origin is string => Boolean(origin))
+  .map(origin => origin.replace(/\/$/, ''));
+const developmentOrigins = [
   'http://localhost:3000',
   'http://localhost:5173',
-  'http://localhost',          // Capacitor Android WebView
-  'capacitor://localhost',      // Capacitor iOS / newer Android
-  'https://localhost',          // Capacitor HTTPS variant
-  process.env.FRONTEND_URL
-].filter(Boolean).map(o => o!.replace(/\/$/, '')) as string[];
+  'http://localhost',
+  'capacitor://localhost',
+  'https://localhost',
+];
 
 app.use(cors({
   origin: (origin, callback) => {
@@ -73,9 +77,11 @@ app.use(cors({
     // Normalize incoming origin (remove trailing slash for comparison)
     const normalizedOrigin = origin.replace(/\/$/, '');
     
-    const isAllowed = allowedOrigins.some(allowed => normalizedOrigin === allowed || normalizedOrigin.startsWith(allowed)) || 
-                     normalizedOrigin.startsWith('file://') || 
-                     process.env.NODE_ENV !== 'production';
+    const allowedOrigins = process.env.NODE_ENV === 'production'
+      ? configuredOrigins
+      : [...configuredOrigins, ...developmentOrigins];
+    const isAllowed = allowedOrigins.includes(normalizedOrigin) ||
+                     (process.env.NODE_ENV !== 'production' && normalizedOrigin.startsWith('file://'));
                      
     if (isAllowed) {
       callback(null, true);

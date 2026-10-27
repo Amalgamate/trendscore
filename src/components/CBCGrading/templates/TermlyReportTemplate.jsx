@@ -16,7 +16,7 @@ const TermlyReportTemplate = ({ reportData, id = "termly-report-content" }) => {
         <div id={id} className="bg-gray-100 pb-10 print:p-0 print:bg-white">
             {/* PAGE 1: ACADEMIC PERFORMANCE */}
             <div
-                className="bg-white text-gray-900 font-sans p-10 mx-auto shadow-sm print:shadow-none mb-4 print:mb-0"
+                className="pdf-report-page bg-white text-gray-900 font-sans p-10 mx-auto shadow-sm print:shadow-none mb-4 print:mb-0"
                 style={{
                     width: '794px',
                     minHeight: '1123px',
@@ -214,7 +214,7 @@ const TermlyReportTemplate = ({ reportData, id = "termly-report-content" }) => {
                             {reportData.schoolSlogan || 'Excellence in Knowledge and Character'}
                         </p>
                         <p className="text-[8px] font-medium opacity-60">
-                            Valid only with official school stamp and signatures. Generated via {PRODUCT_DISPLAY_NAME} on {new Date().toLocaleDateString()}.
+                            Valid only with official school stamp and signatures.{!reportData.hideReportDates && ` Generated via ${PRODUCT_DISPLAY_NAME} on ${new Date().toLocaleDateString()}.`}
                         </p>
                     </div>
                 </div>
@@ -222,7 +222,7 @@ const TermlyReportTemplate = ({ reportData, id = "termly-report-content" }) => {
 
             {/* PAGE 2: QUALITATIVE ASSESSMENT (Competencies, Values, Co-curricular) */}
             <div
-                className="bg-white text-gray-900 font-sans p-10 mx-auto shadow-sm print:shadow-none mb-4 print:mb-0"
+                className="pdf-report-page bg-white text-gray-900 font-sans p-10 mx-auto shadow-sm print:shadow-none mb-4 print:mb-0"
                 style={{
                     width: '794px',
                     minHeight: '1123px',

@@ -4,6 +4,7 @@ import { ApiError } from '../utils/error.util';
 import { EmailService } from '../services/email.service';
 import { SmsService } from '../services/sms.service';
 import { z } from 'zod';
+import { Term } from '@prisma/client';
 
 import logger from '../utils/logger';
 // Schema for a single week row
@@ -26,7 +27,7 @@ const weekSchema = z.object({
 const schemeOfWorkSchema = z.object({
   grade: z.string(),
   learningArea: z.string(),
-  term: z.string(),
+  term: z.nativeEnum(Term),
   academicYear: z.number().int(),
   classId: z.string().optional().nullable(),
   title: z.string().optional().nullable(),
@@ -202,10 +203,29 @@ export class SchemeOfWorkController {
       throw new ApiError(403, `Cannot edit a Scheme of Work that is ${existing.status}. Please change status to DRAFT or REJECTED first.`);
     }
 
+    const nextIdentity = {
+      teacherId: existing.teacherId,
+      grade: data.grade ?? existing.grade,
+      learningArea: data.learningArea ?? existing.learningArea,
+      term: data.term ?? existing.term,
+      academicYear: data.academicYear ?? existing.academicYear,
+    };
+    const duplicate = await (prisma as any).schemeOfWork.findFirst({
+      where: { ...nextIdentity, id: { not: id } },
+      select: { id: true },
+    });
+    if (duplicate) {
+      throw new ApiError(409, 'A Scheme of Work already exists for this grade, learning area, term, and year.');
+    }
+
     // Begin a transaction since we need to update the parent and replace the children (weeks)
     const updated = await prisma.$transaction(async (tx) => {
       // 1. Update the parent fields
       const updateData: any = {};
+      if (data.grade !== undefined) updateData.grade = data.grade;
+      if (data.learningArea !== undefined) updateData.learningArea = data.learningArea;
+      if (data.term !== undefined) updateData.term = data.term;
+      if (data.academicYear !== undefined) updateData.academicYear = data.academicYear;
       if (data.classId !== undefined) updateData.classId = data.classId;
       if (data.title !== undefined) updateData.title = data.title;
       if (data.status !== undefined) updateData.status = data.status as any;

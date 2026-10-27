@@ -442,21 +442,17 @@ export class ClassController {
     const { teacherId } = req.body;
     const existing = await prisma.class.findUnique({ where: { id: finalClassId }, select: { teacherId: true } });
     if (!existing) throw new ApiError(404, 'Class not found');
+    let updatedClass;
     if (!teacherId) {
-      const updatedClass = await prisma.$transaction(async (tx) => {
-        await tx.classTeacherAssignment.deleteMany({ where: { classId: finalClassId } });
-        return tx.class.update({ where: { id: finalClassId }, data: { teacherId: null }, include: { teacher: { select: { id: true, firstName: true, lastName: true } }, teacherAssignments: { include: { teacher: { select: { id: true, firstName: true, lastName: true } } } } } });
-      });
-      return res.json({ success: true, data: updatedClass });
+      await prisma.classTeacherAssignment.deleteMany({ where: { classId: finalClassId } });
+      updatedClass = await prisma.class.update({ where: { id: finalClassId }, data: { teacherId: null }, include: { teacher: { select: { id: true, firstName: true, lastName: true } }, teacherAssignments: { include: { teacher: { select: { id: true, firstName: true, lastName: true } } } } } });
     } else {
-      const updatedClass = await prisma.$transaction(async (tx) => {
-        await tx.classTeacherAssignment.deleteMany({ where: { classId: finalClassId, teacherId } });
-        const remaining = await tx.classTeacherAssignment.findMany({ where: { classId: finalClassId }, select: { teacherId: true }, orderBy: { createdAt: 'asc' } });
-        const nextPrimary = existing.teacherId === teacherId ? (remaining[0]?.teacherId ?? null) : existing.teacherId;
-        return tx.class.update({ where: { id: finalClassId }, data: { teacherId: nextPrimary }, include: { teacher: { select: { id: true, firstName: true, lastName: true } }, teacherAssignments: { include: { teacher: { select: { id: true, firstName: true, lastName: true } } } } } });
-      });
-      return res.json({ success: true, data: updatedClass });
+      await prisma.classTeacherAssignment.deleteMany({ where: { classId: finalClassId, teacherId } });
+      const remaining = await prisma.classTeacherAssignment.findMany({ where: { classId: finalClassId }, select: { teacherId: true }, orderBy: { createdAt: 'asc' } });
+      const nextPrimary = existing.teacherId === teacherId ? (remaining[0]?.teacherId ?? null) : existing.teacherId;
+      updatedClass = await prisma.class.update({ where: { id: finalClassId }, data: { teacherId: nextPrimary }, include: { teacher: { select: { id: true, firstName: true, lastName: true } }, teacherAssignments: { include: { teacher: { select: { id: true, firstName: true, lastName: true } } } } } });
     }
+    res.json({ success: true, data: updatedClass });
   }
 
   private async validateClassTeachers(teacherIds: string[]) {

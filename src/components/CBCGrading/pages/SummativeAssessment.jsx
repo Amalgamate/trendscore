@@ -427,7 +427,13 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
       }
       setSelectedGradeAreasLoaded(false);
       try {
-        const resp = await configAPI.getLearningAreas({ gradeLevel: toCanonicalGrade(setup.selectedGrade) });
+        // Always refresh this grade-specific lookup. A long-lived browser
+        // cache must not leave a teacher with an empty subject selector after
+        // a school administrator has just configured their learning areas.
+        const resp = await configAPI.getLearningAreas(
+          { gradeLevel: toCanonicalGrade(setup.selectedGrade) },
+          { fresh: true },
+        );
         const rows = Array.isArray(resp?.data) ? resp.data : (Array.isArray(resp) ? resp : []);
         const names = rows.map((r) => String(r?.name || '').trim()).filter(Boolean);
         setSelectedGradeAreas(uniqueSortedNames(names));
@@ -449,7 +455,10 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
       }
       setStagedGradeAreasLoaded(false);
       try {
-        const resp = await configAPI.getLearningAreas({ gradeLevel: toCanonicalGrade(stagedGrade) });
+        const resp = await configAPI.getLearningAreas(
+          { gradeLevel: toCanonicalGrade(stagedGrade) },
+          { fresh: true },
+        );
         const rows = Array.isArray(resp?.data) ? resp.data : (Array.isArray(resp) ? resp : []);
         const names = rows.map((r) => String(r?.name || '').trim()).filter(Boolean);
         setStagedGradeAreas(uniqueSortedNames(names));
@@ -534,10 +543,14 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
 
   // Alert teacher if they have no assignments
   useEffect(() => {
-    if (!teacherWorkload.loading && teacherWorkload.isTeacher && !teacherWorkload.hasAnyAssignments) {
+    if (teacherWorkload.loading || !teacherWorkload.isTeacher || teacherWorkload.hasAnyAssignments) return;
+
+    if (teacherWorkload.error) {
+      toast.error('Could not verify your teaching assignments. Refresh and try again, or contact the school administrator if this continues.');
+    } else {
       toast.error('You are not currently assigned to any classes or subjects. Please consult with the Head Teacher.');
     }
-  }, [teacherWorkload.loading, teacherWorkload.isTeacher, teacherWorkload.hasAnyAssignments]);
+  }, [teacherWorkload.loading, teacherWorkload.isTeacher, teacherWorkload.hasAnyAssignments, teacherWorkload.error]);
 
   // Derived Data
   const selectedTest = useMemo(() =>
@@ -591,14 +604,26 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
     [tests, stagedGrade, stagedTerm, stagedAcademicYear, stagedTestType]
   );
 
+  const assignmentLearningAreasForGrade = useCallback((grade) => {
+    if (!teacherWorkload.isTeacher || !grade) return [];
+    const assigned = teacherWorkload.getAssignedSubjectsForGrade(grade);
+    return Array.isArray(assigned) ? assigned : [];
+  }, [teacherWorkload]);
+
   const availableLearningAreas = useMemo(() => {
-    return uniqueSortedNames(selectedGradeAreas);
-  }, [selectedGradeAreas]);
+    return uniqueSortedNames([
+      ...selectedGradeAreas,
+      ...assignmentLearningAreasForGrade(setup.selectedGrade),
+    ]);
+  }, [selectedGradeAreas, setup.selectedGrade, assignmentLearningAreasForGrade]);
 
   // Staged available learning areas - for dropdown options while editing
   const stagedAvailableLearningAreas = useMemo(() => {
-    return uniqueSortedNames(stagedGradeAreas);
-  }, [stagedGradeAreas]);
+    return uniqueSortedNames([
+      ...stagedGradeAreas,
+      ...assignmentLearningAreasForGrade(stagedGrade),
+    ]);
+  }, [stagedGradeAreas, stagedGrade, assignmentLearningAreasForGrade]);
 
   const filteredLearningAreasByWorkload = useMemo(() => {
     const areas = availableLearningAreas;
@@ -731,7 +756,7 @@ const SummativeAssessment = ({ learners, initialTestId, defaultTestType = null, 
 
     let grades = !teacherWorkload.isTeacher
       ? mergedGrades
-      : mergedGrades.filter(g => teacherWorkload.assignedGrades.map(toCanonicalGrade).includes(g));
+      : mergedGrades.filter(g => teacherWorkload.assignedGrades.some(assignedGrade => toCanonicalGrade(assignedGrade) === g));
 
     // Sort by portal-specific grade order
     return grades.sort((a, b) => {

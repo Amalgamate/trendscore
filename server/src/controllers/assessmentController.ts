@@ -1521,6 +1521,107 @@ export const deleteSummativeTestsBulk = async (req: AuthRequest, res: Response) 
   }
 };
 
+/**
+ * Bulk change the exam type for selected summative tests.
+ * PATCH /api/assessments/tests/bulk/type
+ * Result rows remain attached to their existing tests and retain their marks.
+ */
+export const updateSummativeTestsBulkType = async (req: AuthRequest, res: Response) => {
+  try {
+    const ids: string[] = Array.isArray(req.body?.ids)
+      ? Array.from(new Set<string>((req.body.ids as unknown[]).filter((id): id is string => typeof id === 'string' && id.trim().length > 0)))
+      : [];
+
+    if (ids.length === 0 || ids.length > 500) {
+      throw new ApiError(400, 'Select between 1 and 500 tests');
+    }
+
+    if (!req.body?.testType) {
+      throw new ApiError(400, 'A target exam type is required');
+    }
+
+    const testType = normalizeSummativeTestType(req.body.testType);
+    const existing = await prisma.summativeTest.findMany({
+      where: { id: { in: ids }, archived: false },
+      select: { id: true, testType: true, grade: true, learningArea: true, term: true, academicYear: true, weekNumber: true, title: true },
+    });
+
+    if (existing.length !== ids.length) {
+      throw new ApiError(404, 'One or more selected tests could not be found or are archived; no tests were changed');
+    }
+
+    const changedTests = existing.filter((test) => test.testType !== testType);
+    const conflicts: string[] = [];
+    const eligibleTests: typeof changedTests = [];
+
+    for (const test of changedTests) {
+      const collision = await prisma.summativeTest.findFirst({
+        where: {
+          id: { not: test.id },
+          archived: false,
+          grade: test.grade,
+          learningArea: test.learningArea,
+          term: test.term,
+          academicYear: test.academicYear,
+          testType,
+          weekNumber: test.weekNumber,
+          title: test.title,
+        },
+        select: { id: true },
+      });
+
+      if (collision) {
+        conflicts.push(`${test.grade} / ${test.learningArea}`);
+      } else {
+        eligibleTests.push(test);
+      }
+    }
+
+    if (eligibleTests.length > 0) {
+      try {
+        await prisma.$transaction(async (tx) => {
+          await tx.summativeTest.updateMany({
+            where: { id: { in: eligibleTests.map((test) => test.id) } },
+            data: { testType },
+          });
+        });
+      } catch (error: any) {
+        if (error?.code === 'P2002') {
+          throw new ApiError(409, 'Changing exam type would duplicate an existing test series. No tests were changed.');
+        }
+        throw error;
+      }
+    }
+
+    await redisCacheService.deleteByPrefix('tests:');
+    for (const id of eligibleTests.map((test) => test.id)) {
+      await redisCacheService.delete(`test:${id}`);
+      await auditService.logChange({
+        entityType: 'SummativeTest',
+        entityId: id,
+        action: 'UPDATE',
+        userId: req.user?.userId || 'SYSTEM',
+        reason: `Summative test exam type changed to ${testType} via bulk update`,
+      });
+    }
+
+    const skippedCount = existing.length - eligibleTests.length;
+    const message = conflicts.length
+      ? `Updated ${eligibleTests.length}; skipped ${conflicts.length} test${conflicts.length === 1 ? '' : 's'} because an End of Term test already exists for the same grade and subject.`
+      : `Updated ${eligibleTests.length} summative test${eligibleTests.length === 1 ? '' : 's'}`;
+
+    return res.json({
+      success: true,
+      data: { updatedCount: eligibleTests.length, skippedCount, conflicts, testType },
+      message,
+    });
+  } catch (error: any) {
+    if (error instanceof ApiError) throw error;
+    logger.error('Error bulk updating summative test types:', error);
+    throw new ApiError(500, 'Failed to update exam types: ' + error.message);
+  }
+};
+
 // ============================================
 // SUMMATIVE RESULTS CONTROLLERS
 // ============================================

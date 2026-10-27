@@ -343,6 +343,7 @@ export class AuthPhoneOtpService {
         phone: true,
         lastLogin: true,
         institutionType: true,
+        authVersion: true,
         emailVerified: true,
         verificationRequired: true,
         passwordResetToken: true,

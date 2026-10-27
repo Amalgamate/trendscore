@@ -7,7 +7,6 @@ import { authRateLimit, progressiveRateLimit } from '../middleware/enhanced-rate
 import { validate } from '../middleware/validation.middleware';
 import { loginSchema, registerSchema, emailSchema, phoneOtpRequestSchema, phoneOtpVerifySchema, studentPhoneLookupSchema, studentPhoneLoginSchema } from '../utils/validation.util';
 import { requireRole } from '../middleware/permissions.middleware';
-import { isFixedOtpPhone } from '../services/auth-phone-otp.service';
 
 const router = Router();
 const authController = new AuthController();
@@ -43,7 +42,6 @@ router.post('/login',
 
 // Additive parent-only phone OTP login. Password login remains unchanged.
 router.post('/phone-otp/request',
-  authRateLimit(3, 60_000, { skip: (req) => isFixedOtpPhone(req.body?.phone) }),
   validate(phoneOtpRequestSchema),
   asyncHandler(authController.requestPhoneOtp.bind(authController))
 );

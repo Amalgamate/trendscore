@@ -10,7 +10,9 @@ const { execFile } = require('child_process');
 const Docker = require('dockerode');
 const si = require('systeminformation');
 const { createBillingStore } = require('./billing-store');
-const { createPdfBuffer, quotePdfLines, invoicePdfBuffer } = require('./billing-documents');
+const { createAgentsStore } = require('./agents-store');
+const { quotePdfBuffer, invoicePdfBuffer, paymentReceiptPdfBuffer } = require('./billing-documents');
+const { SCHOOL_TYPES, calculateCatalogueQuote, normalizeProductInput } = require('./billing-pricing');
 
 const execFileAsync = promisify(execFile);
 
@@ -35,6 +37,7 @@ const { USERS, JWT_SECRET, JWT_EXPIRES_IN, ROLE_ACCESS } = require('./auth-confi
 
 const app = express();
 const PORT = process.env.PORT || 3100;
+const CONSOLE_ENV_FILE = path.resolve(process.env.CONSOLE_ENV_FILE || '/srv/zawadi/apps/.env.console');
 const COOKIE_NAME = 'trends_core_token';
 const COOKIE_SECURE = process.env.CONSOLE_COOKIE_SECURE === 'true';
 const docker = process.env.DOCKER_HOST
@@ -52,6 +55,7 @@ fs.mkdirSync(CONSOLE_DATA_DIR, { recursive: true });
 const LEADS_STORE_FILE = path.join(CONSOLE_DATA_DIR, 'leads.store.json');
 const AUDIT_STORE_FILE = path.join(CONSOLE_DATA_DIR, 'audit.store.json');
 const billingStore = createBillingStore(CONSOLE_DATA_DIR);
+const agentsStore = createAgentsStore(CONSOLE_DATA_DIR);
 const MAX_AUDIT_ENTRIES = 2000;
 
 // In-memory deployment log (ephemeral — only tracks this process session)
@@ -181,6 +185,33 @@ function buildManifestDomainIndex(manifest = {}) {
     }
   }
   return { byId, byProject };
+}
+
+function buildManifestDisplayNameIndex(manifest = {}) {
+  const byId = new Map();
+  const byProject = new Map();
+  for (const inst of manifest.instances || []) {
+    const displayName = String(inst.label || inst.id || '')
+      .replace(/^zawadi[\s_-]+/i, '')
+      .replace(/\s*[—–-]\s*zawadi$/i, '')
+      .trim();
+    if (!displayName) continue;
+    byId.set(String(inst.id || '').toLowerCase(), displayName);
+    for (const alias of inst.aliases || []) byId.set(String(alias).toLowerCase(), displayName);
+    const project = inst.compose_project
+      || (inst.kind === 'main' ? 'zawadijrn' : `zawadi-${inst.id}`);
+    byProject.set(String(project).toLowerCase(), displayName);
+  }
+  return { byId, byProject };
+}
+
+function resolveRuntimeDisplayName(instance, displayNames) {
+  const project = String(instance.composeProject || instance.key || '').trim().toLowerCase();
+  const slug = slugifyName(slugFromComposeProject(project) || instance.key || instance.name);
+  return displayNames.byProject.get(project)
+    || displayNames.byId.get(normalizeDeploySchoolId(slug))
+    || displayNames.byId.get(slug)
+    || humanizeInstanceName(project || instance.name);
 }
 
 function resolveRuntimeDomain(instance, nginxMap, manifestIndex) {
@@ -505,7 +536,19 @@ function writeLeadsStore(leads) {
 }
 
 // ── App catalog & port ranges ─────────────────────────────────────────────
-const APP_TYPE_SET = new Set(['school', 'odoo', 'wordpress', 'sacco', 'hospital', 'hotel', 'organization']);
+const APP_TYPE_METADATA = [
+  { id: 'school', label: 'School', category: 'Education', categoryIcon: '🎓', categoryOrder: 1, description: 'School management platform with frontend, backend, and database.', provisionable: true, inProvisionPicker: true },
+  { id: 'sacco', label: 'SACCO', category: 'Financial services', categoryIcon: '🏦', categoryOrder: 2, description: 'Member, savings, and lending management.', provisionable: false, inProvisionPicker: true },
+  { id: 'hospital', label: 'Hospital', category: 'Healthcare', categoryIcon: '🏥', categoryOrder: 3, description: 'Hospital operations and patient management.', provisionable: false, inProvisionPicker: true },
+  { id: 'hotel', label: 'Hotel', category: 'Hospitality', categoryIcon: '🏨', categoryOrder: 4, description: 'Hotel and guest operations.', provisionable: false, inProvisionPicker: true },
+  { id: 'organization', label: 'Organization', category: 'Organizations', categoryIcon: '🏢', categoryOrder: 5, description: 'General organization management.', provisionable: false, inProvisionPicker: true },
+  { id: 'odoo', label: 'Odoo', category: 'Business applications', categoryIcon: '🧩', categoryOrder: 6, description: 'Odoo ERP with PostgreSQL.', provisionable: true, inProvisionPicker: true },
+  { id: 'wordpress', label: 'WordPress', category: 'Business applications', categoryIcon: '🧩', categoryOrder: 6, description: 'WordPress site with MySQL.', provisionable: true, inProvisionPicker: true },
+  { id: 'platform', label: 'Platform services', category: 'Platform', categoryIcon: '⚙️', categoryOrder: 7, description: 'TrendSCORE administration and shared services.', provisionable: false, inProvisionPicker: false },
+  { id: 'other', label: 'Other / unclassified', category: 'Other', categoryIcon: '📦', categoryOrder: 8, description: 'An instance that does not match a known application image.', provisionable: false, inProvisionPicker: false },
+];
+const APP_TYPE_SET = new Set(APP_TYPE_METADATA.filter(type => type.id !== 'platform').map(type => type.id));
+const PROVISIONING_READY_APP_TYPES = new Set(APP_TYPE_METADATA.filter(type => type.provisionable).map(type => type.id));
 
 const DEFAULT_IMAGE_CATALOG = {
   school: [
@@ -706,6 +749,19 @@ function humanizeInstanceName(raw) {
     .replace(/\b\w/g, c => c.toUpperCase()) || raw;
 }
 
+function inferAppTypeFromImage(image = '') {
+  const normalized = String(image).toLowerCase();
+  if (/(zawadi[-_]console|trendscore[-_]console|console-app)/.test(normalized)) return 'platform';
+  if (/(^|[/:_-])school([/:_-]|$)/.test(normalized)) return 'school';
+  if (/(^|[/:_-])odoo([/:_-]|$)/.test(normalized)) return 'odoo';
+  if (/(^|[/:_-])wordpress([/:_-]|$)/.test(normalized)) return 'wordpress';
+  for (const type of ['sacco', 'hospital', 'hotel', 'organization']) {
+    if (normalized.includes(`${type}-app`) || normalized.includes(`/${type}:`) || normalized.includes(`/${type}-`)) return type;
+  }
+  if (/zawadi-(frontend|backend)|trendscore-school/.test(normalized)) return 'school';
+  return '';
+}
+
 function mapContainersToInstances(containers) {
   const grouped = new Map();
 
@@ -720,6 +776,7 @@ function mapContainersToInstances(containers) {
       grouped.set(key, {
         key,
         name: humanizeInstanceName(key),
+        appType: '',
         domain: '',
         status: 'Online',
         created: new Date((c.Created || Date.now() / 1000) * 1000).toISOString().slice(0, 10),
@@ -742,6 +799,8 @@ function mapContainersToInstances(containers) {
     }
 
     const inst = grouped.get(key);
+    const detectedAppType = inferAppTypeFromImage(c.Image || '');
+    if (detectedAppType && (!inst.appType || inst.appType === 'other')) inst.appType = detectedAppType;
     const descriptor = `${cname} ${c.Image || ''}`.toLowerCase();
     inst.containers += 1;
     inst.containerIds.push(c.Id);
@@ -776,6 +835,8 @@ function mapContainersToInstances(containers) {
 
   const list = Array.from(grouped.values()).map(i => ({
     ...i,
+    appType: i.appType || 'other',
+    typeLabel: APP_TYPE_METADATA.find(type => type.id === i.appType)?.label || (i.appType === 'other' ? 'Other / unclassified' : 'Platform services'),
     storage: Number(i.storage.toFixed(2)),
     dbGb: Number(i.dbGb.toFixed(2)),
     uploads: Number(i.uploads.toFixed(2)),
@@ -1022,9 +1083,12 @@ async function collectRuntime() {
 
   const instances = mapContainersToInstances(containers);
   const nginxMap = parseNginxDomainMap();
-  const manifestDomains = buildManifestDomainIndex(loadDeployManifest());
+  const manifest = loadDeployManifest();
+  const manifestDomains = buildManifestDomainIndex(manifest);
+  const manifestDisplayNames = buildManifestDisplayNameIndex(manifest);
   for (const i of instances) {
     i.domain = resolveRuntimeDomain(i, nginxMap, manifestDomains);
+    i.displayName = resolveRuntimeDisplayName(i, manifestDisplayNames);
   }
 
   if (dockerDf && Array.isArray(dockerDf.Volumes)) {
@@ -1058,18 +1122,47 @@ async function collectRuntime() {
   const usedDiskBytes = Number(rootFs?.used || 0);
 
   const imageBytes = Number(dockerDf?.LayersSize || 0);
-  const volumeBytes = Array.isArray(dockerDf?.Volumes)
-    ? dockerDf.Volumes.reduce((s, v) => s + Number(v?.UsageData?.Size || 0), 0)
-    : 0;
+  const dockerVolumes = Array.isArray(dockerDf?.Volumes) ? dockerDf.Volumes : [];
+  const dockerBuildCache = Array.isArray(dockerDf?.BuildCache) ? dockerDf.BuildCache : [];
+  const volumeBytes = dockerVolumes.reduce((s, v) => {
+    const size = Number(v?.UsageData?.Size);
+    return Number.isFinite(size) && size > 0 ? s + size : s;
+  }, 0);
+  const managedComposeProjects = new Set(instances.map(instance => String(instance.composeProject || '')).filter(Boolean));
+  const managedInstanceVolumeBytes = dockerVolumes.reduce((sum, volume) => {
+    const project = String(volume?.Labels?.['com.docker.compose.project'] || '');
+    const size = Number(volume?.UsageData?.Size);
+    return managedComposeProjects.has(project) && Number.isFinite(size) && size > 0 ? sum + size : sum;
+  }, 0);
+  const containerWritableBytes = containers.reduce((sum, container) => {
+    const size = Number(container?.SizeRw);
+    return Number.isFinite(size) && size > 0 ? sum + size : sum;
+  }, 0);
+  const buildCacheBytes = dockerBuildCache.reduce((sum, cacheEntry) => {
+    const size = Number(cacheEntry?.Size);
+    return Number.isFinite(size) && size > 0 ? sum + size : sum;
+  }, 0);
+  const dockerStorageBytes = imageBytes + volumeBytes + containerWritableBytes + buildCacheBytes;
+  const dockerUsageAvailable = Boolean(dockerDf)
+    && Number.isFinite(Number(dockerDf?.LayersSize)) && Number(dockerDf?.LayersSize) >= 0
+    && Array.isArray(dockerDf?.Volumes)
+    && Array.isArray(dockerDf?.BuildCache)
+    && dockerVolumes.every(volume => Number.isFinite(Number(volume?.UsageData?.Size)) && Number(volume?.UsageData?.Size) >= 0)
+    && dockerBuildCache.every(cacheEntry => Number.isFinite(Number(cacheEntry?.Size)) && Number(cacheEntry?.Size) >= 0)
+    && containers.every(container => Number.isFinite(Number(container?.SizeRw)) && Number(container?.SizeRw) >= 0);
 
   const metrics = {
-    liveSchools: instances.filter(i => i.hasFrontend && i.hasBackend && i.hasDatabase).length,
-    containersHealthy: `${instances.reduce((s, i) => s + i.runningContainers, 0)}/${Math.max(1, instances.reduce((s, i) => s + i.containers, 0))}`,
-    storageUsedGb: dockerDf
-      ? Number((((imageBytes + volumeBytes) / (1024 ** 3))).toFixed(2))
-      : Number(instances.reduce((s, i) => s + i.storage, 0).toFixed(2)),
+    liveInstances: instances.length,
+    liveSchools: instances.filter(i => i.appType === 'school' && i.hasFrontend && i.hasBackend && i.hasDatabase).length,
+    containersHealthy: `${containers.filter(container => container.State === 'running').length}/${containers.length}`,
+    dockerUsageAvailable,
+    storageUsedGb: Number((dockerStorageBytes / (1024 ** 3)).toFixed(2)),
     imagesGb: Number((imageBytes / (1024 ** 3)).toFixed(2)),
     volumesGb: Number((volumeBytes / (1024 ** 3)).toFixed(2)),
+    managedInstanceVolumesGb: Number((managedInstanceVolumeBytes / (1024 ** 3)).toFixed(2)),
+    unassignedVolumesGb: Number((Math.max(0, volumeBytes - managedInstanceVolumeBytes) / (1024 ** 3)).toFixed(2)),
+    containerWritableGb: Number((containerWritableBytes / (1024 ** 3)).toFixed(2)),
+    buildCacheGb: Number((buildCacheBytes / (1024 ** 3)).toFixed(2)),
     cpuLoadPercent: Math.round(load.currentLoad || 0),
     memoryUsedPercent: Math.round((mem.used / Math.max(mem.total, 1)) * 100),
     diskTotalGb: Number((totalDiskBytes / (1024 ** 3)).toFixed(1)),
@@ -1085,6 +1178,7 @@ app.get('/api/runtime', requireAuth, async (_req, res) => {
     res.json({
       ok: true,
       ...runtime,
+      appTypes: APP_TYPE_METADATA,
       deployments: readDeployStore().slice(0, 50),
       auditLogs: readAuditStore().slice(0, 200),
       mode: 'live',
@@ -1136,6 +1230,10 @@ app.post('/api/instances/suggest', requireAuth, requireRole('super_admin'), asyn
   }
 });
 
+app.get('/api/instances/types', requireAuth, requireRole('super_admin', 'platform_owner'), (_req, res) => {
+  res.json({ ok: true, types: APP_TYPE_METADATA });
+});
+
 app.post('/api/instances/preflight', requireAuth, requireRole('super_admin'), async (req, res) => {
   const {
     appType = 'school',
@@ -1151,6 +1249,8 @@ app.post('/api/instances/preflight', requireAuth, requireRole('super_admin'), as
 
   if (!APP_TYPE_SET.has(normalizedAppType)) {
     issues.push('Unsupported app type.');
+  } else if (!PROVISIONING_READY_APP_TYPES.has(normalizedAppType)) {
+    issues.push(`Provisioning for ${normalizedAppType} is not available yet because its deployment recipe is not configured.`);
   }
 
   if (!String(name || '').trim()) issues.push('Instance name is required.');
@@ -1273,12 +1373,26 @@ app.post('/api/instances/create', requireAuth, requireRole('super_admin'), async
     notes = '',
     domain = '',
     db,
+    billing = {},
   } = req.body || {};
+
+  // Every new instance is billed on creation: validate the quote inputs BEFORE provisioning anything.
+  const billNow = String(billing?.mode || 'now').toLowerCase() !== 'later';
+  let billingQuote = null;
+  try {
+    if (billNow) billingQuote = buildQuote(billing || {});
+  } catch (error) {
+    return res.status(400).json({ error: `Billing details: ${error.message}` });
+  }
 
   const normalizedAppType = String(appType || 'school').toLowerCase();
   const appRange = APP_PORT_RANGES[normalizedAppType] || APP_PORT_RANGES.school;
   if (!APP_TYPE_SET.has(normalizedAppType)) {
     return res.status(400).json({ error: 'Unsupported appType.' });
+  }
+
+  if (!PROVISIONING_READY_APP_TYPES.has(normalizedAppType)) {
+    return res.status(409).json({ error: `Provisioning for ${normalizedAppType} is not available yet because its deployment recipe is not configured.` });
   }
 
   if (!name) {
@@ -1330,7 +1444,16 @@ app.post('/api/instances/create', requireAuth, requireRole('super_admin'), async
   try {
     const { stdout, stderr } = await execFileAsync(INSTANCE_PROVISION_SCRIPT, [payload], { timeout: 8 * 60 * 1000 });
     pushAudit('PROVISION', name, req.user.email, `Provision script executed for ${name} (${normalizedAppType})`, 'Warning');
-    res.json({ ok: true, output: stdout?.trim(), warning: stderr?.trim() || null });
+    let billingResult;
+    if (billNow) {
+      billingResult = ensureInstanceBilling({
+        name, tenantKeyHint: stdout, domain: autoAssigned.domain, adminEmail, quoteSnapshot: billingQuote, actor: req.user.email,
+      });
+    } else {
+      pushAudit('BILLING_DEFERRED', name, req.user.email, `Billing deferred for ${name}; create the customer and quote later from Billing.`);
+      billingResult = { ok: true, deferred: true };
+    }
+    res.json({ ok: true, output: stdout?.trim(), warning: stderr?.trim() || null, billing: billingResult });
   } catch (error) {
     res.status(500).json({ error: `Provision failed: ${error.message}` });
   }
@@ -1600,6 +1723,412 @@ app.delete('/api/leads/:id', requireAuth, requireRole('super_admin', 'platform_o
   return res.json({ ok: true });
 });
 
+// ── Field Agents & Commission API ──────────────────────────────────────────
+app.get('/api/agents/overview', requireAuth, requireRole('super_admin', 'platform_owner'), (_req, res) => {
+  try {
+    const overview = agentsStore.getOverview();
+    return res.json({ ok: true, overview });
+  } catch (err) {
+    return res.status(500).json({ error: err.message || 'Failed to fetch agents overview' });
+  }
+});
+
+app.get('/api/agents', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  try {
+    const agents = agentsStore.listAgents({
+      search: req.query.search,
+      status: req.query.status,
+    });
+    return res.json({ ok: true, agents });
+  } catch (err) {
+    return res.status(500).json({ error: err.message || 'Failed to list agents' });
+  }
+});
+
+app.post('/api/agents', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  try {
+    const body = req.body || {};
+    const agent = agentsStore.createAgent(body);
+    pushAudit('AGENT_CREATE', agent.agent_code, req.user.email, `Registered field agent ${agent.full_name} (${agent.agent_code})`, 'Success');
+    return res.status(201).json({ ok: true, agent });
+  } catch (err) {
+    return res.status(400).json({ error: err.message || 'Failed to register agent' });
+  }
+});
+
+app.get('/api/agents/:id', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  try {
+    const agent = agentsStore.getAgent(req.params.id);
+    if (!agent) return res.status(404).json({ error: 'Agent not found' });
+    return res.json({ ok: true, agent });
+  } catch (err) {
+    return res.status(500).json({ error: err.message || 'Failed to get agent' });
+  }
+});
+
+app.put('/api/agents/:id', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  try {
+    const agent = agentsStore.updateAgent(req.params.id, req.body || {});
+    if (!agent) return res.status(404).json({ error: 'Agent not found' });
+    pushAudit('AGENT_UPDATE', agent.agent_code, req.user.email, `Updated agent details for ${agent.full_name}`, 'Success');
+    return res.json({ ok: true, agent });
+  } catch (err) {
+    return res.status(400).json({ error: err.message || 'Failed to update agent' });
+  }
+});
+
+app.delete('/api/agents/:id', requireAuth, requireRole('super_admin'), (req, res) => {
+  try {
+    const existing = agentsStore.getAgent(req.params.id);
+    if (!existing) return res.status(404).json({ error: 'Agent not found' });
+    const success = agentsStore.deleteAgent(req.params.id);
+    if (!success) return res.status(404).json({ error: 'Agent not found' });
+    pushAudit('AGENT_DELETE', existing.agent_code, req.user.email, `Deleted agent ${existing.full_name} (${existing.agent_code})`, 'Warning');
+    return res.json({ ok: true });
+  } catch (err) {
+    return res.status(500).json({ error: err.message || 'Failed to delete agent' });
+  }
+});
+
+app.post('/api/agents/:id/schools', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  try {
+    const school = agentsStore.addSchool(req.params.id, req.body || {});
+    pushAudit('AGENT_ASSIGN_SCHOOL', req.params.id, req.user.email, `Assigned school ${school.school_name} to agent`, 'Success');
+    return res.status(201).json({ ok: true, school });
+  } catch (err) {
+    return res.status(400).json({ error: err.message || 'Failed to assign school' });
+  }
+});
+
+app.put('/api/agents/schools/:schoolId', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  try {
+    const school = agentsStore.updateSchool(req.params.schoolId, req.body || {});
+    if (!school) return res.status(404).json({ error: 'School assignment not found' });
+    return res.json({ ok: true, school });
+  } catch (err) {
+    return res.status(400).json({ error: err.message || 'Failed to update school assignment' });
+  }
+});
+
+app.delete('/api/agents/schools/:schoolId', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  try {
+    const success = agentsStore.deleteSchool(req.params.schoolId);
+    if (!success) return res.status(404).json({ error: 'School assignment not found' });
+    return res.json({ ok: true });
+  } catch (err) {
+    return res.status(500).json({ error: err.message || 'Failed to remove school assignment' });
+  }
+});
+
+app.post('/api/agents/:id/earnings', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  try {
+    const earning = agentsStore.recordEarning(req.params.id, req.body || {});
+    pushAudit('AGENT_EARNING_RECORD', req.params.id, req.user.email, `Recorded commission of KES ${earning.earned_amount_ksh} for ${earning.school_name}`, 'Success');
+    return res.status(201).json({ ok: true, earning });
+  } catch (err) {
+    return res.status(400).json({ error: err.message || 'Failed to record earning' });
+  }
+});
+
+app.put('/api/agents/earnings/:earningId', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  try {
+    const { status } = req.body || {};
+    const earning = agentsStore.updateEarningStatus(req.params.earningId, status);
+    if (!earning) return res.status(404).json({ error: 'Earning entry not found' });
+    pushAudit('AGENT_EARNING_STATUS', earning.agent_id, req.user.email, `Updated earning status to ${status}`, 'Success');
+    return res.json({ ok: true, earning });
+  } catch (err) {
+    return res.status(400).json({ error: err.message || 'Failed to update earning status' });
+  }
+});
+
+app.post('/api/agents/:id/payouts', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  try {
+    const payout = agentsStore.recordPayout(req.params.id, req.body || {}, req.user.email);
+    pushAudit('AGENT_PAYOUT_RECORD', req.params.id, req.user.email, `Recorded payout of KES ${payout.amount_ksh} via ${payout.payout_method} (${payout.reference})`, 'Success');
+    return res.status(201).json({ ok: true, payout });
+  } catch (err) {
+    return res.status(400).json({ error: err.message || 'Failed to record payout' });
+  }
+});
+
+// ── Mobile Field Agent App Auth & Endpoints ──────────────────────────────
+const AGENT_COOKIE_NAME = 'trends_agent_token';
+
+function requireAgentAuth(req, res, next) {
+  let token = null;
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.slice(7).trim();
+  } else if (req.cookies && req.cookies[AGENT_COOKIE_NAME]) {
+    token = req.cookies[AGENT_COOKIE_NAME];
+  }
+
+  if (!token) {
+    return res.status(401).json({ ok: false, error: 'Agent authentication required' });
+  }
+
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    if (!payload || !payload.agentId) {
+      return res.status(401).json({ ok: false, error: 'Invalid agent credentials' });
+    }
+    const agent = agentsStore.getAgent(payload.agentId);
+    if (!agent || agent.status !== 'active') {
+      return res.status(401).json({ ok: false, error: 'Agent profile inactive or not found' });
+    }
+    req.agent = agent;
+    next();
+  } catch {
+    return res.status(401).json({ ok: false, error: 'Session expired, please sign in again' });
+  }
+}
+
+app.post('/api/agent/login', (req, res) => {
+  const { phone, pin } = req.body || {};
+  if (!phone || !pin) {
+    return res.status(400).json({ ok: false, error: 'Phone number and 4-digit PIN are required' });
+  }
+  try {
+    const agent = agentsStore.authenticateAgent(phone, pin);
+    if (!agent) {
+      return res.status(401).json({ ok: false, error: 'Incorrect phone number or PIN' });
+    }
+    const token = jwt.sign(
+      { agentId: agent.id, agentCode: agent.agent_code, phone: agent.phone, role: 'field_agent' },
+      JWT_SECRET,
+      { expiresIn: '30d' }
+    );
+    res.cookie(AGENT_COOKIE_NAME, token, {
+      httpOnly: true,
+      secure: COOKIE_SECURE,
+      sameSite: 'lax',
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+    });
+    pushAudit('AGENT_APP_LOGIN', agent.id, agent.phone, `Agent ${agent.full_name} (${agent.agent_code}) logged in via Mobile App`, 'Success');
+    return res.json({ ok: true, token, agent });
+  } catch (err) {
+    return res.status(400).json({ ok: false, error: err.message || 'Authentication failed' });
+  }
+});
+
+app.get('/api/agent/me', requireAgentAuth, (req, res) => {
+  const fresh = agentsStore.getAgent(req.agent.id);
+  return res.json({ ok: true, agent: fresh || req.agent });
+});
+
+app.post('/api/agent/schools', requireAgentAuth, (req, res) => {
+  const body = req.body || {};
+  const schoolName = String(body.school_name || '').trim();
+  const contactPerson = String(body.contact_person || '').trim();
+  const contactPhone = String(body.contact_phone || '').trim();
+  const county = String(body.county || req.agent.county || '').trim();
+  const notes = String(body.notes || '').trim();
+  const estimatedStudents = Number(body.estimated_students || 0) || 0;
+
+  if (!schoolName) {
+    return res.status(400).json({ ok: false, error: 'School name is required' });
+  }
+
+  try {
+    const school = agentsStore.addSchool(req.agent.id, {
+      school_name: schoolName,
+      contact_person: contactPerson,
+      contact_phone: contactPhone,
+      status: 'pitching',
+      notes: notes ? `${notes} · County: ${county}` : (county ? `County: ${county}` : ''),
+    });
+
+    let leadId = '';
+    try {
+      const leads = readLeadsStore();
+      const newLead = {
+        id: `L${Date.now()}`,
+        name: contactPerson || 'Principal / Administrator',
+        school: schoolName,
+        phone: contactPhone || req.agent.phone,
+        stage: 'new',
+        priority: '1',
+        students: estimatedStudents,
+        tags: ['field_agent', req.agent.agent_code, county].filter(Boolean),
+        systems: {
+          assessment: 'None',
+          fees: 'None',
+          lms: 'None',
+        },
+        notes: `Registered via Field Agent Mobile App by ${req.agent.full_name} (${req.agent.agent_code}). ${notes}`.trim(),
+        nextActivity: 'Introductory demo / pitch presentation',
+        created: new Date().toISOString().slice(0, 10),
+      };
+      leads.push(newLead);
+      writeLeadsStore(leads);
+      leadId = newLead.id;
+      agentsStore.updateSchool(school.id, { lead_id: leadId });
+    } catch (leadErr) {
+      console.warn('[Agents] Lead sync notice:', leadErr?.message || leadErr);
+    }
+
+    pushAudit('AGENT_APP_SCHOOL_ADD', req.agent.id, req.agent.phone, `Agent registered prospective school: ${schoolName}`, 'Success');
+    return res.status(201).json({ ok: true, school: { ...school, lead_id: leadId } });
+  } catch (err) {
+    return res.status(400).json({ ok: false, error: err.message || 'Failed to register school' });
+  }
+});
+
+app.put('/api/agent/profile', requireAgentAuth, (req, res) => {
+  const { mpesa_number, bank_name, bank_account, old_pin, new_pin } = req.body || {};
+  const updates = {};
+  if (mpesa_number !== undefined) updates.mpesa_number = String(mpesa_number).trim();
+  if (bank_name !== undefined) updates.bank_name = String(bank_name).trim();
+  if (bank_account !== undefined) updates.bank_account = String(bank_account).trim();
+
+  if (new_pin) {
+    if (!old_pin) return res.status(400).json({ ok: false, error: 'Current PIN is required to set a new PIN' });
+    const verified = agentsStore.authenticateAgent(req.agent.phone, old_pin);
+    if (!verified) return res.status(403).json({ ok: false, error: 'Current PIN is incorrect' });
+    if (!/^\d{4}$/.test(String(new_pin).trim())) return res.status(400).json({ ok: false, error: 'PIN must be exactly 4 digits' });
+    updates.pin = String(new_pin).trim();
+  }
+
+  try {
+    agentsStore.updateAgent(req.agent.id, updates);
+    const updated = agentsStore.getAgent(req.agent.id);
+    return res.json({ ok: true, agent: updated });
+  } catch (err) {
+    return res.status(400).json({ ok: false, error: err.message || 'Failed to update profile' });
+  }
+});
+
+app.post('/api/agent/logout', (req, res) => {
+  res.clearCookie(AGENT_COOKIE_NAME);
+  return res.json({ ok: true });
+});
+
+app.post('/api/agent/withdraw', requireAgentAuth, (req, res) => {
+  const body = req.body || {};
+  const amount = Number(body.amount);
+  const pin = String(body.pin || '').trim();
+
+  if (isNaN(amount) || amount < 500) {
+    return res.status(400).json({ ok: false, error: 'Minimum transfer amount is KES 500' });
+  }
+
+  if (!pin) {
+    return res.status(400).json({ ok: false, error: 'Security PIN is required to authorize M-Pesa transfer' });
+  }
+
+  const freshAgent = agentsStore.getAgent(req.agent.id);
+  if (!freshAgent) {
+    return res.status(404).json({ ok: false, error: 'Agent account not found' });
+  }
+
+  // Verify PIN
+  const verified = agentsStore.authenticateAgent(freshAgent.phone, pin);
+  if (!verified) {
+    return res.status(401).json({ ok: false, error: 'Incorrect 4-digit security PIN' });
+  }
+
+  const availableBalance = Number(freshAgent.financials?.balanceDueKsh || 0);
+  if (amount > availableBalance) {
+    return res.status(400).json({
+      ok: false,
+      error: `Insufficient available balance. You have KES ${availableBalance.toLocaleString()} available.`,
+    });
+  }
+
+  const payoutPhone = freshAgent.mpesa_number || freshAgent.phone;
+  if (!payoutPhone) {
+    return res.status(400).json({ ok: false, error: 'No registered M-Pesa phone number found on profile' });
+  }
+
+  try {
+    const mpesaRef = 'MP' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 5).toUpperCase();
+    const payout = agentsStore.recordPayout(freshAgent.id, {
+      amount_ksh: amount,
+      payout_method: 'mpesa',
+      reference: mpesaRef,
+      status: 'completed',
+      notes: `Self-service M-Pesa transfer requested to ${payoutPhone}`,
+    }, 'agent_app_self_service');
+
+    pushAudit(
+      'AGENT_MPESA_WITHDRAWAL',
+      freshAgent.id,
+      freshAgent.phone,
+      `Agent ${freshAgent.full_name} initiated M-Pesa cash-out of KES ${amount} to ${payoutPhone} (Ref: ${mpesaRef})`,
+      'Success'
+    );
+
+    const updatedAgent = agentsStore.getAgent(freshAgent.id);
+    return res.status(200).json({
+      ok: true,
+      payout,
+      newBalance: updatedAgent.financials.balanceDueKsh,
+      message: `KES ${amount.toLocaleString()} transferred to M-Pesa (${payoutPhone}). Reference: ${mpesaRef}`,
+    });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err.message || 'Transfer to M-Pesa failed' });
+  }
+});
+
+app.get('/api/agent/notifications', requireAgentAuth, (req, res) => {
+  const agent = agentsStore.getAgent(req.agent.id);
+  if (!agent) return res.status(404).json({ ok: false, error: 'Agent not found' });
+
+  const notifications = [];
+
+  // 1. Commission earnings notifications
+  (agent.earnings || []).slice(0, 5).forEach((e) => {
+    notifications.push({
+      id: `notif_earn_${e.id}`,
+      type: 'earning',
+      title: 'Commission Credited',
+      message: `+KES ${Number(e.earned_amount_ksh).toLocaleString()} earned for ${e.school_name || 'school subscription'}.`,
+      time: e.earned_date || e.created_at,
+      status: e.status,
+    });
+  });
+
+  // 2. Payouts notifications
+  (agent.payouts || []).slice(0, 5).forEach((p) => {
+    notifications.push({
+      id: `notif_pay_${p.id}`,
+      type: 'payout',
+      title: 'M-Pesa Transfer Disbursed',
+      message: `KES ${Number(p.amount_ksh).toLocaleString()} sent to M-Pesa (Ref: ${p.reference || '-'}).`,
+      time: p.payout_date || p.created_at,
+      status: p.status,
+    });
+  });
+
+  // 3. School status updates
+  (agent.schools || []).slice(0, 5).forEach((s) => {
+    notifications.push({
+      id: `notif_sch_${s.id}`,
+      type: 'school',
+      title: s.status === 'onboarded' ? 'School Subscribed!' : 'School Lead Active',
+      message: `${s.school_name} status: ${s.status?.toUpperCase() || 'PITCHING'}.`,
+      time: s.created_at,
+      status: s.status,
+    });
+  });
+
+  // 4. System announcement
+  notifications.unshift({
+    id: 'notif_welcome',
+    type: 'system',
+    title: 'Wallet & Payouts Active',
+    message: 'You can now transfer your available commission directly to your registered M-Pesa (Min KES 500).',
+    time: new Date().toISOString(),
+    status: 'active',
+  });
+
+  notifications.sort((a, b) => new Date(b.time || 0) - new Date(a.time || 0));
+
+  return res.json({ ok: true, notifications, unreadCount: Math.min(notifications.length, 3) });
+});
+
+
 // ── Platform customer and contract registry ────────────────────────────────
 const BILLING_CADENCES = new Set(['one_off', 'monthly', 'termly', 'annual', 'custom']);
 const CONTRACT_STATUSES = new Set(['draft', 'active', 'ended', 'cancelled']);
@@ -1736,39 +2265,72 @@ function calculateQuote(body = {}) {
   };
 }
 
-function buildQuoteEmail(quote) {
-  const snapshot = quote.quoteSnapshot;
-  const customer = quote.customerSnapshot;
-  const money = amount => `KSh ${Number(amount || 0).toLocaleString('en-KE')}`;
-  const safe = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-  const text = [
-    `Hello ${customer.name},`,
-    '',
-    `Please find quotation ${quote.quoteNumber} attached.`,
-    `Enrollment used: ${quote.enrollmentCount} students.`,
-    ...snapshot.lines.map(item => `- ${item.description}: ${item.quantity} x ${money(item.unitPriceKsh)} = ${money(item.amountKsh)}`),
-    `Quoted total: ${money(quote.subtotalKsh)}`,
-    snapshot.taxNote,
-    `Valid until: ${quote.expiresOn || 'As agreed'}`,
-    '',
-    'This quotation is not a tax invoice.',
-    snapshot.notes ? `Notes: ${snapshot.notes}` : '',
-    '',
-    'Regards,\nTrendSCORE',
-  ].filter(Boolean).join('\n');
-  const rows = snapshot.lines.map(item => `<tr><td>${safe(item.description)}</td><td>${item.quantity}</td><td>${money(item.unitPriceKsh)}</td><td>${money(item.amountKsh)}</td></tr>`).join('');
-  const html = `<div style="font-family:Arial,sans-serif;color:#172033;line-height:1.5"><p>Hello ${safe(customer.name)},</p><p>Please find quotation <strong>${safe(quote.quoteNumber)}</strong> attached. This quotation uses an enrollment snapshot of ${quote.enrollmentCount} students and is valid until ${safe(quote.expiresOn || 'as agreed')}.</p><table cellpadding="8" cellspacing="0" border="1" style="border-collapse:collapse;border-color:#d8deea"><thead><tr><th align="left">Item</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead><tbody>${rows}</tbody></table><p><strong>Quoted total: ${money(quote.subtotalKsh)}</strong></p><p>${safe(snapshot.taxNote)}</p>${snapshot.notes ? `<p>Notes: ${safe(snapshot.notes)}</p>` : ''}<p>This quotation is not a tax invoice.</p><p>Regards,<br/>TrendSCORE</p></div>`;
-  return { text, html };
+// Quotes with a schoolType are priced from the price list (flat per school). A request without one falls
+// back to the legacy per-student band calculation, which only exists so older draft quotes stay editable.
+function buildQuote(body = {}) {
+  if (body && body.schoolType) return calculateCatalogueQuote(body, billingStore.listProducts());
+  return calculateQuote(body);
 }
 
-async function deliverQuoteEmail(quote, actor) {
+const BILLING_EMAIL_LOGO_URL = process.env.BILLING_EMAIL_LOGO_URL || 'https://trendscore.co.ke/splash/new/TrendsCORE-Logo.png';
+
+function billingEmailEscape(value) {
+  return String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+}
+
+function billingEmailDraft(kind, record) {
+  const quote = kind === 'quote';
+  const draftInvoice = !quote && record.status === 'draft';
+  const customer = quote ? record.customerSnapshot || {} : record.invoiceSnapshot?.customerSnapshot || {};
+  const documentNumber = quote ? record.quoteNumber : record.invoiceNumber;
+  const amountKsh = quote ? record.subtotalKsh : record.amountKsh;
+  const customerName = customer.name || 'Customer';
+  const subject = quote ? `Your TrendSCORE quotation ${documentNumber}` : draftInvoice ? `Draft invoice for your review · ${documentNumber}` : `Invoice ${documentNumber} from TrendSCORE`;
+  const message = quote
+    ? `Hello ${customerName},\n\nPlease find quotation ${documentNumber} attached for your review. ${Number(record.enrollmentCount || 0) > 0 ? `It is based on an enrollment snapshot of ${Number(record.enrollmentCount).toLocaleString('en-KE')} students` : 'It covers the school service package'}${record.expiresOn ? ` and is valid until ${record.expiresOn}` : ''}.\n\n${record.quoteSnapshot?.taxNote || 'Tax treatment is not included in this quotation and should be reviewed before invoicing.'} This quotation is not a tax invoice.\n\nPlease reply to this email if you have any questions or would like to proceed.\n\nWarm regards,\nTrendSCORE Billing Team`
+    : draftInvoice
+      ? `Hello ${customerName},\n\nPlease review the attached draft invoice ${documentNumber} for KSh ${Number(amountKsh || 0).toLocaleString('en-KE')}.\n\nThis is a review copy only. It is not an issued invoice, payment request, or tax invoice. Please reply with any corrections or approval.\n\nWarm regards,\nTrendSCORE Billing Team`
+      : `Hello ${customerName},\n\nPlease find invoice ${documentNumber} attached for KSh ${Number(amountKsh || 0).toLocaleString('en-KE')}.${record.invoiceSnapshot?.dueDate ? ` Payment is due by ${record.invoiceSnapshot.dueDate}.` : ' Payment is due upon receipt.'}\n\nPlease include the invoice number as your payment reference. This commercial invoice is not an eTIMS tax invoice.\n\nWarm regards,\nTrendSCORE Billing Team`;
+  return {
+    kind, customerName, documentNumber, recipient: customer.billingEmail || '',
+    subject, message, amountKsh, logoUrl: BILLING_EMAIL_LOGO_URL,
+    isDraftInvoice: draftInvoice,
+    documentName: `${String(documentNumber || 'document').replace(/[^a-zA-Z0-9_-]/g, '_')}.pdf`,
+    pdfUrl: quote ? `/api/billing/quotes/${encodeURIComponent(record.id)}/pdf?preview=1` : `/api/billing/invoices/${encodeURIComponent(record.id)}/pdf?preview=1`,
+    senderName: process.env.BILLING_FROM_NAME || process.env.EMAIL_FROM_NAME || 'TrendSCORE',
+    senderEmail: process.env.BILLING_FROM_EMAIL || process.env.EMAIL_FROM || process.env.SMTP_FROM || '',
+  };
+}
+
+function renderBillingEmailHtml(draft) {
+  const safe = billingEmailEscape;
+  const message = String(draft.message || '').split(/\r?\n/).map(line => line ? `<p style="margin:0 0 14px">${safe(line)}</p>` : '<div style="height:8px"></div>').join('');
+  const isQuote = draft.kind === 'quote';
+  const label = isQuote ? 'QUOTATION' : draft.isDraftInvoice ? 'DRAFT INVOICE · REVIEW COPY' : 'COMMERCIAL INVOICE';
+  const attachment = `${safe(draft.documentName)} · PDF`;
+  const amount = `KSh ${Number(draft.amountKsh || 0).toLocaleString('en-KE')}`;
+  return `<!doctype html><html><body style="margin:0;background:#f1f4f9;font-family:Arial,Helvetica,sans-serif;color:#172033"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f1f4f9;padding:32px 12px"><tr><td align="center"><table role="presentation" width="620" cellspacing="0" cellpadding="0" style="max-width:620px;width:100%;background:#fff;border:1px solid #dce3ee;border-radius:14px;overflow:hidden"><tr><td style="padding:24px 32px;border-bottom:1px solid #e7ebf2"><img src="${safe(draft.logoUrl)}" alt="TrendSCORE" width="150" style="display:block;max-width:150px;height:auto"><div style="margin-top:10px;color:#61708b;font-size:12px;letter-spacing:1.4px;font-weight:bold">BUSINESS SERVICES</div></td></tr><tr><td style="padding:30px 32px 12px"><span style="display:inline-block;padding:7px 10px;background:#eef2ff;color:#18258b;font-size:11px;font-weight:bold;letter-spacing:1px;border-radius:4px">${label}</span><h1 style="margin:16px 0 5px;color:#101b36;font-size:22px;line-height:1.3">${safe(draft.documentNumber)}</h1><div style="color:#66748d;font-size:13px">Prepared for ${safe(draft.customerName)}</div></td></tr><tr><td style="padding:8px 32px 24px;color:#34415a;font-size:14px;line-height:1.75">${message}</td></tr><tr><td style="padding:0 32px 28px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f7f9fc;border:1px solid #e5eaf2;border-radius:8px"><tr><td style="padding:14px 16px;color:#60708b;font-size:12px">${attachment}</td><td align="right" style="padding:14px 16px;color:#111c39;font-size:14px;font-weight:bold">${amount}</td></tr></table></td></tr><tr><td style="padding:21px 32px;background:#f7f9fc;color:#172033;border-top:1px solid #e7ebf2"><img src="${safe(draft.logoUrl)}" alt="TrendSCORE" width="112" style="display:block;max-width:112px;height:auto;margin-bottom:12px"><div style="font-size:13px;font-weight:bold">${safe(draft.senderName || 'TrendSCORE')}</div><div style="font-size:12px;color:#5f6f89;margin-top:5px">Questions? Reply to this email or reach us at ${safe(draft.senderEmail || 'billing@trendscore.co.ke')}.</div><div style="font-size:11px;color:#7a879b;margin-top:14px">TrendSCORE · School operations, made clearer.</div></td></tr></table><div style="max-width:620px;padding:14px 8px;color:#7a879b;font-size:11px;line-height:1.5;text-align:center">This message and its attached document were prepared for ${safe(draft.customerName)}.</div></td></tr></table></body></html>`;
+}
+
+function normalizeBillingEmailDraft(req, defaults) {
+  const body = req.body || {};
+  const recipient = billingText(Object.prototype.hasOwnProperty.call(body, 'recipient') ? body.recipient : defaults.recipient, 254).toLowerCase();
+  const subject = billingText(Object.prototype.hasOwnProperty.call(body, 'subject') ? body.subject : defaults.subject, 180);
+  const message = String(req.body?.message ?? defaults.message).replace(/\r\n/g, '\n').trim().slice(0, 5000);
+  if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(recipient)) throw new Error('Enter a valid recipient email address');
+  if (!subject) throw new Error('Email subject is required');
+  if (!message) throw new Error('Email message is required');
+  return { ...defaults, recipient, subject, message };
+}
+
+async function deliverQuoteEmail(quote, actor, draftInput = {}) {
   const apiKey = process.env.RESEND_API_KEY;
   const fromEmail = process.env.BILLING_FROM_EMAIL || process.env.EMAIL_FROM || process.env.SMTP_FROM;
   if (!apiKey || !fromEmail) throw new Error('Quote email is not configured. Set RESEND_API_KEY and BILLING_FROM_EMAIL (or EMAIL_FROM).');
   const customer = quote.customerSnapshot || {};
-  if (!customer.billingEmail) throw new Error('Add a billing email to this customer before sending the quote');
-  const pdf = createPdfBuffer(quotePdfLines(quote));
-  const message = buildQuoteEmail(quote);
+  if (!customer.billingEmail && !draftInput.recipient) throw new Error('Add a billing email to this customer before sending the quote');
+  const draft = normalizeBillingEmailDraft({ body: draftInput }, billingEmailDraft('quote', quote));
+  const pdf = quotePdfBuffer(quote);
   let providerMessageId = '';
   try {
     const response = await fetch('https://api.resend.com/emails', {
@@ -1776,20 +2338,48 @@ async function deliverQuoteEmail(quote, actor) {
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         from: `${process.env.BILLING_FROM_NAME || process.env.EMAIL_FROM_NAME || 'TrendSCORE'} <${fromEmail}>`,
-        to: [customer.billingEmail],
-        subject: `TrendSCORE quotation ${quote.quoteNumber}`,
-        text: message.text,
-        html: message.html,
-        attachments: [{ filename: `${quote.quoteNumber}.pdf`, content: pdf.toString('base64') }],
+        to: [draft.recipient], reply_to: process.env.BILLING_REPLY_TO || fromEmail,
+        subject: draft.subject,
+        text: draft.message,
+        html: renderBillingEmailHtml(draft),
+        attachments: [{ filename: draft.documentName, content: pdf.toString('base64') }],
       }),
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.message || payload.error || `Email provider returned ${response.status}`);
     providerMessageId = String(payload.id || '');
-    billingStore.recordQuoteDelivery({ id: crypto.randomUUID(), quoteId: quote.id, recipient: customer.billingEmail, actor, providerMessageId, status: 'sent', error: '' });
+    billingStore.recordQuoteDelivery({ id: crypto.randomUUID(), quoteId: quote.id, recipient: draft.recipient, actor, providerMessageId, status: 'sent', error: '' });
     return providerMessageId;
   } catch (error) {
-    billingStore.recordQuoteDelivery({ id: crypto.randomUUID(), quoteId: quote.id, recipient: customer.billingEmail, actor, providerMessageId: '', status: 'failed', error: billingText(error.message, 500) });
+    billingStore.recordQuoteDelivery({ id: crypto.randomUUID(), quoteId: quote.id, recipient: draft.recipient, actor, providerMessageId: '', status: 'failed', error: billingText(error.message, 500) });
+    throw error;
+  }
+}
+
+async function deliverDraftInvoiceEmail(invoice, actor, draftInput = {}) {
+  const apiKey = process.env.RESEND_API_KEY;
+  const fromEmail = process.env.BILLING_FROM_EMAIL || process.env.EMAIL_FROM || process.env.SMTP_FROM;
+  if (!apiKey || !fromEmail) throw new Error('Invoice email is not configured. Set the server-side Resend key and billing sender address.');
+  const customer = invoice.invoiceSnapshot?.customerSnapshot || {};
+  if (!customer.billingEmail && !draftInput.recipient) throw new Error('Add a billing email to this customer before sending the draft');
+  const draft = normalizeBillingEmailDraft({ body: draftInput }, billingEmailDraft('invoice', invoice));
+  const pdf = invoicePdfBuffer(invoice);
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: `${process.env.BILLING_FROM_NAME || process.env.EMAIL_FROM_NAME || 'TrendSCORE'} <${fromEmail}>`,
+        to: [draft.recipient], reply_to: process.env.BILLING_REPLY_TO || fromEmail, subject: draft.subject,
+        text: draft.message, html: renderBillingEmailHtml(draft), attachments: [{ filename: draft.documentName, content: pdf.toString('base64') }],
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.message || payload.error || `Email provider returned ${response.status}`);
+    const providerMessageId = String(payload.id || '');
+    billingStore.recordInvoiceDelivery({ id: crypto.randomUUID(), invoiceId: invoice.id, recipient: draft.recipient, actor, providerMessageId, status: 'sent', error: '' });
+    return providerMessageId;
+  } catch (error) {
+    billingStore.recordInvoiceDelivery({ id: crypto.randomUUID(), invoiceId: invoice.id, recipient: draft.recipient, actor, providerMessageId: '', status: 'failed', error: billingText(error.message, 500) });
     throw error;
   }
 }
@@ -1814,6 +2404,83 @@ app.get('/api/billing/schools', requireAuth, requireRole('super_admin', 'platfor
     res.json({ ok: true, schools });
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message || 'Could not load provisioned schools' });
+  }
+});
+
+function instanceTenantKey(name, provisionOutput) {
+  try {
+    const parsed = JSON.parse(String(provisionOutput || '').trim().split('\n').filter(Boolean).pop() || '{}');
+    const found = parsed.id || parsed.instanceId || parsed.slug || parsed.tenantKey;
+    if (found) return String(found).toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^[^a-z0-9]+/, '').slice(0, 80);
+  } catch { /* script output is not JSON; fall back to the name */ }
+  return String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80);
+}
+
+// Idempotent: one billing customer per tenant key, and a draft quote only when the customer has none yet.
+function ensureInstanceBilling({ name, tenantKeyHint, domain, adminEmail, quoteSnapshot, actor }) {
+  try {
+    const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(adminEmail || '').trim());
+    const usableEmail = emailOk ? String(adminEmail).trim() : '';
+    const tenantKey = instanceTenantKey(name, tenantKeyHint);
+    let customer = tenantKey ? billingStore.getCustomerByTenantKey(tenantKey) : null;
+    let customerCreated = false;
+    if (!customer) {
+      customer = billingStore.createCustomer({
+        ...normalizeBillingCustomer({ name, tenantKey, billingEmail: usableEmail, currency: 'KES' }),
+        id: crypto.randomUUID(),
+      });
+      customerCreated = true;
+      pushAudit('BILLING_CUSTOMER_CREATE', customer.name, actor, `Auto-created billing customer on instance creation (${tenantKey})`);
+      if (String(adminEmail || '').trim() && !emailOk) {
+        pushAudit('BILLING_CUSTOMER_EMAIL_DROPPED', customer.name, actor, `Admin email "${billingText(adminEmail, 120)}" is not a valid address, so the billing customer was created without a billing email. Add one before sending the quote.`, 'Warning');
+      }
+    }
+    const existingQuote = billingStore.listQuotes().find(q => q.customerId === customer.id && q.status !== 'cancelled');
+    if (existingQuote) return { ok: true, customerId: customer.id, customerCreated, quoteId: existingQuote.id, quoteNumber: existingQuote.quoteNumber, quoteCreated: false };
+    const quote = billingStore.createQuote({
+      id: crypto.randomUUID(),
+      quoteNumber: `Q-${new Date().getUTCFullYear()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`,
+      customerId: customer.id,
+      customerSnapshot: {
+        name: customer.name, legalName: customer.legalName, tenantKey: customer.tenantKey,
+        billingEmail: customer.billingEmail, billingPhone: customer.billingPhone,
+        billingAddress: customer.billingAddress, taxIdentifier: customer.taxIdentifier, currency: customer.currency,
+      },
+      quoteSnapshot,
+      enrollmentCount: quoteSnapshot.enrollmentCount,
+      pricingModel: quoteSnapshot.pricingModel,
+      billingCadence: quoteSnapshot.billingCadence,
+      subtotalKsh: quoteSnapshot.subtotalKsh,
+      expiresOn: quoteSnapshot.expiresOn,
+      notes: quoteSnapshot.notes,
+      createdBy: actor,
+    });
+    pushAudit('BILLING_QUOTE_CREATE', customer.name, actor, `Auto-created draft ${quote.quoteNumber} on instance creation for KSh ${quote.subtotalKsh}`);
+    return { ok: true, customerId: customer.id, customerCreated, quoteId: quote.id, quoteNumber: quote.quoteNumber, quoteCreated: true };
+  } catch (error) {
+    pushAudit('BILLING_AUTO_CREATE', name, actor, `Billing was NOT created for ${name}: ${error.message}`, 'Warning');
+    return { ok: false, error: `Instance created but billing setup failed: ${error.message}. Create the customer and quote manually.` };
+  }
+}
+
+app.post('/api/billing/reset', requireAuth, requireRole('super_admin'), (req, res) => {
+  const PHRASE = 'RESET BILLING';
+  if (String(req.body?.confirm || '').trim() !== PHRASE) {
+    return res.status(400).json({ ok: false, error: `Type ${PHRASE} exactly to confirm.` });
+  }
+  const issuedInvoices = billingStore.listInvoices().filter(invoice => !['draft', 'void'].includes(invoice.status)).length;
+  const recordedPayments = billingStore.listPayments().length;
+  if ((issuedInvoices > 0 || recordedPayments > 0) && process.env.BILLING_ALLOW_RESET !== 'true') {
+    pushAudit('BILLING_RESET_BLOCKED', 'Platform billing', req.user.email, `Reset refused: ${issuedInvoices} issued invoice(s) and ${recordedPayments} payment(s) exist.`, 'Warning');
+    return res.status(409).json({ ok: false, error: `Billing cannot be reset: ${issuedInvoices} invoice(s) have been issued and ${recordedPayments} payment(s) recorded. Use credit notes or cancellations instead. An operator can set BILLING_ALLOW_RESET=true on the server to override this.` });
+  }
+  try {
+    const { backupPath, before } = billingStore.resetAll();
+    pushAudit('BILLING_RESET', 'Platform billing', req.user.email,
+      `Billing reset to zero (had ${before.customers} customers, ${before.quotes} quotes, ${before.invoices} invoices, ${before.payments} payments). Backup: ${backupPath}`, 'Warning');
+    return res.json({ ok: true, cleared: before, backupFile: path.basename(backupPath) });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: `Reset failed: ${error.message}` });
   }
 });
 
@@ -1850,8 +2517,131 @@ app.get('/api/billing/contracts', requireAuth, requireRole('super_admin', 'platf
   res.json({ ok: true, contracts: billingStore.listContracts(customerId) });
 });
 
+function writeConsoleEmailSettings(values) {
+  const envFilePath = CONSOLE_ENV_FILE;
+  if (!fs.existsSync(envFilePath)) {
+    throw new Error('The persistent console environment file is unavailable. Ask an operator to check the production console mount.');
+  }
+  if (fs.lstatSync(envFilePath).isSymbolicLink()) {
+    throw new Error('The console environment file must not be a symbolic link.');
+  }
+
+  let lines = fs.readFileSync(envFilePath, 'utf8').split(/\r?\n/);
+  for (const [key, value] of Object.entries(values)) {
+    if (value === undefined) continue;
+    const nextLine = `${key}=${value}`;
+    lines = lines.filter(line => !new RegExp(`^\\s*${key}\\s*=`).test(line));
+    lines.push(nextLine);
+  }
+
+  const temporaryPath = `${envFilePath}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+  try {
+    fs.writeFileSync(temporaryPath, `${lines.join('\n').replace(/\n+$/, '')}\n`, { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+    fs.chmodSync(temporaryPath, 0o600);
+    fs.renameSync(temporaryPath, envFilePath);
+    fs.chmodSync(envFilePath, 0o600);
+    for (const [key, value] of Object.entries(values)) {
+      if (value !== undefined) process.env[key] = value;
+    }
+  } catch (error) {
+    try { fs.unlinkSync(temporaryPath); } catch (_) {}
+    throw error;
+  }
+}
+
+function currentEmailSettings() {
+  return {
+    keyConfigured: Boolean(process.env.RESEND_API_KEY),
+    fromEmail: process.env.BILLING_FROM_EMAIL || process.env.EMAIL_FROM || process.env.SMTP_FROM || '',
+    fromName: process.env.BILLING_FROM_NAME || process.env.EMAIL_FROM_NAME || 'TrendSCORE',
+  };
+}
+
+app.get('/api/settings/communications/email', requireAuth, requireRole('super_admin'), (_req, res) => {
+  return res.json({ ok: true, ...currentEmailSettings() });
+});
+
+app.put('/api/settings/communications/email', requireAuth, requireRole('super_admin'), (req, res) => {
+  const apiKey = String(req.body?.apiKey || '').trim();
+  const fromEmail = String(req.body?.fromEmail || '').trim();
+  const fromName = String(req.body?.fromName || 'TrendSCORE').trim();
+  if (apiKey && (!/^re_[A-Za-z0-9_-]{8,250}$/.test(apiKey) || /[\r\n]/.test(apiKey))) {
+    return res.status(400).json({ ok: false, error: 'Enter a validly formatted Resend API key beginning with re_.' });
+  }
+  if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(fromEmail) || fromEmail.length > 254) {
+    return res.status(400).json({ ok: false, error: 'Enter a valid sender email address.' });
+  }
+  if (/[\r\n]/.test(fromName) || fromName.length > 120) {
+    return res.status(400).json({ ok: false, error: 'Sender name must be 120 characters or fewer on one line.' });
+  }
+  if (!apiKey && !process.env.RESEND_API_KEY) {
+    return res.status(400).json({ ok: false, error: 'Paste a Resend API key before saving the first email configuration.' });
+  }
+
+  try {
+    const values = {
+      ...(apiKey ? { RESEND_API_KEY: apiKey } : {}),
+      BILLING_FROM_EMAIL: fromEmail,
+      BILLING_FROM_NAME: fromName || 'TrendSCORE',
+    };
+    writeConsoleEmailSettings(values);
+    pushAudit('COMMUNICATIONS_EMAIL_SETTINGS', 'Communications', req.user.email, `Updated Resend sender settings for ${fromEmail}`);
+    return res.json({ ok: true, ...currentEmailSettings() });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error.message || 'Could not save email settings on the server.' });
+  }
+});
+
+app.post('/api/settings/communications/email/test', requireAuth, requireRole('super_admin'), async (_req, res) => {
+  const { keyConfigured, fromEmail } = currentEmailSettings();
+  if (!keyConfigured || !fromEmail) return res.status(400).json({ ok: false, error: 'Save a Resend API key and sender address first.' });
+  try {
+    const response = await fetch('https://api.resend.com/domains?limit=100', {
+      headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}` },
+      signal: AbortSignal.timeout(12000),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = response.status === 401 || response.status === 403
+        ? 'Resend rejected this API key. Replace it with a valid key.'
+        : `Resend connection check failed (HTTP ${response.status}).`;
+      return res.status(502).json({ ok: false, error });
+    }
+    const senderDomain = fromEmail.split('@').pop().toLowerCase();
+    const domainEntry = (Array.isArray(payload.data) ? payload.data : []).find(item => {
+      const domain = String(item.name || '').toLowerCase();
+      return senderDomain === domain || senderDomain.endsWith(`.${domain}`);
+    });
+    const verified = domainEntry?.status === 'verified'
+      && (!domainEntry.capabilities?.sending || domainEntry.capabilities.sending === 'enabled');
+    pushAudit('COMMUNICATIONS_EMAIL_TEST', 'Communications', 'system', `Checked Resend configuration for ${fromEmail}: ${verified ? 'verified' : 'domain needs verification'}`);
+    return res.json({ ok: true, verified, fromEmail, domain: domainEntry?.name || senderDomain, domainStatus: domainEntry?.status || 'not found' });
+  } catch (error) {
+    return res.status(502).json({ ok: false, error: error.name === 'TimeoutError' ? 'Resend validation timed out.' : 'Could not reach Resend to validate the saved configuration.' });
+  }
+});
+
 app.get('/api/billing/email-status', requireAuth, requireRole('super_admin', 'platform_owner'), (_req, res) => {
-  res.json({ ok: true, configured: Boolean(process.env.RESEND_API_KEY && (process.env.BILLING_FROM_EMAIL || process.env.EMAIL_FROM || process.env.SMTP_FROM)) });
+  const config = currentEmailSettings();
+  res.json({ ok: true, configured: Boolean(config.keyConfigured && config.fromEmail) });
+});
+
+app.get('/api/billing/products', requireAuth, requireRole('super_admin', 'platform_owner'), (_req, res) => {
+  res.json({ ok: true, products: billingStore.listProducts(), schoolTypes: SCHOOL_TYPES });
+});
+
+app.put('/api/billing/products/:code', requireAuth, requireRole('super_admin'), (req, res) => {
+  try {
+    const existing = billingStore.getProduct(billingText(req.params.code, 80));
+    if (!existing) return res.status(404).json({ ok: false, error: 'Price list item not found' });
+    const input = normalizeProductInput(req.body);
+    const updated = billingStore.updateProduct(existing.code, input, req.user.email);
+    pushAudit('BILLING_PRODUCT_UPDATE', existing.code, req.user.email,
+      `Price list ${existing.code}: KSh ${existing.priceKsh} -> KSh ${updated.priceKsh}, ${existing.active ? 'active' : 'inactive'} -> ${updated.active ? 'active' : 'inactive'}. Existing quotes keep their price snapshot.`);
+    return res.json({ ok: true, product: updated });
+  } catch (error) {
+    return res.status(400).json({ ok: false, error: error.message });
+  }
 });
 
 app.get('/api/billing/quotes', requireAuth, requireRole('super_admin', 'platform_owner'), (_req, res) => {
@@ -1860,8 +2650,8 @@ app.get('/api/billing/quotes', requireAuth, requireRole('super_admin', 'platform
 
 app.post('/api/billing/quotes/preview', requireAuth, requireRole('super_admin'), (req, res) => {
   try {
-    const quote = calculateQuote(req.body);
-    return res.json({ ok: true, subtotalKsh: quote.subtotalKsh, lines: quote.lines, pricingDescription: quote.pricingDescription, taxNote: quote.taxNote });
+    const quote = buildQuote(req.body);
+    return res.json({ ok: true, subtotalKsh: quote.subtotalKsh, grossKsh: quote.grossKsh, discount: quote.discount || null, lines: quote.lines, pricingDescription: quote.pricingDescription, taxNote: quote.taxNote });
   } catch (error) {
     return res.status(400).json({ ok: false, error: error.message });
   }
@@ -1873,7 +2663,7 @@ app.post('/api/billing/quotes', requireAuth, requireRole('super_admin'), (req, r
     const customer = billingStore.getCustomer(customerId);
     if (!customer) return res.status(404).json({ ok: false, error: 'Select a saved billing customer first' });
     if (customer.currency !== 'KES') return res.status(400).json({ ok: false, error: 'The approved school rate card is in KSh. Set this customer currency to KES before quoting.' });
-    const quoteSnapshot = calculateQuote(req.body);
+    const quoteSnapshot = buildQuote(req.body);
     const quote = billingStore.createQuote({
       id: crypto.randomUUID(),
       quoteNumber: `Q-${new Date().getUTCFullYear()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`,
@@ -1899,23 +2689,76 @@ app.post('/api/billing/quotes', requireAuth, requireRole('super_admin'), (req, r
   }
 });
 
+app.put('/api/billing/quotes/:id', requireAuth, requireRole('super_admin'), (req, res) => {
+  try {
+    const existing = billingStore.getQuote(req.params.id);
+    if (!existing) return res.status(404).json({ ok: false, error: 'Quote not found' });
+    if (existing.status !== 'draft' || existing.sentAt || existing.cancelledAt) return res.status(409).json({ ok: false, error: 'Only an unsent draft quote can be edited. Create a revision for a quote already sent.' });
+    const customerId = billingText(req.body.customerId, 80);
+    const customer = billingStore.getCustomer(customerId);
+    if (!customer) return res.status(404).json({ ok: false, error: 'Select a saved billing customer first' });
+    if (customer.currency !== 'KES') return res.status(400).json({ ok: false, error: 'The approved school rate card is in KSh. Set this customer currency to KES before quoting.' });
+    const quoteSnapshot = buildQuote(req.body);
+    const updated = billingStore.updateQuote(existing.id, {
+      customerId,
+      customerSnapshot: { name: customer.name, legalName: customer.legalName, tenantKey: customer.tenantKey,
+        billingEmail: customer.billingEmail, billingPhone: customer.billingPhone, billingAddress: customer.billingAddress,
+        taxIdentifier: customer.taxIdentifier, currency: customer.currency },
+      quoteSnapshot, enrollmentCount: quoteSnapshot.enrollmentCount, pricingModel: quoteSnapshot.pricingModel,
+      billingCadence: quoteSnapshot.billingCadence, subtotalKsh: quoteSnapshot.subtotalKsh,
+      expiresOn: quoteSnapshot.expiresOn, notes: quoteSnapshot.notes,
+    });
+    if (!updated) return res.status(409).json({ ok: false, error: 'This quote can no longer be edited' });
+    pushAudit('BILLING_QUOTE_UPDATE', customer.name, req.user.email, `Updated unsent draft ${updated.quoteNumber}`);
+    return res.json({ ok: true, quote: updated });
+  } catch (error) { return res.status(400).json({ ok: false, error: error.message }); }
+});
+
+app.delete('/api/billing/quotes/:id', requireAuth, requireRole('super_admin'), (req, res) => {
+  const quote = billingStore.getQuote(req.params.id);
+  if (!quote) return res.status(404).json({ ok: false, error: 'Quote not found' });
+  if (!billingStore.deleteDraftQuote(quote.id)) return res.status(409).json({ ok: false, error: 'Only an unsent draft with no email attempts or invoice can be deleted. Cancel sent or accepted quotes to preserve their history.' });
+  pushAudit('BILLING_QUOTE_DELETE', quote.customerSnapshot?.name || quote.customerId, req.user.email, `Deleted unsent draft ${quote.quoteNumber}`, 'Warning');
+  return res.json({ ok: true });
+});
+
+app.post('/api/billing/quotes/:id/cancel', requireAuth, requireRole('super_admin'), (req, res) => {
+  const quote = billingStore.getQuote(req.params.id);
+  if (!quote) return res.status(404).json({ ok: false, error: 'Quote not found' });
+  const reason = billingText(req.body.reason, 500);
+  if (!reason) return res.status(400).json({ ok: false, error: 'Enter a reason for cancelling this quote' });
+  const cancelled = billingStore.cancelQuote(quote.id, req.user.email, reason);
+  if (!cancelled) return res.status(409).json({ ok: false, error: 'This quote cannot be cancelled after an invoice exists or after it reached a final state' });
+  pushAudit('BILLING_QUOTE_CANCEL', quote.customerSnapshot?.name || quote.customerId, req.user.email, `Cancelled ${quote.quoteNumber}: ${reason}`, 'Warning');
+  return res.json({ ok: true, quote: cancelled });
+});
+
 app.get('/api/billing/quotes/:id/pdf', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
   const quote = billingStore.getQuote(req.params.id);
   if (!quote) return res.status(404).json({ ok: false, error: 'Quote not found' });
-  const pdf = createPdfBuffer(quotePdfLines(quote));
+  const pdf = quotePdfBuffer(quote);
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `attachment; filename="${quote.quoteNumber}.pdf"`);
+  res.setHeader('Content-Disposition', `${req.query.preview === '1' ? 'inline' : 'attachment'}; filename="${quote.quoteNumber}.pdf"`);
   res.setHeader('Content-Length', pdf.length);
   return res.send(pdf);
+});
+
+app.get('/api/billing/quotes/:id/email-preview', requireAuth, requireRole('super_admin'), (req, res) => {
+  const quote = billingStore.getQuote(req.params.id);
+  if (!quote) return res.status(404).json({ ok: false, error: 'Quote not found' });
+  if (!['draft', 'sent'].includes(quote.status) || quote.cancelledAt) return res.status(409).json({ ok: false, error: 'Only active draft or sent quotes can be emailed' });
+  const draft = billingEmailDraft('quote', quote);
+  return res.json({ ok: true, draft: { ...draft, html: renderBillingEmailHtml(draft) } });
 });
 
 app.post('/api/billing/quotes/:id/send', requireAuth, requireRole('super_admin'), async (req, res) => {
   const quote = billingStore.getQuote(req.params.id);
   if (!quote) return res.status(404).json({ ok: false, error: 'Quote not found' });
-  if (!['draft', 'sent'].includes(quote.status)) return res.status(409).json({ ok: false, error: 'Only draft or sent quotes can be emailed' });
+  if (!['draft', 'sent'].includes(quote.status) || quote.cancelledAt) return res.status(409).json({ ok: false, error: 'Only active draft or sent quotes can be emailed' });
   try {
-    await deliverQuoteEmail(quote, req.user.email);
-    pushAudit('BILLING_QUOTE_SEND', quote.customerSnapshot.name, req.user.email, `Emailed ${quote.quoteNumber} to ${quote.customerSnapshot.billingEmail}`);
+    const deliveredTo = billingText(req.body?.recipient || quote.customerSnapshot.billingEmail, 254).toLowerCase();
+    await deliverQuoteEmail(quote, req.user.email, req.body || {});
+    pushAudit('BILLING_QUOTE_SEND', quote.customerSnapshot.name, req.user.email, `Emailed ${quote.quoteNumber} to ${deliveredTo}`);
     return res.json({ ok: true, quote: billingStore.getQuote(quote.id), deliveries: billingStore.listQuoteDeliveries(quote.id) });
   } catch (error) {
     pushAudit('BILLING_QUOTE_SEND_FAILED', quote.customerSnapshot.name, req.user.email, `Email attempt failed for ${quote.quoteNumber}: ${billingText(error.message, 300)}`, 'Warning');
@@ -1926,7 +2769,7 @@ app.post('/api/billing/quotes/:id/send', requireAuth, requireRole('super_admin')
 app.post('/api/billing/quotes/:id/accept', requireAuth, requireRole('super_admin'), (req, res) => {
   const quote = billingStore.getQuote(req.params.id);
   if (!quote) return res.status(404).json({ ok: false, error: 'Quote not found' });
-  if (!['draft', 'sent'].includes(quote.status)) return res.status(409).json({ ok: false, error: `Quote is ${quote.status} and cannot be marked accepted` });
+  if (!['draft', 'sent'].includes(quote.status) || quote.cancelledAt) return res.status(409).json({ ok: false, error: `Quote is ${quote.status} and cannot be marked accepted` });
   if (quote.expiresOn && quote.expiresOn < new Date().toISOString().slice(0, 10)) {
     billingStore.setQuoteStatus(quote.id, 'expired');
     return res.status(409).json({ ok: false, error: 'This quote has expired. Create a new quote before recording acceptance.' });
@@ -1965,7 +2808,116 @@ app.post('/api/billing/quotes/:id/convert', requireAuth, requireRole('super_admi
 });
 
 app.get('/api/billing/invoices', requireAuth, requireRole('super_admin', 'platform_owner'), (_req, res) => {
-  res.json({ ok: true, invoices: billingStore.listInvoices() });
+  const invoices = billingStore.listInvoices();
+  res.json({ ok: true, invoices, deliveries: invoices.map(invoice => ({ invoiceId: invoice.id, attempts: billingStore.listInvoiceDeliveries(invoice.id) })) });
+});
+
+app.get('/api/billing/payments', requireAuth, requireRole('super_admin', 'platform_owner'), (_req, res) => {
+  return res.json({ ok: true, payments: billingStore.listPayments() });
+});
+
+app.get('/api/billing/payments/:id/receipt', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  const payment = billingStore.getPayment(req.params.id);
+  if (!payment) return res.status(404).json({ ok: false, error: 'Payment record not found' });
+  const invoice = billingStore.getInvoice(payment.invoiceId);
+  if (!invoice) return res.status(404).json({ ok: false, error: 'Linked invoice was not found' });
+  const receiptNumber = `RCPT-${String(payment.paymentDate || '').replace(/-/g, '')}-${String(payment.id || '').replace(/-/g, '').slice(0, 6).toUpperCase()}`;
+  const pdf = paymentReceiptPdfBuffer({ ...payment, receiptNumber }, invoice);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${receiptNumber}.pdf"`);
+  res.setHeader('Content-Length', pdf.length);
+  return res.send(pdf);
+});
+
+app.post('/api/billing/payments', requireAuth, requireRole('super_admin'), (req, res) => {
+  const invoiceId = billingText(req.body?.invoiceId, 80);
+  const amountKsh = Number(req.body?.amountKsh);
+  const paymentDate = billingText(req.body?.paymentDate, 10);
+  const method = billingText(req.body?.method, 30);
+  const reference = billingText(req.body?.reference, 120);
+  const notes = billingText(req.body?.notes, 500);
+  if (!invoiceId) return res.status(400).json({ ok: false, error: 'Select an issued invoice' });
+  if (!Number.isSafeInteger(amountKsh) || amountKsh <= 0) return res.status(400).json({ ok: false, error: 'Enter a whole amount in KSh greater than zero' });
+  const parsedPaymentDate = new Date(`${paymentDate}T00:00:00.000Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(paymentDate) || !Number.isFinite(parsedPaymentDate.getTime()) || parsedPaymentDate.toISOString().slice(0, 10) !== paymentDate) return res.status(400).json({ ok: false, error: 'Enter a valid payment date' });
+  if (!['mpesa', 'bank_transfer', 'cash', 'cheque', 'other'].includes(method)) return res.status(400).json({ ok: false, error: 'Choose a supported payment method' });
+  try {
+    const payment = billingStore.recordPayment({ id: crypto.randomUUID(), invoiceId, amountKsh, paymentDate, method, reference, notes, recordedBy: req.user.email });
+    const invoice = billingStore.getInvoice(invoiceId);
+    pushAudit('BILLING_PAYMENT_RECORD', invoice?.customerId || invoiceId, req.user.email, `Recorded KSh ${amountKsh.toLocaleString('en-KE')} payment against ${invoice?.invoiceNumber || invoiceId}${reference ? ` · reference ${reference}` : ''}`);
+
+    // Auto-attribute commission to assigned field agent
+    let autoEarning = null;
+    try {
+      const customer = invoice?.customerId ? billingStore.getCustomer(invoice.customerId) : null;
+      autoEarning = agentsStore.attributePaymentCommission({ payment, invoice, customer });
+      if (autoEarning) {
+        pushAudit('AGENT_COMMISSION_AUTO', autoEarning.agent_id, req.user.email, `Auto-credited KSh ${autoEarning.earned_amount_ksh.toLocaleString('en-KE')} commission for invoice ${invoice?.invoiceNumber || invoiceId} to ${autoEarning.agent_name} (${autoEarning.agent_code})`, 'Success');
+      }
+    } catch (attrErr) {
+      console.warn('[Agents] Auto-attribution notice:', attrErr?.message || attrErr);
+    }
+
+    return res.status(201).json({ ok: true, payment, invoice, autoEarning });
+  } catch (error) {
+    return res.status(409).json({ ok: false, error: error.message || 'Could not record payment' });
+  }
+});
+
+app.put('/api/billing/invoices/:id', requireAuth, requireRole('super_admin'), (req, res) => {
+  const dueDate = billingText(req.body.dueDate, 10); const termsNote = billingText(req.body.termsNote, 1000);
+  if (dueDate && (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate) || new Date(`${dueDate}T00:00:00.000Z`).toISOString().slice(0, 10) !== dueDate)) return res.status(400).json({ ok: false, error: 'Due date must be a valid date in YYYY-MM-DD format' });
+  const invoice = billingStore.updateDraftInvoice(req.params.id, { dueDate, termsNote });
+  if (!invoice) return res.status(409).json({ ok: false, error: 'Only draft invoices can be edited' });
+  pushAudit('BILLING_INVOICE_UPDATE', invoice.customerId, req.user.email, `Updated draft invoice details ${invoice.invoiceNumber}`);
+  return res.json({ ok: true, invoice });
+});
+
+app.post('/api/billing/invoices/:id/issue', requireAuth, requireRole('super_admin'), (req, res) => {
+  const existing = billingStore.getInvoice(req.params.id);
+  if (!existing) return res.status(404).json({ ok: false, error: 'Invoice not found' });
+  if (existing.status !== 'draft') return res.status(409).json({ ok: false, error: 'Only a draft invoice can be issued' });
+  const invoiceNumber = `INV-${String(existing.invoiceSnapshot?.quoteNumber || existing.invoiceNumber.replace(/^DRAFT-/, '')).replace(/^Q-/, '')}`;
+  try {
+    const invoice = billingStore.issueDraftInvoice(existing.id, invoiceNumber, new Date().toISOString());
+    if (!invoice) return res.status(409).json({ ok: false, error: 'This invoice has already been issued or changed' });
+    pushAudit('BILLING_INVOICE_ISSUE', invoice.customerId, req.user.email, `Issued commercial invoice ${invoice.invoiceNumber}; tax invoice/eTIMS is not represented`);
+    return res.json({ ok: true, invoice });
+  } catch (error) {
+    return res.status(409).json({ ok: false, error: error.message || 'Could not issue invoice' });
+  }
+});
+
+app.post('/api/billing/invoices/:id/cancel', requireAuth, requireRole('super_admin'), (req, res) => {
+  const reason = billingText(req.body.reason, 500);
+  if (!reason) return res.status(400).json({ ok: false, error: 'Enter a reason for cancelling this draft invoice' });
+  const invoice = billingStore.cancelDraftInvoice(req.params.id, req.user.email, reason);
+  if (!invoice) return res.status(409).json({ ok: false, error: 'Only draft invoices can be cancelled' });
+  pushAudit('BILLING_INVOICE_CANCEL', invoice.customerId, req.user.email, `Cancelled draft ${invoice.invoiceNumber}: ${reason}`, 'Warning');
+  return res.json({ ok: true, invoice });
+});
+
+app.get('/api/billing/invoices/:id/email-preview', requireAuth, requireRole('super_admin'), (req, res) => {
+  const invoice = billingStore.getInvoice(req.params.id);
+  if (!invoice) return res.status(404).json({ ok: false, error: 'Invoice not found' });
+  if (!['draft', 'issued', 'sent', 'paid'].includes(invoice.status)) return res.status(409).json({ ok: false, error: 'This invoice cannot be emailed in its current status' });
+  const draft = billingEmailDraft('invoice', invoice);
+  return res.json({ ok: true, draft: { ...draft, html: renderBillingEmailHtml(draft) } });
+});
+
+app.post('/api/billing/invoices/:id/send-review-email', requireAuth, requireRole('super_admin'), async (req, res) => {
+  const invoice = billingStore.getInvoice(req.params.id);
+  if (!invoice) return res.status(404).json({ ok: false, error: 'Invoice not found' });
+  if (!['draft', 'issued', 'sent', 'paid'].includes(invoice.status)) return res.status(409).json({ ok: false, error: 'This invoice cannot be emailed in its current status' });
+  try {
+    const deliveredTo = billingText(req.body?.recipient || invoice.invoiceSnapshot?.customerSnapshot?.billingEmail, 254).toLowerCase();
+    await deliverDraftInvoiceEmail(invoice, req.user.email, req.body || {});
+    pushAudit(invoice.status === 'draft' ? 'BILLING_INVOICE_REVIEW_SEND' : 'BILLING_INVOICE_SEND', invoice.customerId, req.user.email, `Emailed ${invoice.status === 'draft' ? 'draft review copy' : 'commercial invoice'} ${invoice.invoiceNumber} to ${deliveredTo}`);
+    return res.json({ ok: true, deliveries: billingStore.listInvoiceDeliveries(invoice.id) });
+  } catch (error) {
+    pushAudit('BILLING_INVOICE_SEND_FAILED', invoice.customerId, req.user.email, `Invoice email failed for ${invoice.invoiceNumber}: ${billingText(error.message, 300)}`, 'Warning');
+    return res.status(502).json({ ok: false, error: error.message || 'Could not send invoice email', deliveries: billingStore.listInvoiceDeliveries(invoice.id) });
+  }
 });
 
 app.get('/api/billing/invoices/:id/pdf', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
@@ -1974,7 +2926,7 @@ app.get('/api/billing/invoices/:id/pdf', requireAuth, requireRole('super_admin',
   const pdf = invoicePdfBuffer(invoice);
   const filename = String(invoice.invoiceNumber || 'draft-invoice').replace(/[^a-zA-Z0-9_-]/g, '_');
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `attachment; filename="${filename}.pdf"`);
+  res.setHeader('Content-Disposition', `${req.query.preview === '1' ? 'inline' : 'attachment'}; filename="${filename}.pdf"`);
   res.setHeader('Content-Length', pdf.length);
   return res.send(pdf);
 });

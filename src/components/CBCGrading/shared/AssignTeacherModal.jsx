@@ -33,11 +33,6 @@ const AssignTeacherModal = ({ isOpen, onClose, classData, onAssignmentComplete }
     };
 
     const handleSubmit = async () => {
-        if (!selectedTeacherId) {
-            showError('Please select a teacher');
-            return;
-        }
-
         setSubmitting(true);
         try {
             await api.classes.assignTeacher(classData.id, selectedTeacherId);

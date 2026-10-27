@@ -19,11 +19,32 @@ import { requireRole } from '../middleware/permissions.middleware';
 import { rateLimit } from '../middleware/enhanced-rateLimit.middleware';
 import { asyncHandler } from '../utils/async.util';
 import { getSetupStatus } from '../controllers/setup-status.controller';
+import { getKeyDates } from '../services/keyDates.service';
+import type { AuthRequest } from '../middleware/permissions.middleware';
 
 const router = Router();
 const dashboardController = new DashboardController();
 
 // authenticate is applied in index.ts — do NOT add router.use(authenticate) here
+
+/**
+ * @route   GET /api/dashboard/key-dates
+ * @desc    Compact term countdown: term progress, key dates, and a role-scoped fee deadline
+ * @access  Any authenticated role (content is filtered per role in the service)
+ */
+router.get(
+  '/key-dates',
+  rateLimit({ windowMs: 60_000, maxRequests: 120 }),
+  asyncHandler(async (req: AuthRequest, res) => {
+    const data = await getKeyDates({
+      userId: req.user?.userId,
+      id: (req.user as any)?.id,
+      role: req.user?.role,
+      roles: (req.user as any)?.roles,
+    });
+    res.json({ success: true, data });
+  })
+);
 
 router.get(
   '/setup-status',

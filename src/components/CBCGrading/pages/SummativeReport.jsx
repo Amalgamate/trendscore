@@ -360,38 +360,10 @@ const CATEGORY_KEYWORDS = {
 // ============================================================================
 // LEARNER REPORT TEMPLATE COMPONENT (Reusable for Bulk Print)
 // ============================================================================
-const formatReportDate = (value) => {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
-};
-
-const getTermReportDates = (termConfigs, term, academicYear) => {
-  const termOrder = ['TERM_1', 'TERM_2', 'TERM_3'];
-  const closingConfig = (termConfigs || []).find(config =>
-    String(config.term).toUpperCase() === String(term).toUpperCase() &&
-    Number(config.academicYear) === Number(academicYear)
-  );
-  const currentIndex = termOrder.indexOf(String(term || '').toUpperCase());
-  const nextTerm = currentIndex >= 0 && currentIndex < termOrder.length - 1
-    ? termOrder[currentIndex + 1]
-    : currentIndex === termOrder.length - 1 ? termOrder[0] : null;
-  const nextYear = currentIndex === termOrder.length - 1 ? Number(academicYear) + 1 : Number(academicYear);
-  const openingConfig = nextTerm && (termConfigs || []).find(config =>
-    String(config.term).toUpperCase() === nextTerm && Number(config.academicYear) === nextYear
-  );
-  return {
-    closingDate: closingConfig?.endDate || null,
-    openingDate: openingConfig?.startDate || null
-  };
-};
-
-const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, academicYear, termConfigs, classPosition, classSize, streamPosition, streamSize, brandingSettings, user, streamConfigs, remarks, commentData, gradingRanges, categoryAverages }) => {
+const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, academicYear, classPosition, classSize, streamPosition, streamSize, brandingSettings, user, streamConfigs, remarks, commentData, gradingRanges, categoryAverages }) => {
   // Build a grade function from DB ranges (or defaults if not yet loaded).
   // useMemo keeps it stable across re-renders when gradingRanges hasn't changed.
   const getGrade = React.useMemo(() => makeCBCGrader(gradingRanges), [gradingRanges]);
-  const { closingDate: termClosingDate, openingDate: nextTermOpeningDate } = getTermReportDates(termConfigs, term, academicYear);
 
   // --- DATA PREPARATION LOGIC ---
   const standardAreas = getLearningAreasByGrade(learner.grade);
@@ -610,9 +582,9 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
         fontFamily: "'Raleway', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
         lineHeight: '1.2',
         width: '794px',    // 210mm at 96 DPI
-        minHeight: '1123px', // ensure card is never shorter than A4
-        // height is intentionally omitted — html2canvas reads scrollHeight,
-        // so reports with many subjects expand instead of clipping.
+        height: '1123px',
+        maxHeight: '1123px',
+        overflow: 'hidden',
         padding: '30px 40px 30px 40px',
         boxSizing: 'border-box',
         display: 'flex',
@@ -733,30 +705,36 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
               <div style={{ fontWeight: pdfTypeWeight.bold, color: '#0f172a' }}>{learner.stream || 'A'}</div>
             </div>
             {/* RIGHT: Assessment Summary */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gridTemplateRows: '1fr 1fr', height: '100%' }}>
-              <div style={{ padding: '8px 4px', textAlign: 'center', borderRight: '1.2px solid #e2e8f0', borderBottom: '1.2px solid #e2e8f0', display: 'flex', flexDirection: 'column', justifyContent: 'center', backgroundColor: '#f8fafc', gap: '2px' }}>
-                <div style={{ fontSize: '8px', fontWeight: pdfTypeWeight.semibold, color: '#64748b', textTransform: 'uppercase' }}>Subjects</div>
-                <div style={{ fontSize: '16px', fontWeight: pdfTypeWeight.bold, color: '#0f172a' }}>{tableRows.length}</div>
+            <div style={{ display: 'grid', gridTemplateRows: '1fr 1fr 1fr', height: '100%' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
+                <div style={{ padding: '8px 4px', textAlign: 'center', borderRight: '1.2px solid #e2e8f0', borderBottom: '1.2px solid #e2e8f0', display: 'flex', flexDirection: 'column', justifyContent: 'center', backgroundColor: '#f8fafc', gap: '2px' }}>
+                  <div style={{ fontSize: '8px', fontWeight: pdfTypeWeight.semibold, color: '#64748b', textTransform: 'uppercase' }}>Subjects</div>
+                  <div style={{ fontSize: '16px', fontWeight: pdfTypeWeight.bold, color: '#0f172a' }}>{tableRows.length}</div>
+                </div>
+                <div style={{ padding: '8px 4px', textAlign: 'center', borderBottom: '1.2px solid #e2e8f0', display: 'flex', flexDirection: 'column', justifyContent: 'center', backgroundColor: '#f8fafc', gap: '2px' }}>
+                  <div style={{ fontSize: '8px', fontWeight: pdfTypeWeight.semibold, color: '#64748b', textTransform: 'uppercase' }}>Points</div>
+                  <div style={{ fontSize: '16px', fontWeight: pdfTypeWeight.bold, color: '#0f172a' }}>{pointRows.length > 0 ? totalPoints : '—'}</div>
+                </div>
               </div>
-              <div style={{ padding: '8px 4px', textAlign: 'center', borderRight: '1.2px solid #e2e8f0', borderBottom: '1.2px solid #e2e8f0', display: 'flex', flexDirection: 'column', justifyContent: 'center', backgroundColor: '#f8fafc', gap: '2px' }}>
-                <div style={{ fontSize: '8px', fontWeight: pdfTypeWeight.semibold, color: '#64748b', textTransform: 'uppercase' }}>Points</div>
-                <div style={{ fontSize: '16px', fontWeight: pdfTypeWeight.bold, color: '#0f172a' }}>{pointRows.length > 0 ? totalPoints : '—'}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
+                <div style={{ padding: '8px 4px', textAlign: 'center', borderRight: '1.2px solid #e2e8f0', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '2px' }}>
+                  <div style={{ fontSize: '8px', fontWeight: pdfTypeWeight.semibold, color: '#64748b', textTransform: 'uppercase' }}>Average</div>
+                  <div style={{ fontSize: '16px', fontWeight: pdfTypeWeight.bold, color: '#0f172a' }}>{avgPct}%</div>
+                </div>
+                <div style={{ padding: '8px 4px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center', backgroundColor: '#f1f5f9', gap: '2px' }}>
+                  <div style={{ fontSize: '8px', fontWeight: pdfTypeWeight.semibold, color: '#1e40af', textTransform: 'uppercase' }}>Grade</div>
+                  <div style={{ fontSize: '16px', fontWeight: pdfTypeWeight.bold, color: '#1e40af' }}>{overallGrade}</div>
+                </div>
               </div>
-              <div style={{ padding: '8px 4px', textAlign: 'center', borderBottom: '1.2px solid #e2e8f0', display: 'flex', flexDirection: 'column', justifyContent: 'center', backgroundColor: '#f8fafc', gap: '2px' }}>
-                <div style={{ fontSize: '8px', fontWeight: pdfTypeWeight.semibold, color: '#64748b', textTransform: 'uppercase' }}>Class Position</div>
-                <div style={{ fontSize: '16px', fontWeight: pdfTypeWeight.bold, color: '#0f172a' }}>{classPosition ? `${classPosition} / ${classSize}` : '—'}</div>
-              </div>
-              <div style={{ padding: '8px 4px', textAlign: 'center', borderRight: '1.2px solid #e2e8f0', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '2px' }}>
-                <div style={{ fontSize: '8px', fontWeight: pdfTypeWeight.semibold, color: '#64748b', textTransform: 'uppercase' }}>Average</div>
-                <div style={{ fontSize: '16px', fontWeight: pdfTypeWeight.bold, color: '#0f172a' }}>{avgPct}%</div>
-              </div>
-              <div style={{ padding: '8px 4px', textAlign: 'center', borderRight: '1.2px solid #e2e8f0', display: 'flex', flexDirection: 'column', justifyContent: 'center', backgroundColor: '#f1f5f9', gap: '2px' }}>
-                <div style={{ fontSize: '8px', fontWeight: pdfTypeWeight.semibold, color: '#1e40af', textTransform: 'uppercase' }}>Grade</div>
-                <div style={{ fontSize: '16px', fontWeight: pdfTypeWeight.bold, color: '#1e40af' }}>{overallGrade}</div>
-              </div>
-              <div style={{ padding: '8px 4px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center', backgroundColor: '#f1f5f9', gap: '2px' }}>
-                <div style={{ fontSize: '8px', fontWeight: pdfTypeWeight.semibold, color: '#1e40af', textTransform: 'uppercase' }}>Stream Position</div>
-                <div style={{ fontSize: '16px', fontWeight: pdfTypeWeight.bold, color: '#1e40af' }}>{streamPosition ? `${streamPosition} / ${streamSize}` : '—'}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr' }}>
+                <div style={{ padding: '8px 4px', textAlign: 'center', borderRight: '1.2px solid #e2e8f0', display: 'flex', flexDirection: 'column', justifyContent: 'center', backgroundColor: '#f8fafc', gap: '2px' }}>
+                  <div style={{ fontSize: '8px', fontWeight: pdfTypeWeight.semibold, color: '#64748b', textTransform: 'uppercase' }}>Class Position</div>
+                  <div style={{ fontSize: '16px', fontWeight: pdfTypeWeight.bold, color: '#0f172a' }}>{classPosition ? `${classPosition} / ${classSize}` : '—'}</div>
+                </div>
+                <div style={{ padding: '8px 4px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'center', backgroundColor: '#f1f5f9', gap: '2px' }}>
+                  <div style={{ fontSize: '8px', fontWeight: pdfTypeWeight.semibold, color: '#1e40af', textTransform: 'uppercase' }}>Stream Position</div>
+                  <div style={{ fontSize: '16px', fontWeight: pdfTypeWeight.bold, color: '#1e40af' }}>{streamPosition ? `${streamPosition} / ${streamSize}` : '—'}</div>
+                </div>
               </div>
             </div>
           </div>
@@ -1093,7 +1071,7 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
 
       </div>{/* end CONTENT BODY */}
 
-      {/* Term dates — left aligned above teacher remarks */}
+      {/* Manual dates and balance fields — left aligned above teacher remarks */}
       <div style={{
         marginTop: 'auto',
         marginBottom: '16px',
@@ -1106,15 +1084,14 @@ const LearnerReportTemplate = ({ learner, results, pathwayPrediction, term, acad
         fontWeight: '800',
         textTransform: 'uppercase'
       }}>
-        {[
-          ['Term Closing Date', termClosingDate],
-          ['Next Term Opening Date', nextTermOpeningDate]
-        ].map(([label, value]) => (
-          <div key={label} style={{ display: 'flex', alignItems: 'baseline', gap: '7px', whiteSpace: 'nowrap' }}>
-            <span>{label}:</span>
-            <span style={{ display: 'inline-block', minWidth: '112px', borderBottom: value ? 'none' : '1px dotted #94a3b8', height: '14px' }}>{formatReportDate(value)}</span>
-          </div>
-        ))}
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '7px', whiteSpace: 'nowrap' }}>
+          <span>Opening Date:</span>
+          <span style={{ display: 'inline-block', minWidth: '150px', borderBottom: '1px dotted #94a3b8', height: '14px' }} />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '7px', whiteSpace: 'nowrap' }}>
+          <span>Fee Balance:</span>
+          <span style={{ display: 'inline-block', minWidth: '150px', borderBottom: '1px dotted #94a3b8', height: '14px' }} />
+        </div>
       </div>
 
       {/* Class Teacher's Remarks — anchored just above the footer */}
@@ -3039,8 +3016,8 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
         const rankGroups = (groups) => {
           const positions = new Map();
           groups.forEach((group) => {
-            group.forEach((entry) => {
-              const position = 1 + group.filter(other => other.average > entry.average + 0.000001).length;
+          group.forEach((entry) => {
+            const position = 1 + group.filter(other => other.average > entry.average + 0.000001).length;
               positions.set(entry.learner.id, { position, size: group.length });
             });
           });
@@ -4619,7 +4596,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
               <div
                 key={`bulk-${row.learner.id}-${index}`}
                 className="pdf-report-page"
-                style={{ pageBreakAfter: index === bulkDownloadData.length - 1 ? 'auto' : 'always' }}
+                style={{ width: '794px', height: '1123px', maxHeight: '1123px', overflow: 'hidden', boxSizing: 'border-box', pageBreakAfter: index === bulkDownloadData.length - 1 ? 'auto' : 'always' }}
               >
                 <LearnerReportTemplate
                   learner={row.learner}
@@ -4977,7 +4954,7 @@ const SummativeReport = ({ learners, onFetchLearners, brandingSettings, user, pa
         {bulkDownloadData && bulkDownloadData.length > 0 && (
           <div id="bulk-print-content" style={{ display: 'flex', flexDirection: 'column' }}>
             {bulkDownloadData.map((row, idx) => (
-              <div key={idx} className="pdf-report-page" style={{ width: '794px', minHeight: '1123px', overflow: 'visible', backgroundColor: '#fff' }}>
+              <div key={idx} className="pdf-report-page" style={{ width: '794px', height: '1123px', maxHeight: '1123px', overflow: 'hidden', boxSizing: 'border-box', backgroundColor: '#fff', pageBreakAfter: idx === bulkDownloadData.length - 1 ? 'auto' : 'always' }}>
                 <LearnerReportTemplate
                   learner={row.learner}
                   results={row.results || []}

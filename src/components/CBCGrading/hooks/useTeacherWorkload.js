@@ -18,26 +18,44 @@ export const useTeacherWorkload = () => {
     const [error, setError] = useState(null);
 
     const teacherId = user?.id || user?.userId;
-    const isTeacher = user?.role === 'TEACHER';
+    const isTeacher = [user?.role, ...(Array.isArray(user?.roles) ? user.roles : [])]
+        .some((role) => String(role || '').trim().toUpperCase() === 'TEACHER');
 
     const fetchWorkload = useCallback(async () => {
         if (!teacherId || !isTeacher) {
+            setWorkload(null);
+            setSchedules([]);
+            setTeacherContext(null);
+            setError(null);
             setLoading(false);
             return;
         }
 
         try {
             setLoading(true);
-            const [workloadResp, schedulesResp, contextResp] = await Promise.all([
+            setError(null);
+            const results = await Promise.allSettled([
                 classAPI.getTeacherWorkload(teacherId),
                 classAPI.getTeacherSchedules(teacherId),
                 teacherAPI.getMyContext()
             ]);
 
-            setWorkload(workloadResp.data || workloadResp);
-            setSchedules(schedulesResp.data || schedulesResp || []);
-            setTeacherContext(contextResp.data || contextResp || null);
-            setError(null);
+            const [workloadResult, schedulesResult, contextResult] = results;
+            const failures = results.filter((result) => result.status === 'rejected');
+
+            setWorkload(workloadResult.status === 'fulfilled'
+                ? workloadResult.value?.data || workloadResult.value
+                : null);
+            setSchedules(schedulesResult.status === 'fulfilled'
+                ? schedulesResult.value?.data || schedulesResult.value || []
+                : []);
+            setTeacherContext(contextResult.status === 'fulfilled'
+                ? contextResult.value?.data || contextResult.value || null
+                : null);
+            if (failures.length > 0) {
+                console.error('Some teacher assignment lookups failed:', failures.map((result) => result.reason));
+                setError(failures[0].reason);
+            }
         } catch (err) {
             console.error('Error fetching teacher workload:', err);
             setError(err);
@@ -60,7 +78,10 @@ export const useTeacherWorkload = () => {
             .map((schedule) => schedule?.class?.grade || schedule?.grade)
             .filter(Boolean);
 
-        const contextGrades = (teacherContext?.assignedGrades || [])
+        const subjectAssignmentGrades = (teacherContext?.subjectAssignments || [])
+            .map((assignment) => assignment?.grade)
+            .filter(Boolean);
+        const contextGrades = [...(teacherContext?.assignedGrades || []), ...subjectAssignmentGrades]
             .filter(Boolean);
 
         return [...new Set([...classGrades, ...scheduleGrades, ...contextGrades].map(normalizeGradeCode).filter(Boolean))];
@@ -80,9 +101,12 @@ export const useTeacherWorkload = () => {
         // Class teachers can assess all subjects for their own class/grade.
         // The mark-entry screen still shows a warning when they enter a subject
         // where they are not the named subject teacher.
-        const isClassTeacher = teacherContext?.classTeacherOf
-            ? normalizeGradeCode(teacherContext.classTeacherOf.grade) === normalizedGrade
-            : false;
+        const classTeacherGrades = (teacherContext?.classTeacherOfs || [])
+            .map((classAssignment) => normalizeGradeCode(classAssignment?.grade));
+        if (teacherContext?.classTeacherOf) {
+            classTeacherGrades.push(normalizeGradeCode(teacherContext.classTeacherOf.grade));
+        }
+        const isClassTeacher = classTeacherGrades.includes(normalizedGrade);
         if (isClassTeacher) {
             return null;
         }
@@ -96,18 +120,11 @@ export const useTeacherWorkload = () => {
             .map((assignment) => assignment?.learningAreaName)
             .filter(Boolean);
 
-        if (gradeSchedules.length > 0) {
-            const subjects = gradeSchedules
-                .map((schedule) => schedule?.subject || schedule?.learningArea?.name || schedule?.learningArea?.shortName)
-                .filter(Boolean);
-
-            const mergedSubjects = [...new Set([...subjects, ...contextSubjects].filter(Boolean))];
-            return mergedSubjects.length > 0 ? mergedSubjects : null;
-        }
-
-        if (contextSubjects.length > 0) {
-            return [...new Set(contextSubjects)];
-        }
+        const subjects = gradeSchedules
+            .map((schedule) => schedule?.learningArea?.name || schedule?.subject || schedule?.learningArea?.shortName)
+            .filter(Boolean);
+        const mergedSubjects = [...new Set([...subjects, ...contextSubjects].filter(Boolean))];
+        if (mergedSubjects.length > 0) return mergedSubjects;
 
         // Fallback: If assigned as a class teacher for this grade but no specific subjects are in the schedule
         // In many primary settings, the class teacher handles all subjects
@@ -120,8 +137,9 @@ export const useTeacherWorkload = () => {
 
     // Check if the teacher has any assignments at all
     const hasAnyAssignments = useMemo(() => {
-        return assignedGrades.length > 0 || schedules.length > 0;
-    }, [assignedGrades, schedules]);
+        const hasExplicitSubjectAssignments = (teacherContext?.subjectAssignments || []).length > 0;
+        return assignedGrades.length > 0 || schedules.length > 0 || hasExplicitSubjectAssignments;
+    }, [assignedGrades, schedules, teacherContext]);
 
     // Primary Assignment for auto-prefill
     const primaryGrade = useMemo(() => assignedGrades[0] || null, [assignedGrades]);

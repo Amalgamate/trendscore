@@ -171,23 +171,32 @@ const TermlyReport = ({ learners, brandingSettings, user, pageParams = {} }) => 
 
       {/* SETUP VIEW */}
       {viewMode === 'setup' && (
-        <div className="bg-white rounded-lg shadow-sm border border-slate-200 max-w-5xl mx-auto mt-8 overflow-hidden">
-          <div className="border-b border-slate-100 px-6 py-6 text-center bg-slate-50">
-            <div className="w-16 h-16 bg-brand-purple/10 rounded-full flex items-center justify-center mx-auto mb-4 text-brand-purple">
-              <FileText size={32} />
+        <div className="bg-white -mt-6 -mx-6 min-h-[calc(100vh-80px)] overflow-y-auto relative">
+          <div className="sticky top-0 z-20 bg-white shadow-sm">
+            <div className="border-b border-slate-100 px-5 md:px-6 py-3 flex justify-center items-center bg-slate-50">
+              <div className="text-xs text-slate-500 flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
+                <span className="font-semibold text-brand-teal uppercase tracking-wider">Official Termly Report Card</span>
+                <span className="text-slate-300">•</span>
+                <span className="font-medium">{selectedGrade ? (selectedGradeLabel || selectedGrade.replace(/_/g, ' ')) : 'All Grades'}</span>
+                <span className="text-slate-300">•</span>
+                <span>{terms?.find(term => term.value === selectedTerm)?.label || selectedTerm}</span>
+                <span className="text-slate-300">•</span>
+                <span>{setup.academicYear}</span>
+              </div>
             </div>
-            <h2 className="text-2xl font-medium text-gray-800">Official Termly Report Card</h2>
-            <p className="text-gray-500">Select a learner to generate the official end of term report card</p>
-          </div>
 
-          <div className="px-4 md:px-6 py-4 flex flex-wrap justify-center gap-3 items-start">
+            <div className="border-t border-slate-200 px-4 md:px-6 py-4 flex flex-wrap justify-center gap-3 items-end w-full max-w-[1200px] mx-auto">
+              <div className="h-10 px-3 rounded border border-brand-teal/20 bg-brand-teal/5 text-brand-teal text-xs font-semibold uppercase tracking-wide flex items-center flex-1 md:flex-none min-w-[150px]">
+                Termly Report Card
+              </div>
+
             <select
               value={selectedGrade || ''}
               onChange={(e) => {
                 setSelectedGrade(e.target.value);
                 setSelectedLearnerId('');
               }}
-              className="h-11 px-3 py-2 border border-slate-300 rounded text-sm focus:ring-1 focus:ring-brand-purple focus:border-brand-purple outline-none flex-1 md:flex-none md:w-40 min-w-[140px]"
+              className="h-10 px-3 border border-slate-300 rounded text-sm focus:ring-1 focus:ring-brand-teal focus:border-brand-teal outline-none flex-1 md:flex-none md:w-36 min-w-[120px] bg-white"
             >
               <option value="">All Grades</option>
               {grades.map(grade => (
@@ -198,6 +207,7 @@ const TermlyReport = ({ learners, brandingSettings, user, pageParams = {} }) => 
             </select>
 
             <div className="flex-1 min-w-[260px] md:min-w-[320px]">
+              <label className="block text-xs font-semibold text-slate-600 mb-1">Learner</label>
               <SmartLearnerSearch
                 learners={filteredLearners}
                 selectedLearnerId={selectedLearnerId}
@@ -209,7 +219,7 @@ const TermlyReport = ({ learners, brandingSettings, user, pageParams = {} }) => 
             <select
               value={selectedTerm}
               onChange={(e) => setSelectedTerm(e.target.value)}
-              className="h-11 px-3 py-2 border border-slate-300 rounded text-sm focus:ring-1 focus:ring-brand-purple focus:border-brand-purple outline-none flex-1 md:flex-none md:w-32 min-w-[120px]"
+              className="h-10 px-3 border border-slate-300 rounded text-sm focus:ring-1 focus:ring-brand-teal focus:border-brand-teal outline-none flex-1 md:flex-none md:w-32 min-w-[110px] bg-white"
             >
               {terms.map(t => (
                 <option key={t.value} value={t.value}>{t.label}</option>
@@ -219,7 +229,7 @@ const TermlyReport = ({ learners, brandingSettings, user, pageParams = {} }) => 
             <select
               value={setup.academicYear}
               onChange={(e) => setup.setSelectedAcademicYear(parseInt(e.target.value, 10))}
-              className="h-11 px-3 py-2 border border-slate-300 rounded text-sm focus:ring-1 focus:ring-brand-purple focus:border-brand-purple outline-none flex-1 md:flex-none md:w-28 min-w-[110px]"
+              className="h-10 px-3 border border-slate-300 rounded text-sm focus:ring-1 focus:ring-brand-teal focus:border-brand-teal outline-none flex-1 md:flex-none md:w-28 min-w-[100px] bg-white"
             >
               {getAcademicYearOptions().map(y => (
                 <option key={y.value} value={y.value}>{y.label}</option>
@@ -229,11 +239,12 @@ const TermlyReport = ({ learners, brandingSettings, user, pageParams = {} }) => 
             <button
               onClick={handleGenerateReport}
               disabled={!selectedLearnerId || loading}
-              className="h-11 flex items-center justify-center gap-2 px-6 bg-brand-purple text-white rounded hover:opacity-90 transition-all font-semibold shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex-1 md:flex-none min-w-[190px]"
+              className="h-10 flex items-center justify-center gap-2 px-6 bg-brand-teal text-white rounded hover:opacity-90 transition-all font-semibold shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex-1 md:flex-none min-w-[180px]"
             >
               {loading ? 'Generating...' : 'Generate Report Card'}
               <ArrowRight size={20} />
             </button>
+            </div>
           </div>
         </div>
       )}

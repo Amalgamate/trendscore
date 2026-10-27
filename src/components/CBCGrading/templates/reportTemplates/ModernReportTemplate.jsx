@@ -42,7 +42,7 @@ const ModernReportTemplate = ({ reportData, id = 'termly-report-content' }) => {
     return (
         <div id={id} className="bg-gray-100 pb-10 print:p-0 print:bg-white">
             {/* PAGE 1: PROFILE + ACADEMIC PERFORMANCE */}
-            <div className="bg-white text-gray-900 font-sans mx-auto shadow-sm print:shadow-none mb-4 print:mb-0 flex" style={pageStyle}>
+            <div className="pdf-report-page bg-white text-gray-900 font-sans mx-auto shadow-sm print:shadow-none mb-4 print:mb-0 flex" style={pageStyle}>
                 {/* SIDEBAR */}
                 <div className="w-[230px] shrink-0 p-6 text-white flex flex-col" style={{ backgroundColor: brandColor }}>
                     <div className="w-20 h-20 rounded-full bg-white flex items-center justify-center overflow-hidden shadow-md mb-4">
@@ -189,13 +189,13 @@ const ModernReportTemplate = ({ reportData, id = 'termly-report-content' }) => {
                         </p>
                     )}
                     <p className="text-center text-[8px] font-medium text-gray-300 mt-3">
-                        Valid only with official school stamp and signatures. Generated via {PRODUCT_DISPLAY_NAME} on {new Date().toLocaleDateString()}.
+                        Valid only with official school stamp and signatures.{!reportData.hideReportDates && ` Generated via ${PRODUCT_DISPLAY_NAME} on ${new Date().toLocaleDateString()}.`}
                     </p>
                 </div>
             </div>
 
             {/* PAGE 2: QUALITATIVE ASSESSMENT */}
-            <div className="bg-white text-gray-900 font-sans p-10 mx-auto shadow-sm print:shadow-none mb-4 print:mb-0 flex flex-col" style={pageStyle}>
+            <div className="pdf-report-page bg-white text-gray-900 font-sans p-10 mx-auto shadow-sm print:shadow-none mb-4 print:mb-0 flex flex-col" style={pageStyle}>
                 <h3 className="text-lg font-bold uppercase tracking-tight mb-6 pb-2 border-b-2" style={{ color: brandColor, borderColor: brandColor }}>
                     Qualitative Assessment &amp; Co-Curricular
                 </h3>

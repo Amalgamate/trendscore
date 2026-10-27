@@ -130,7 +130,7 @@ const LearningAreasManagement = () => {
       showSuccess('Deleted successfully');
       fetchLearningAreas();
     } catch (err) {
-      showError(err.message || 'Failed to delete');
+      showError(err.message || 'Failed to delete. Refresh the page and try again.');
     }
   };
 
@@ -154,7 +154,7 @@ const LearningAreasManagement = () => {
       setSelectedAreas([]);
       fetchLearningAreas();
     } catch (err) {
-      showError(err.message || 'Failed to delete learning areas');
+      showError(err.message || 'Failed to delete learning areas. Refresh the page and try again.');
     } finally {
       setDeleting(false);
     }

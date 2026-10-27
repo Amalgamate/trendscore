@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { EventType } from '@prisma/client';
 import { PlannerController } from '../controllers/planner.controller';
+import { EVENT_AUDIENCES } from '../services/eventVisibility.service';
 import { authenticate } from '../middleware/auth.middleware';
 import { requireRole, auditLog } from '../middleware/permissions.middleware';
 import { validate } from '../middleware/validation.middleware';
@@ -9,6 +10,10 @@ import { rateLimit } from '../middleware/enhanced-rateLimit.middleware';
 
 const router = Router();
 const controller = new PlannerController();
+
+// Who an event is for. Empty or omitted = everyone. classIds only applies to parents/students.
+const audienceField = z.array(z.enum(EVENT_AUDIENCES)).max(EVENT_AUDIENCES.length).optional();
+const classIdsField = z.array(z.string().min(1)).max(200).optional();
 
 // Align with PlannerController + Prisma Event model
 const createEventSchema = z.object({
@@ -20,7 +25,9 @@ const createEventSchema = z.object({
   allDay: z.boolean().optional(),
   location: z.string().max(500).optional().nullable(),
   meetingLink: z.string().max(2000).optional().nullable(),
-  isParentVisible: z.boolean().optional(),
+  isParentVisible: z.boolean().optional(), // legacy; translated to audience
+  audience: audienceField,
+  classIds: classIdsField,
   academicYear: z.number().int().optional().nullable(),
   term: z.string().optional().nullable(),
 });
@@ -39,7 +46,9 @@ const bulkCreateEventSchema = z.object({
       allDay: z.boolean().optional(),
       location: z.string().max(500).optional().nullable(),
       meetingLink: z.string().max(2000).optional().nullable(),
-      isParentVisible: z.boolean().optional(),
+      isParentVisible: z.boolean().optional(), // legacy; translated to audience
+      audience: audienceField,
+      classIds: classIdsField,
       academicYear: z.number().int().optional().nullable(),
       term: z.string().optional().nullable(),
     })

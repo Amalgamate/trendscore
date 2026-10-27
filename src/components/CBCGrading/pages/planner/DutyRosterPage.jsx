@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Calendar, Plus, Trash2, Users } from 'lucide-react';
+import { Calendar, Plus, Trash2, Users, Pencil, X } from 'lucide-react';
 import axiosInstance from '../../../../services/api/axiosConfig';
+import { usePermissions } from '../../../../hooks/usePermissions';
+import { useAuth } from '../../../../hooks/useAuth';
 
 const initialAssignment = { teacherId: '', dutyDate: '', role: '', notes: '' };
 const extractApiErrorMessage = (e, fallback) => (
@@ -11,6 +13,10 @@ const extractApiErrorMessage = (e, fallback) => (
 );
 
 export default function DutyRosterPage() {
+  const { user } = useAuth();
+  const { isAnyRole } = usePermissions();
+  const canManageRosters = isAnyRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'TEACHER']);
+  const canDeleteRosters = isAnyRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER']);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [rosters, setRosters] = useState([]);
@@ -26,6 +32,7 @@ export default function DutyRosterPage() {
   const [assignment, setAssignment] = useState(initialAssignment);
   const [assignments, setAssignments] = useState([]);
   const [error, setError] = useState('');
+  const [editingRosterId, setEditingRosterId] = useState(null);
 
   const teacherNameById = useMemo(() => {
     const map = new Map();
@@ -73,11 +80,19 @@ export default function DutyRosterPage() {
       setError('Add at least one duty assignment');
       return;
     }
+    if (form.endDate && form.endDate < form.startDate) {
+      setError('End date must be on or after the start date');
+      return;
+    }
+    if (assignments.some((a) => a.dutyDate < form.startDate || (form.endDate && a.dutyDate > form.endDate))) {
+      setError('Every duty assignment must fall within the roster date range');
+      return;
+    }
 
     setSaving(true);
     setError('');
     try {
-      await axiosInstance.post('/duty-rosters', {
+      const payload = {
         ...form,
         endDate: form.endDate || null,
         assignments: assignments.map((a) => ({
@@ -86,7 +101,12 @@ export default function DutyRosterPage() {
           role: a.role || undefined,
           notes: a.notes || undefined
         }))
-      });
+      };
+      if (editingRosterId) {
+        await axiosInstance.put(`/duty-rosters/${editingRosterId}`, payload);
+      } else {
+        await axiosInstance.post('/duty-rosters', payload);
+      }
       setForm({
         title: '',
         frequency: 'DAILY',
@@ -96,6 +116,7 @@ export default function DutyRosterPage() {
         isActive: true
       });
       setAssignments([]);
+      setEditingRosterId(null);
       await loadData();
     } catch (e) {
       setError(extractApiErrorMessage(e, 'Failed to create duty roster'));
@@ -103,6 +124,39 @@ export default function DutyRosterPage() {
       setSaving(false);
     }
   };
+
+  const editRoster = (roster) => {
+    setEditingRosterId(roster.id);
+    setForm({
+      title: roster.title || '',
+      frequency: roster.frequency || 'DAILY',
+      startDate: roster.startDate ? new Date(roster.startDate).toISOString().slice(0, 10) : '',
+      endDate: roster.endDate ? new Date(roster.endDate).toISOString().slice(0, 10) : '',
+      reminderEnabled: roster.reminderEnabled ?? true,
+      isActive: roster.isActive ?? true,
+    });
+    setAssignments((roster.assignments || []).map((item) => ({
+      teacherId: item.teacherId,
+      dutyDate: new Date(item.dutyDate).toISOString().slice(0, 10),
+      role: item.role || '',
+      notes: item.notes || '',
+    })));
+    setAssignment(initialAssignment);
+    setError('');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const cancelEdit = () => {
+    setEditingRosterId(null);
+    setForm({ title: '', frequency: 'DAILY', startDate: '', endDate: '', reminderEnabled: true, isActive: true });
+    setAssignments([]);
+    setAssignment(initialAssignment);
+    setError('');
+  };
+
+  const canEditRoster = (roster) => (
+    canManageRosters && (canDeleteRosters || roster.createdById === user?.id)
+  );
 
   const deleteRoster = async (id) => {
     const ok = window.confirm('Delete this duty roster?');
@@ -124,7 +178,7 @@ export default function DutyRosterPage() {
           </div>
           <div>
             <h2 className="text-xl font-semibold text-gray-900">Duty Roster</h2>
-            <p className="text-sm text-gray-500">Assign daily or weekly duty and automate teacher reminders.</p>
+            <p className="text-sm text-gray-500">Create a roster, add each duty date, and send reminders for saved assignments.</p>
           </div>
         </div>
 
@@ -155,6 +209,7 @@ export default function DutyRosterPage() {
             Active roster
           </label>
         </div>
+        <p className="mt-2 text-xs text-gray-500">Frequency labels the roster. Add each duty date below; reminders use the saved assignment dates.</p>
 
         <div className="mt-5 border-t pt-4">
           <h3 className="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
@@ -198,10 +253,11 @@ export default function DutyRosterPage() {
         </div>
 
         <div className="mt-4">
-          <button onClick={createRoster} disabled={saving}
+            <button onClick={createRoster} disabled={saving || !canManageRosters}
             className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-60">
-            {saving ? 'Saving...' : 'Create Duty Roster'}
+            {saving ? 'Saving...' : editingRosterId ? 'Save Duty Roster' : 'Create Duty Roster'}
           </button>
+          {editingRosterId && <button type="button" onClick={cancelEdit} className="ml-2 inline-flex items-center gap-1 rounded-lg px-3 py-2 text-sm text-gray-600 hover:bg-gray-100"><X size={14} /> Cancel edit</button>}
         </div>
       </div>
 
@@ -222,9 +278,10 @@ export default function DutyRosterPage() {
                       {r.frequency} • {r.isActive ? 'Active' : 'Inactive'} • {r.assignments?.length || 0} assignment(s)
                     </p>
                   </div>
-                  <button onClick={() => deleteRoster(r.id)} className="text-red-600 hover:text-red-700">
-                    <Trash2 size={16} />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {canEditRoster(r) && <button type="button" onClick={() => editRoster(r)} className="rounded p-1 text-blue-600 hover:bg-blue-50" aria-label={`Edit ${r.title}`}><Pencil size={16} /></button>}
+                    {canDeleteRosters && <button type="button" onClick={() => deleteRoster(r.id)} className="rounded p-1 text-red-600 hover:bg-red-50" aria-label={`Delete ${r.title}`}><Trash2 size={16} /></button>}
+                  </div>
                 </div>
               </div>
             ))}

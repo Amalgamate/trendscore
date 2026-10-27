@@ -430,9 +430,11 @@ const FormativeReport = ({ learners, brandingSettings, user }) => {
                         <p className="text-xs font-semibold text-blue-800">
                           {reportData.teacherComment.classTeacherName}
                         </p>
-                        <p className="text-xs text-blue-600">
-                          {new Date(reportData.teacherComment.classTeacherDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
-                        </p>
+                        {!(user?.schoolId === 'kambigarba-cs' || user?.school?.id === 'kambigarba-cs') && (
+                          <p className="text-xs text-blue-600">
+                            {new Date(reportData.teacherComment.classTeacherDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
+                          </p>
+                        )}
                       </div>
                     </div>
                   </div>

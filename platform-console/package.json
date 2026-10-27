@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node --experimental-sqlite server.js",
     "dev": "node --experimental-sqlite server.js",
-    "test": "node --test tests/verify.test.js tests/login.test.js"
+    "test": "node --test tests/verify.test.js tests/login.test.js tests/pricing.test.js tests/billing.test.js tests/agents.test.js tests/agents-api.test.js"
   },
   "dependencies": {
     "cookie-parser": "^1.4.6",

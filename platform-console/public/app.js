@@ -1,5 +1,6 @@
 // The console starts empty and fills operational state from authenticated APIs.
 let INSTANCES = [];
+let INSTANCE_TYPE_METADATA = [];
 
 const PLATFORM_MODULES = [
   { id: 'admissions', name: 'Admissions', desc: 'Student registration and enrollment', enabled: true },
@@ -18,16 +19,43 @@ let LEADS = [];
 let BILLING_CUSTOMERS = [];
 let BILLING_CONTRACTS = [];
 let BILLING_SCHOOLS = [];
+let BILLING_PRODUCTS = [];
+let BILLING_SCHOOL_TYPES = {};
 let BILLING_QUOTES = [];
 let BILLING_INVOICES = [];
+let BILLING_PAYMENTS = [];
+let BILLING_PAYMENTS_STATUS = 'loading';
 let BILLING_DELIVERIES = [];
+let BILLING_INVOICE_DELIVERIES = [];
 let BILLING_EMAIL_STATUS = 'unknown';
+let BILLING_MAIL_DRAFT = null;
 const BILLING_DATA_STATUS = { customers: 'loading', contracts: 'loading', quotes: 'loading', invoices: 'loading' };
 const BILLING_FILTERS = { customers: '', quotes: '', quoteStatus: '', invoices: '', invoiceStatus: '' };
 let billingQuotePreviewTimer = null;
 
 // Helpers
 const $ = id => document.getElementById(id);
+
+// Track user-facing API work while leaving routine runtime health polling quiet.
+const nativeFetch = window.fetch.bind(window);
+window.fetch = (...args) => {
+  const input = args[0];
+  const requestUrl = typeof input === 'string' ? input : input?.url || '';
+  let shouldTrack = false;
+  try {
+    const url = new URL(requestUrl, window.location.href);
+    shouldTrack = url.origin === window.location.origin
+      && url.pathname.startsWith('/api/')
+      && url.pathname !== '/api/runtime';
+  } catch (_) {}
+  if (!shouldTrack) return nativeFetch(...args);
+  trackedApiRequests += 1;
+  syncPageProgress();
+  return nativeFetch(...args).finally(() => {
+    trackedApiRequests = Math.max(0, trackedApiRequests - 1);
+    syncPageProgress();
+  });
+};
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({
   '&': '&amp;',
   '<': '&lt;',
@@ -43,6 +71,10 @@ const statusCls = status => status === 'Online' || status === 'Active' || status
 
 let toastTimer;
 let installProgressTimer = null;
+let installProgressActive = false;
+let trackedApiRequests = 0;
+let progressFinishTimer = null;
+let progressStartedAt = 0;
 let runtimePollTimer = null;
 let runtimePollBusy = false;
 let pendingProvisionLeadId = null;
@@ -150,13 +182,51 @@ function setInstallProgress(value) {
   if (!wrap || !line) return;
   const pct = Math.max(0, Math.min(100, Number(value) || 0));
   line.style.width = `${pct}%`;
+  wrap.setAttribute('aria-valuenow', String(pct));
+}
+
+function syncPageProgress() {
+  const wrap = $('install-progress');
+  const line = $('install-progress-line');
+  if (!wrap || !line) return;
+  clearTimeout(progressFinishTimer);
+  progressFinishTimer = null;
+  const active = installProgressActive || trackedApiRequests > 0;
+  if (active) {
+    if (!wrap.classList.contains('active')) {
+      progressStartedAt = Date.now();
+      wrap.classList.add('active');
+      wrap.setAttribute('aria-hidden', 'false');
+    }
+    wrap.classList.toggle('indeterminate', !installProgressActive);
+    if (!installProgressActive) {
+      line.style.width = '';
+      wrap.removeAttribute('aria-valuenow');
+    }
+    return;
+  }
+
+  wrap.classList.remove('indeterminate');
+  if (!wrap.classList.contains('active')) return;
+  const delay = Math.max(0, 180 - (Date.now() - progressStartedAt));
+  progressFinishTimer = setTimeout(() => {
+    if (installProgressActive || trackedApiRequests > 0) return;
+    line.style.width = '100%';
+    wrap.setAttribute('aria-valuenow', '100');
+    setTimeout(() => {
+      if (installProgressActive || trackedApiRequests > 0) return;
+      wrap.classList.remove('active');
+      wrap.setAttribute('aria-hidden', 'true');
+      line.style.width = '0%';
+      wrap.removeAttribute('aria-valuenow');
+    }, 180);
+  }, delay);
 }
 
 function startInstallProgress() {
   const wrap = $('install-progress');
   if (!wrap) return;
-  wrap.classList.add('active');
-  wrap.setAttribute('aria-hidden', 'false');
+  installProgressActive = true;
   setInstallProgress(8);
   clearInterval(installProgressTimer);
   installProgressTimer = setInterval(() => {
@@ -165,19 +235,15 @@ function startInstallProgress() {
     const current = parseFloat(String(line.style.width || '0').replace('%', '')) || 0;
     if (current < 90) setInstallProgress(current + 4);
   }, 450);
+  syncPageProgress();
 }
 
 function finishInstallProgress(ok = true) {
-  const wrap = $('install-progress');
-  if (!wrap) return;
   clearInterval(installProgressTimer);
   installProgressTimer = null;
+  installProgressActive = false;
   setInstallProgress(ok ? 100 : 0);
-  setTimeout(() => {
-    wrap.classList.remove('active');
-    wrap.setAttribute('aria-hidden', 'true');
-    if (ok) setInstallProgress(0);
-  }, ok ? 350 : 150);
+  syncPageProgress();
 }
 
 const APP_PORT_RANGES = {
@@ -531,13 +597,15 @@ async function refreshFromRuntime() {
   try {
     const runtime = await fetchRuntimeData();
     if (runtime?.ok && Array.isArray(runtime.instances)) {
+      if (Array.isArray(runtime.appTypes)) INSTANCE_TYPE_METADATA = runtime.appTypes;
       INSTANCES = runtime.instances.map(item => ({
         ...item,
         domain: item.domain || '',
-        typeLabel: item.typeLabel || 'Managed',
+        appType: item.appType || 'other',
+        typeLabel: item.typeLabel || (item.appType ? item.appType.toUpperCase() : 'Other / unclassified'),
       }));
       selectedInstanceName = INSTANCES.find(i => i.name === selectedInstanceName)?.name || INSTANCES[0]?.name || '';
-    }
+      }
     RUNTIME_METRICS = runtime?.metrics || null;
     runtimeGeneratedAt = runtime?.generatedAt || null;
     if (Array.isArray(runtime?.deployments)) DEPLOYMENTS = runtime.deployments;
@@ -602,12 +670,13 @@ function containerRows(instance) {
 
 async function loadBillingData() {
   try {
-    const [customersResponse, contractsResponse, schoolsResponse, quotesResponse, invoicesResponse, emailStatusResponse] = await Promise.all([
+    const [customersResponse, contractsResponse, schoolsResponse, quotesResponse, invoicesResponse, paymentsResponse, emailStatusResponse] = await Promise.all([
       fetch('/api/billing/customers', { credentials: 'same-origin' }).catch(() => null),
       fetch('/api/billing/contracts', { credentials: 'same-origin' }).catch(() => null),
       fetch('/api/billing/schools', { credentials: 'same-origin' }).catch(() => null),
       fetch('/api/billing/quotes', { credentials: 'same-origin' }).catch(() => null),
       fetch('/api/billing/invoices', { credentials: 'same-origin' }).catch(() => null),
+      fetch('/api/billing/payments', { credentials: 'same-origin' }).catch(() => null),
       fetch('/api/billing/email-status', { credentials: 'same-origin' }).catch(() => null),
     ]);
     const [customersData, contractsData] = await Promise.all([
@@ -622,17 +691,28 @@ async function loadBillingData() {
     BILLING_SCHOOLS = schoolsData.schools || [];
     const quotesData = quotesResponse?.ok ? await quotesResponse.json().catch(() => ({})) : {};
     const invoicesData = invoicesResponse?.ok ? await invoicesResponse.json().catch(() => ({})) : {};
+    const paymentsData = paymentsResponse?.ok ? await paymentsResponse.json().catch(() => ({})) : {};
     const emailData = emailStatusResponse?.ok ? await emailStatusResponse.json().catch(() => ({})) : {};
     BILLING_DATA_STATUS.quotes = quotesResponse?.ok && Array.isArray(quotesData.quotes) ? 'ready' : 'unavailable';
     BILLING_DATA_STATUS.invoices = invoicesResponse?.ok && Array.isArray(invoicesData.invoices) ? 'ready' : 'unavailable';
     BILLING_QUOTES = quotesData.quotes || [];
     BILLING_INVOICES = invoicesData.invoices || [];
+    BILLING_PAYMENTS = paymentsData.payments || [];
+    BILLING_PAYMENTS_STATUS = paymentsResponse?.ok && Array.isArray(paymentsData.payments) ? 'ready' : 'unavailable';
     BILLING_DELIVERIES = quotesData.deliveries || [];
+    BILLING_INVOICE_DELIVERIES = invoicesData.deliveries || [];
     BILLING_EMAIL_STATUS = emailStatusResponse?.ok ? (emailData.configured === true ? 'ready' : 'unconfigured') : 'unavailable';
+    try {
+      const productsResponse = await fetch('/api/billing/products', { credentials: 'same-origin' });
+      const productsData = productsResponse.ok ? await productsResponse.json().catch(() => ({})) : {};
+      BILLING_PRODUCTS = Array.isArray(productsData.products) ? productsData.products : [];
+      BILLING_SCHOOL_TYPES = productsData.schoolTypes || {};
+    } catch { BILLING_PRODUCTS = []; }
     renderBillingRegistry();
   } catch (error) {
     Object.keys(BILLING_DATA_STATUS).forEach(key => { BILLING_DATA_STATUS[key] = 'unavailable'; });
     BILLING_EMAIL_STATUS = 'unavailable';
+    BILLING_PAYMENTS_STATUS = 'unavailable';
     if ($('billing-customers-table')) $('billing-customers-table').innerHTML = `<tr><td colspan="7">${esc(error.message || 'Billing data is unavailable.')}</td></tr>`;
     if ($('billing-contracts-table')) $('billing-contracts-table').innerHTML = '<tr><td colspan="7">Billing contracts are unavailable.</td></tr>';
     ['billing-kpi-customers', 'billing-kpi-open-quotes', 'billing-kpi-accepted', 'billing-kpi-drafts'].forEach(id => { if ($(id)) $(id).textContent = 'Unavailable'; });
@@ -641,6 +721,8 @@ async function loadBillingData() {
     if ($('billing-attention-list')) $('billing-attention-list').innerHTML = '<div class="billing-empty">Billing records could not be loaded. Refresh to try again.</div>';
     if ($('billing-recent-list')) $('billing-recent-list').innerHTML = '<div class="billing-empty">Recent billing records are unavailable.</div>';
     renderBillingSettings();
+    renderBillingPayments();
+    renderBillingReports();
   }
 }
 
@@ -687,17 +769,115 @@ function renderBillingRegistry() {
     }).join('');
   }
   renderBillingQuotes();
+  renderBillingProducts();
   renderBillingOverview();
   renderBillingSettings();
+  renderBillingPayments();
+  renderBillingReports();
   document.querySelectorAll('[data-super-admin-only]').forEach(element => {
     if (window.consoleUserRole) element.hidden = window.consoleUserRole !== 'super_admin';
   });
   updateBillingActionVisibility();
 }
 
+function billingEmailPreviewHtml(draft) {
+  const body = String(draft.message || '').split(/\r?\n/).map(line => line ? `<p style="margin:0 0 14px">${esc(line)}</p>` : '<div style="height:8px"></div>').join('');
+  const kind = draft.kind === 'quote';
+  const label = kind ? 'QUOTATION' : draft.isDraftInvoice ? 'DRAFT INVOICE · REVIEW COPY' : 'COMMERCIAL INVOICE';
+  const amount = formatBillingKsh(draft.amountKsh);
+  return `<!doctype html><html><body style="margin:0;background:#f1f4f9;font-family:Arial,Helvetica,sans-serif;color:#172033"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f1f4f9;padding:24px 10px"><tr><td align="center"><table role="presentation" width="620" cellspacing="0" cellpadding="0" style="max-width:620px;width:100%;background:#fff;border:1px solid #dce3ee;border-radius:14px;overflow:hidden"><tr><td style="padding:24px 30px;border-bottom:1px solid #e7ebf2"><img src="${esc(draft.logoUrl)}" alt="TrendSCORE" width="150" style="display:block;max-width:150px;height:auto"><div style="margin-top:10px;color:#61708b;font-size:12px;letter-spacing:1.4px;font-weight:bold">BUSINESS SERVICES</div></td></tr><tr><td style="padding:28px 30px 10px"><span style="display:inline-block;padding:7px 10px;background:#eef2ff;color:#18258b;font-size:11px;font-weight:bold;letter-spacing:1px;border-radius:4px">${label}</span><h1 style="margin:16px 0 5px;color:#101b36;font-size:22px;line-height:1.3">${esc(draft.documentNumber)}</h1><div style="color:#66748d;font-size:13px">Prepared for ${esc(draft.customerName)}</div></td></tr><tr><td style="padding:8px 30px 22px;color:#34415a;font-size:14px;line-height:1.75">${body}</td></tr><tr><td style="padding:0 30px 26px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f7f9fc;border:1px solid #e5eaf2;border-radius:8px"><tr><td style="padding:14px 16px;color:#60708b;font-size:12px">${esc(draft.documentName)} · PDF</td><td align="right" style="padding:14px 16px;color:#111c39;font-size:14px;font-weight:bold">${esc(amount)}</td></tr></table></td></tr><tr><td style="padding:20px 30px;background:#f7f9fc;color:#172033;border-top:1px solid #e7ebf2"><img src="${esc(draft.logoUrl)}" alt="TrendSCORE" width="112" style="display:block;max-width:112px;height:auto;margin-bottom:12px"><div style="font-size:13px;font-weight:bold">${esc(draft.senderName || 'TrendSCORE')}</div><div style="font-size:12px;color:#5f6f89;margin-top:5px">Questions? Reply to this email or reach us at ${esc(draft.senderEmail || '')}.</div><div style="font-size:11px;color:#7a879b;margin-top:14px">TrendSCORE · School operations, made clearer.</div></td></tr></table><div style="max-width:620px;padding:14px 8px;color:#7a879b;font-size:11px;line-height:1.5;text-align:center">This message and its attached document were prepared for ${esc(draft.customerName)}.</div></td></tr></table></body></html>`;
+}
+
+async function openBillingEmailComposer(kind, id) {
+  const overlay = $('billing-mail-overlay');
+  const send = $('billing-mail-send');
+  if (!overlay) return;
+  $('billing-mail-tab-email')?.classList.add('active');
+  $('billing-mail-tab-email')?.setAttribute('aria-selected', 'true');
+  $('billing-mail-tab-pdf')?.classList.remove('active');
+  $('billing-mail-tab-pdf')?.setAttribute('aria-selected', 'false');
+  $('billing-mail-preview-email').hidden = false;
+  $('billing-mail-preview-pdf').hidden = true;
+  if (send) { send.disabled = true; send.textContent = 'Loading…'; }
+  overlay.classList.add('open');
+  $('billing-mail-meta').textContent = 'Preparing your message and branded document preview…';
+  try {
+    const response = await fetch(`/api/billing/${kind === 'quote' ? 'quotes' : 'invoices'}/${encodeURIComponent(id)}/email-preview`, { credentials: 'same-origin' });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || 'Could not prepare the email preview');
+    BILLING_MAIL_DRAFT = { ...payload.draft, id };
+    $('billing-mail-id').value = id;
+    $('billing-mail-kind').value = kind;
+    $('billing-mail-title').textContent = kind === 'quote' ? 'Send quotation' : payload.draft.isDraftInvoice ? 'Send draft invoice review copy' : 'Send commercial invoice';
+    $('billing-mail-meta').textContent = `${kind === 'quote' ? 'Quotation' : 'Review copy'} · ${payload.draft.documentNumber} · To ${payload.draft.customerName}`;
+    $('billing-mail-to').value = payload.draft.recipient || '';
+    $('billing-mail-subject').value = payload.draft.subject || '';
+    $('billing-mail-message').value = payload.draft.message || '';
+    $('billing-mail-filename').textContent = payload.draft.documentName || 'Branded PDF';
+    $('billing-mail-sender').textContent = `From ${payload.draft.senderName} <${payload.draft.senderEmail}>`;
+    $('billing-mail-preview-pdf').src = payload.draft.pdfUrl;
+    updateBillingEmailPreview();
+    if (send) { send.disabled = false; send.textContent = kind === 'quote' ? 'Send quotation' : payload.draft.isDraftInvoice ? 'Send review copy' : 'Send invoice'; }
+    $('billing-mail-to').focus();
+  } catch (error) {
+    overlay.classList.remove('open');
+    toast(error.message || 'Could not prepare the email');
+    if (send) { send.disabled = false; send.textContent = 'Send email'; }
+  }
+}
+
+function updateBillingEmailPreview() {
+  if (!BILLING_MAIL_DRAFT) return;
+  BILLING_MAIL_DRAFT.recipient = $('billing-mail-to')?.value || '';
+  BILLING_MAIL_DRAFT.subject = $('billing-mail-subject')?.value || '';
+  BILLING_MAIL_DRAFT.message = $('billing-mail-message')?.value || '';
+  const iframe = $('billing-mail-preview-email');
+  if (iframe) iframe.srcdoc = billingEmailPreviewHtml(BILLING_MAIL_DRAFT);
+}
+
+['billing-mail-to', 'billing-mail-subject', 'billing-mail-message'].forEach(id => {
+  $(id)?.addEventListener('input', updateBillingEmailPreview);
+});
+
 function formatBillingKsh(amount) {
   return `KSh ${Number(amount || 0).toLocaleString('en-KE')}`;
 }
+
+function billingTodayDate() {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Nairobi', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date()).map(part => [part.type, part.value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function renderBillingProducts() {
+  const body = $('billing-products-table');
+  if (!body) return;
+  if (!BILLING_PRODUCTS.length) { body.innerHTML = '<tr><td colspan="6">The price list could not be loaded.</td></tr>'; return; }
+  const canEdit = !window.consoleUserRole || window.consoleUserRole === 'super_admin';
+  const kindLabel = { setup: 'One-off setup', term: 'CORE, per term', module: 'Add-on module, per term', sms: 'Communication, per term' };
+  const disabled = canEdit ? '' : 'disabled';
+  body.innerHTML = BILLING_PRODUCTS.map(p => `<tr data-product-row="${esc(p.code)}"><td>${esc(BILLING_SCHOOL_TYPES[p.schoolType] || p.schoolType)}</td><td>${esc(kindLabel[p.kind] || p.kind)}</td><td><input class="form-input" data-product-name value="${esc(p.name)}" maxlength="160" ${disabled}></td><td><input class="form-input" data-product-price type="number" min="0" step="1" value="${esc(p.priceKsh)}" ${disabled}></td><td><label><input type="checkbox" data-product-active ${p.active ? 'checked' : ''} ${disabled}> Offered</label></td><td>${canEdit ? `<button class="btn sm" type="button" data-product-save="${esc(p.code)}">Save</button>` : ''}</td></tr>`).join('');
+}
+
+async function saveBillingProduct(code) {
+  const row = [...document.querySelectorAll('[data-product-row]')].find(item => item.dataset.productRow === code);
+  if (!row) return;
+  try {
+    const response = await fetch(`/api/billing/products/${encodeURIComponent(code)}`, {
+      method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: row.querySelector('[data-product-name]').value, priceKsh: Number(row.querySelector('[data-product-price]').value), active: row.querySelector('[data-product-active]').checked }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || 'Could not save price');
+    BILLING_PRODUCTS = BILLING_PRODUCTS.map(p => (p.code === code ? payload.product : p));
+    renderBillingProducts();
+    toast('Price saved. New quotes use it; existing quotes keep their original prices.');
+  } catch (error) { toast(error.message); }
+}
+
+document.addEventListener('click', event => {
+  const button = event.target.closest?.('[data-product-save]');
+  if (button) saveBillingProduct(button.dataset.productSave);
+});
 
 function renderBillingQuotes() {
   const quotesBody = $('billing-quotes-table');
@@ -706,7 +886,7 @@ function renderBillingQuotes() {
   if (!quotesBody || !invoicesBody) return;
   if (emailStatus) {
     emailStatus.textContent = BILLING_EMAIL_STATUS === 'ready'
-      ? 'Quote email is configured. Sending attaches the quote PDF and includes the summary in the email.'
+      ? 'Email is configured. Quotes and clearly labelled draft invoice review copies include their branded PDF attachment.'
       : BILLING_EMAIL_STATUS === 'unconfigured'
         ? 'Quote email is not configured. Add the required server-side Resend key and sender address.'
         : 'Quote email readiness could not be checked.';
@@ -731,11 +911,14 @@ function renderBillingQuotes() {
       const existingInvoice = BILLING_INVOICES.find(invoice => invoice.quoteId === quote.id);
       const deliveryCount = BILLING_DELIVERIES.find(item => item.quoteId === quote.id)?.attempts?.length || 0;
       const actions = [`<a class="btn sm" href="/api/billing/quotes/${encodeURIComponent(quote.id)}/pdf" target="_blank" rel="noopener">PDF</a>`];
+      if (quote.status === 'draft' && !quote.sentAt) actions.push(`<button class="btn sm" data-quote-edit="${esc(quote.id)}" data-super-admin-only type="button">Edit</button>`);
       if (['draft', 'sent'].includes(quote.status)) actions.push(`<button class="btn sm" data-quote-send="${esc(quote.id)}" data-super-admin-only type="button">${quote.status === 'sent' ? 'Resend email' : 'Send email'}</button>`);
       if (['draft', 'sent'].includes(quote.status)) actions.push(`<button class="btn sm" data-quote-accept="${esc(quote.id)}" data-super-admin-only type="button">Record accepted</button>`);
+      if (['draft', 'sent', 'accepted'].includes(quote.status)) actions.push(`<button class="btn sm" data-quote-cancel="${esc(quote.id)}" data-super-admin-only type="button">Cancel</button>`);
+      if (quote.status === 'draft' && !quote.sentAt && !deliveryCount && !existingInvoice) actions.push(`<button class="btn sm danger" data-quote-delete="${esc(quote.id)}" data-super-admin-only type="button">Delete</button>`);
       if (quote.status === 'accepted') actions.push(`<button class="btn sm" data-quote-convert="${esc(quote.id)}" data-super-admin-only type="button">Create draft invoice</button>`);
       if (quote.status === 'converted' && existingInvoice) actions.push(`<span class="table-sub">${esc(existingInvoice.invoiceNumber)}</span>`);
-      return `<tr><td><strong>${esc(quote.quoteNumber)}</strong></td><td>${esc(customer.name || 'Customer')}</td><td>${Number(quote.enrollmentCount).toLocaleString('en-KE')}</td><td>${formatBillingKsh(quote.subtotalKsh)}</td><td>${esc(quote.expiresOn || 'No expiry')}</td><td>${esc(quote.status)}${deliveryCount ? `<div class="table-sub">${deliveryCount} email attempt${deliveryCount === 1 ? '' : 's'}</div>` : ''}</td><td><div class="billing-action-row">${actions.join('')}</div></td></tr>`;
+      return `<tr><td><strong>${esc(quote.quoteNumber)}</strong></td><td>${esc(customer.name || 'Customer')}</td><td>${Number(quote.enrollmentCount) > 0 ? Number(quote.enrollmentCount).toLocaleString('en-KE') : esc(quote.quoteSnapshot?.schoolTypeLabel || '-')}</td><td>${formatBillingKsh(quote.subtotalKsh)}</td><td>${esc(quote.expiresOn || 'No expiry')}</td><td>${esc(quote.status)}${deliveryCount ? `<div class="table-sub">${deliveryCount} email attempt${deliveryCount === 1 ? '' : 's'}</div>` : ''}</td><td><div class="billing-action-row">${actions.join('')}</div></td></tr>`;
     }).join('');
   }
   const invoiceNeedle = BILLING_FILTERS.invoices.trim().toLowerCase();
@@ -757,12 +940,99 @@ function renderBillingQuotes() {
       const customer = BILLING_CUSTOMERS.find(item => item.id === invoice.customerId) || {};
       const quote = BILLING_QUOTES.find(item => item.id === invoice.quoteId);
       const pdfUrl = `/api/billing/invoices/${encodeURIComponent(invoice.id)}/pdf`;
-      return `<tr><td><strong>${esc(invoice.invoiceNumber)}</strong></td><td>${esc(customer.name || 'Customer')}</td><td>${esc(quote?.quoteNumber || '')}</td><td>${formatBillingKsh(invoice.amountKsh)}</td><td>${esc(invoice.status)}</td><td>${esc(String(invoice.createdAt || '').slice(0, 10))}</td><td><a class="btn sm" href="${pdfUrl}" target="_blank" rel="noopener">PDF preview</a></td></tr>`;
+      const attempts = BILLING_INVOICE_DELIVERIES.find(item => item.invoiceId === invoice.id)?.attempts || [];
+      const actions = [`<a class="btn sm" href="${pdfUrl}" target="_blank" rel="noopener">PDF preview</a>`];
+      if (invoice.status === 'draft') actions.push(`<button class="btn sm" data-invoice-send-review="${esc(invoice.id)}" data-super-admin-only type="button">${attempts.length ? 'Resend review copy' : 'Email review copy'}</button>`);
+      if (['issued', 'sent', 'paid'].includes(invoice.status)) actions.push(`<button class="btn sm" data-invoice-send-review="${esc(invoice.id)}" data-super-admin-only type="button">${attempts.length ? 'Resend invoice' : 'Email invoice'}</button>`);
+      if (invoice.status === 'draft') actions.push(`<button class="btn sm primary" data-invoice-issue="${esc(invoice.id)}" data-super-admin-only type="button">Issue commercial invoice</button>`);
+      if (invoice.status === 'draft') actions.push(`<button class="btn sm" data-invoice-edit="${esc(invoice.id)}" data-super-admin-only type="button">Edit</button>`);
+      if (invoice.status === 'draft') actions.push(`<button class="btn sm danger-btn" data-invoice-cancel="${esc(invoice.id)}" data-super-admin-only type="button">Cancel</button>`);
+      if (attempts.length) actions.push(`<small class="table-sub">${attempts.length} email attempt${attempts.length === 1 ? '' : 's'}</small>`);
+      const today = billingTodayDate();
+      const status = invoice.status === 'void' ? 'cancelled' : invoice.paymentStatus === 'partially_paid' ? 'partially paid' : invoice.balanceKsh > 0 && invoice.invoiceSnapshot?.dueDate && invoice.invoiceSnapshot.dueDate < today && ['issued', 'sent'].includes(invoice.status) ? 'overdue' : esc(invoice.status);
+      const amountCell = invoice.paidAmountKsh > 0 ? `${formatBillingKsh(invoice.amountKsh)}<div class="table-sub">Paid ${formatBillingKsh(invoice.paidAmountKsh)} · Due ${formatBillingKsh(invoice.balanceKsh)}</div>` : formatBillingKsh(invoice.amountKsh);
+      return `<tr><td><strong>${esc(invoice.invoiceNumber)}</strong></td><td>${esc(customer.name || 'Customer')}</td><td>${esc(quote?.quoteNumber || '')}</td><td>${amountCell}</td><td>${status}</td><td>${esc(String(invoice.invoiceSnapshot?.issuedAt || invoice.createdAt || '').slice(0, 10))}</td><td><div class="billing-action-row">${actions.join('')}</div></td></tr>`;
     }).join('');
   }
   document.querySelectorAll('[data-super-admin-only]').forEach(element => {
     if (window.consoleUserRole) element.hidden = window.consoleUserRole !== 'super_admin';
   });
+}
+
+function renderBillingPayments() {
+  const history = $('billing-payments-table');
+  const open = $('billing-open-invoices-table');
+  if (!history || !open) return;
+  if (BILLING_PAYMENTS_STATUS !== 'ready' || BILLING_DATA_STATUS.invoices !== 'ready') {
+    history.innerHTML = '<tr><td colspan="8">Payment records could not be loaded. Refresh to try again.</td></tr>';
+    open.innerHTML = '<tr><td colspan="8">Invoice balances are unavailable.</td></tr>';
+    ['billing-kpi-payment-count', 'billing-kpi-collected', 'billing-kpi-outstanding'].forEach(id => { if ($(id)) $(id).textContent = 'Unavailable'; });
+    return;
+  }
+  const collected = BILLING_PAYMENTS.reduce((total, item) => total + Number(item.amountKsh || 0), 0);
+  const receivables = BILLING_INVOICES.filter(invoice => ['issued', 'sent', 'paid'].includes(invoice.status));
+  const outstanding = receivables.reduce((total, invoice) => total + Number(invoice.balanceKsh ?? invoice.amountKsh ?? 0), 0);
+  $('billing-kpi-payment-count').textContent = BILLING_PAYMENTS.length.toLocaleString('en-KE');
+  $('billing-kpi-collected').textContent = formatBillingKsh(collected);
+  $('billing-kpi-outstanding').textContent = formatBillingKsh(outstanding);
+  history.innerHTML = BILLING_PAYMENTS.length ? BILLING_PAYMENTS.map(payment => {
+    const invoice = BILLING_INVOICES.find(item => item.id === payment.invoiceId);
+    const customer = BILLING_CUSTOMERS.find(item => item.id === invoice?.customerId) || {};
+    const methods = { mpesa: 'M-Pesa', bank_transfer: 'Bank transfer', cash: 'Cash', cheque: 'Cheque', other: 'Other' };
+    return `<tr><td>${esc(payment.paymentDate)}</td><td><strong>${esc(invoice?.invoiceNumber || 'Invoice unavailable')}</strong></td><td>${esc(customer.name || 'Customer')}</td><td>${esc(methods[payment.method] || payment.method)}</td><td>${esc(payment.reference || '—')}</td><td>${formatBillingKsh(payment.amountKsh)}</td><td>${esc(payment.recordedBy || '—')}</td><td><a class="btn sm" href="/api/billing/payments/${encodeURIComponent(payment.id)}/receipt">PDF receipt</a></td></tr>`;
+  }).join('') : '<tr><td colspan="8">No payments recorded yet. Payments will appear here after a verified receipt is allocated to an issued invoice.</td></tr>';
+  const openInvoices = receivables.filter(invoice => Number(invoice.balanceKsh || 0) > 0);
+  open.innerHTML = openInvoices.length ? openInvoices.map(invoice => {
+    const customer = BILLING_CUSTOMERS.find(item => item.id === invoice.customerId) || {};
+    const dueDate = invoice.invoiceSnapshot?.dueDate || '';
+    const overdue = dueDate && dueDate < billingTodayDate();
+    return `<tr><td><strong>${esc(invoice.invoiceNumber)}</strong></td><td>${esc(customer.name || 'Customer')}</td><td>${esc(String(invoice.invoiceSnapshot?.issuedAt || '').slice(0, 10) || '—')}</td><td>${esc(dueDate || 'On receipt')}</td><td>${formatBillingKsh(invoice.amountKsh)}</td><td>${formatBillingKsh(invoice.paidAmountKsh)}</td><td><strong>${formatBillingKsh(invoice.balanceKsh)}</strong></td><td>${overdue ? 'Overdue' : invoice.paymentStatus === 'partially_paid' ? 'Partially paid' : 'Unpaid'}</td></tr>`;
+  }).join('') : '<tr><td colspan="8">No outstanding issued invoices.</td></tr>';
+}
+
+function renderBillingReports() {
+  if (BILLING_PAYMENTS_STATUS !== 'ready' || BILLING_DATA_STATUS.invoices !== 'ready') {
+    ['billing-report-issued', 'billing-report-value', 'billing-report-collected', 'billing-report-balance'].forEach(id => { if ($(id)) $(id).textContent = 'Unavailable'; });
+    if ($('billing-report-months')) $('billing-report-months').innerHTML = '<tr><td colspan="3">Payment or invoice records could not be loaded.</td></tr>';
+    return;
+  }
+  const issued = BILLING_INVOICES.filter(invoice => ['issued', 'sent', 'paid'].includes(invoice.status));
+  const totalValue = issued.reduce((total, invoice) => total + Number(invoice.amountKsh || 0), 0);
+  const collected = BILLING_PAYMENTS.reduce((total, payment) => total + Number(payment.amountKsh || 0), 0);
+  const balance = issued.reduce((total, invoice) => total + Number(invoice.balanceKsh || 0), 0);
+  $('billing-report-issued').textContent = issued.length.toLocaleString('en-KE');
+  $('billing-report-value').textContent = formatBillingKsh(totalValue);
+  $('billing-report-collected').textContent = formatBillingKsh(collected);
+  $('billing-report-balance').textContent = formatBillingKsh(balance);
+  const months = new Map();
+  for (const payment of BILLING_PAYMENTS) {
+    const month = String(payment.paymentDate || '').slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(month)) continue;
+    const entry = months.get(month) || { count: 0, amount: 0 };
+    entry.count += 1;
+    entry.amount += Number(payment.amountKsh || 0);
+    months.set(month, entry);
+  }
+  const rows = [...months.entries()].sort(([a], [b]) => b.localeCompare(a)).slice(0, 12);
+  $('billing-report-months').innerHTML = rows.length ? rows.map(([month, item]) => `<tr><td>${esc(new Intl.DateTimeFormat('en-KE', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${month}-01T00:00:00Z`)))}</td><td>${item.count}</td><td>${formatBillingKsh(item.amount)}</td></tr>`).join('') : '<tr><td colspan="3">No recorded collections yet.</td></tr>';
+}
+
+function openBillingPayment() {
+  const select = $('bp-invoice');
+  const eligible = BILLING_INVOICES.filter(invoice => ['issued', 'sent'].includes(invoice.status) && Number(invoice.balanceKsh || 0) > 0);
+  select.innerHTML = '<option value="">Choose invoice</option>' + eligible.map(invoice => {
+    const customer = BILLING_CUSTOMERS.find(item => item.id === invoice.customerId);
+    return `<option value="${esc(invoice.id)}">${esc(invoice.invoiceNumber)} · ${esc(customer?.name || 'Customer')} · balance ${esc(formatBillingKsh(invoice.balanceKsh))}</option>`;
+  }).join('');
+  $('bp-amount').value = '';
+  $('bp-amount').max = '';
+  $('bp-date').value = billingTodayDate();
+  $('bp-method').value = 'mpesa';
+  $('bp-reference').value = '';
+  $('bp-notes').value = '';
+  $('bp-balance-help').textContent = eligible.length ? 'Only issued invoices with an outstanding balance are shown.' : 'No issued invoice has a balance available for payment allocation.';
+  $('billing-payment-save').disabled = !eligible.length;
+  $('billing-payment-overlay')?.classList.add('open');
 }
 
 function openBillingCustomer(customer = null) {
@@ -859,24 +1129,31 @@ $('bc-name')?.addEventListener('input', event => {
   renderBillingCustomerSuggestions(input.value);
 });
 
-function openBillingQuote() {
+function openBillingQuote(quote = null) {
   const select = $('bq-customer');
   select.innerHTML = '<option value="">Select a billing customer</option>' + BILLING_CUSTOMERS
     .filter(customer => customer.status === 'active')
     .map(customer => `<option value="${esc(customer.id)}">${esc(customer.name)}${customer.tenantKey ? ` — ${esc(customer.tenantKey)}` : ''}</option>`)
     .join('');
-  $('bq-students').value = '';
-  $('bq-pricing-model').value = 'rate_by_band';
-  $('bq-cadence').value = 'termly';
-  $('bq-setup').value = '';
-  $('bq-expires').value = '';
-  $('bq-communications').checked = false;
-  $('bq-extras').value = '';
-  $('bq-extra-cadence').value = 'termly';
-  $('bq-notes').value = '';
-  $('billing-quote-preview').textContent = 'Enter the student count and setup fee to calculate a quote preview.';
+  const snapshot = quote?.quoteSnapshot || {};
+  $('bq-id').value = quote?.id || '';
+  $('billing-quote-overlay').querySelector('.modal-title').textContent = quote ? `Edit ${quote.quoteNumber}` : 'New school quote';
+  $('billing-quote-save').textContent = quote ? 'Save quote changes' : 'Save draft quote';
+  $('bq-customer').value = quote?.customerId || '';
+  $('bq-students').value = quote?.enrollmentCount || '';
+  $('bq-school-type').value = snapshot.schoolType || '';
+  $('bq-own-sms').checked = snapshot.ownSmsProvider === true;
+  $('bq-discount').value = snapshot.discount?.amountKsh || '';
+  $('bq-discount-reason').value = snapshot.discount?.reason || '';
+  $('bq-discount-approval').checked = snapshot.discount?.requiresApproval === true;
+  $('bq-expires').value = quote?.expiresOn || '';
+  $('bq-communications').checked = snapshot.communicationsIncluded === true;
+  $('bq-extras').value = (snapshot.extraModules || []).join('\n');
+  $('bq-notes').value = quote?.notes || '';
+  $('billing-quote-preview').textContent = quote && snapshot.pricingModel !== 'catalogue' ? 'This quote used the old per-student rates. Choose a school type to re-price it from the current price list.' : 'Choose the school type to calculate a quote preview.';
   $('billing-quote-overlay')?.classList.add('open');
-  if (!BILLING_CUSTOMERS.some(customer => customer.status === 'active')) toast('Add or select a billing customer before creating a quote.');
+  if (quote) updateBillingQuotePreview();
+  else if (!BILLING_CUSTOMERS.some(customer => customer.status === 'active')) toast('Add or select a billing customer before creating a quote.');
 }
 
 function closeBillingQuote() { $('billing-quote-overlay')?.classList.remove('open'); }
@@ -885,13 +1162,12 @@ function billingQuotePayload() {
   return {
     customerId: $('bq-customer').value,
     enrollmentCount: $('bq-students').value,
-    pricingModel: $('bq-pricing-model').value,
-    billingCadence: $('bq-cadence').value,
-    setupFeeKsh: $('bq-setup').value,
+    schoolType: $('bq-school-type').value,
+    ownSmsProvider: $('bq-own-sms').checked,
+    discount: { amountKsh: $('bq-discount').value, reason: $('bq-discount-reason').value, requiresApproval: $('bq-discount-approval').checked },
     expiresOn: $('bq-expires').value,
     communicationsIncluded: $('bq-communications').checked,
     extraModules: $('bq-extras').value.split(/[\n,]/).map(value => value.trim()).filter(Boolean),
-    extraModuleCadence: $('bq-extra-cadence').value,
     notes: $('bq-notes').value,
   };
 }
@@ -900,8 +1176,8 @@ async function updateBillingQuotePreview() {
   const preview = $('billing-quote-preview');
   if (!preview) return;
   const payload = billingQuotePayload();
-  if (!payload.enrollmentCount || payload.setupFeeKsh === '') {
-    preview.textContent = 'Enter the student count and one-off setup fee to calculate a quote preview.';
+  if (!payload.schoolType) {
+    preview.textContent = 'Choose the school type to calculate a quote preview.';
     return;
   }
   preview.textContent = 'Calculating quote…';
@@ -968,6 +1244,81 @@ function renderBillingSettings() {
   status.className = `billing-email-status ${BILLING_EMAIL_STATUS === 'ready' ? 'ready' : BILLING_EMAIL_STATUS === 'unconfigured' ? 'unready' : ''}`;
 }
 
+async function loadCommunicationsSettings() {
+  const status = $('communications-email-status');
+  try {
+    const response = await fetch('/api/settings/communications/email', { credentials: 'same-origin' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Could not load email settings.');
+    if ($('communications-from-email')) $('communications-from-email').value = data.fromEmail || '';
+    if ($('communications-from-name')) $('communications-from-name').value = data.fromName || 'TrendSCORE';
+    if ($('communications-key-hint')) $('communications-key-hint').textContent = data.keyConfigured
+      ? 'A key is saved on the server and hidden here. Leave blank to keep it, or paste a new key to replace it.'
+      : 'No key is saved yet. Paste a Resend API key to enable email delivery.';
+    if (status) {
+      status.textContent = data.keyConfigured
+        ? `Resend key saved${data.fromEmail ? ` · sender ${data.fromEmail}` : ''}. Validate the connection before sending.`
+        : 'Resend is not configured. Add an API key and sender address, then save.';
+      status.className = `billing-email-status ${data.keyConfigured ? 'ready' : 'unready'}`;
+    }
+  } catch (error) {
+    if (status) {
+      status.textContent = error.message || 'Email settings could not be loaded.';
+      status.className = 'billing-email-status unready';
+    }
+  }
+}
+
+async function saveCommunicationsSettings(event) {
+  event?.preventDefault();
+  const button = $('communications-email-save');
+  if (button) { button.disabled = true; button.textContent = 'Saving…'; }
+  try {
+    const response = await fetch('/api/settings/communications/email', {
+      method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        apiKey: $('communications-resend-key')?.value || '',
+        fromEmail: $('communications-from-email')?.value || '',
+        fromName: $('communications-from-name')?.value || '',
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Could not save email settings.');
+    if ($('communications-resend-key')) $('communications-resend-key').value = '';
+    toast('Email settings saved on the server. The key stays hidden.');
+    await loadCommunicationsSettings();
+  } catch (error) {
+    toast(error.message || 'Could not save email settings.');
+  } finally {
+    if (button) { button.disabled = false; button.textContent = 'Save email settings'; }
+  }
+}
+
+async function validateCommunicationsSettings() {
+  const button = $('communications-email-test');
+  const status = $('communications-email-status');
+  if (button) { button.disabled = true; button.textContent = 'Checking Resend…'; }
+  if (status) { status.textContent = 'Checking the saved API key and sender domain…'; status.className = 'billing-email-status'; }
+  try {
+    const response = await fetch('/api/settings/communications/email/test', { method: 'POST', credentials: 'same-origin' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || 'Resend validation failed.');
+    if (status) {
+      status.textContent = data.verified
+        ? `Resend connection verified · ${data.domain} is ready to send from ${data.fromEmail}. No email was sent.`
+        : `Resend accepted the API key, but ${data.domain || 'the sender domain'} is not verified for sending yet.`;
+      status.className = `billing-email-status ${data.verified ? 'ready' : 'unready'}`;
+    }
+  } catch (error) {
+    if (status) { status.textContent = error.message || 'Resend validation failed.'; status.className = 'billing-email-status unready'; }
+  } finally {
+    if (button) { button.disabled = false; button.textContent = 'Validate Resend connection'; }
+  }
+}
+
+$('communications-email-form')?.addEventListener('submit', saveCommunicationsSettings);
+$('communications-email-test')?.addEventListener('click', validateCommunicationsSettings);
+
 const BILLING_TABS = ['overview', 'customers', 'quotes', 'invoices', 'payments', 'catalogue', 'reports', 'settings'];
 function selectBillingTab(tab, focus = false) {
   const selected = BILLING_TABS.includes(tab) ? tab : 'overview';
@@ -1022,12 +1373,21 @@ document.querySelectorAll('[data-billing-tab]').forEach(button => {
 });
 selectBillingTab('overview');
 
+$('bp-invoice')?.addEventListener('change', () => {
+  const invoice = BILLING_INVOICES.find(item => item.id === $('bp-invoice').value);
+  const balance = Number(invoice?.balanceKsh || 0);
+  $('bp-amount').max = balance || '';
+  $('bp-balance-help').textContent = invoice
+    ? `Outstanding balance: ${formatBillingKsh(balance)}. Amount cannot exceed this balance.`
+    : 'Only issued invoices with an outstanding balance are shown.';
+});
+
 function scheduleBillingQuotePreview() {
   clearTimeout(billingQuotePreviewTimer);
   billingQuotePreviewTimer = setTimeout(updateBillingQuotePreview, 250);
 }
 
-['bq-students', 'bq-pricing-model', 'bq-cadence', 'bq-setup', 'bq-communications', 'bq-extras', 'bq-extra-cadence'].forEach(id => {
+['bq-students', 'bq-school-type', 'bq-own-sms', 'bq-discount', 'bq-discount-reason', 'bq-discount-approval', 'bq-communications', 'bq-extras'].forEach(id => {
   $(id)?.addEventListener('input', scheduleBillingQuotePreview);
   $(id)?.addEventListener('change', scheduleBillingQuotePreview);
 });
@@ -1132,9 +1492,8 @@ function renderRunningInstances() {
 }
 
 // ── Space & Usage panel ───────────────────────────────────────────────────
-const TOTAL_DISK = 80;
 function totalDiskGb() {
-  return Number(RUNTIME_METRICS?.diskTotalGb || TOTAL_DISK);
+  return Number(RUNTIME_METRICS?.diskTotalGb || 0);
 }
 
 function renderSpaceUsage() {
@@ -1148,8 +1507,9 @@ function renderSpaceUsage() {
 
   const diskTotal = totalDiskGb();
   const hostUsed      = Number(RUNTIME_METRICS.diskUsedGb || 0);
+  const dockerAvailable = RUNTIME_METRICS.dockerUsageAvailable === true;
   const dockerUsed    = Number(RUNTIME_METRICS.storageUsedGb || 0);
-  const schoolVolumes = INSTANCES.reduce((sum, instance) => sum + Number(instance.storage || 0), 0);
+  const managedVolumes = Number(RUNTIME_METRICS.managedInstanceVolumesGb || 0);
   const freeSpace     = Math.max(0, diskTotal - hostUsed);
   const usedPct       = Math.round(hostUsed / Math.max(diskTotal, 1) * 100);
 
@@ -1173,8 +1533,8 @@ function renderSpaceUsage() {
         <div class="su-stat-label">Disk Utilisation</div>
       </div>
       <div class="su-summary-stat">
-        <div class="su-stat-val">${fmt(dockerUsed)} <span class="su-stat-unit">GB</span></div>
-        <div class="su-stat-label">Docker storage used</div>
+        <div class="su-stat-val">${dockerAvailable ? `${fmt(dockerUsed)} <span class="su-stat-unit">GB</span>` : '—'}</div>
+        <div class="su-stat-label">Docker storage${dockerAvailable ? '' : ' unavailable'}</div>
       </div>
     </div>
 
@@ -1194,10 +1554,10 @@ function renderSpaceUsage() {
     </div>
 
     <div class="su-breakdown-grid">
-      ${[
+      ${(dockerAvailable ? [
         { label: 'Docker storage', value: dockerUsed, color: '#030b82' },
-        { label: 'Volumes attributed to running school projects', value: schoolVolumes, color: '#059669' },
-      ].map(s => {
+        { label: 'Managed instance volumes (subset of Docker volumes)', value: managedVolumes, color: '#059669' },
+      ] : []).map(s => {
         const pct = Math.round(s.value / Math.max(diskTotal, 1) * 100);
         return `<div class="su-breakdown-item">
           <div class="su-b-row">
@@ -1221,7 +1581,7 @@ function renderSpaceUsage() {
               <span class="su-pi-total">${fmt(inst.storage)} GB</span>
             </div>
             <div class="su-meter" style="margin:6px 0 4px"><div class="su-meter-fill" style="width:${instPct}%;background:var(--brand)"></div></div>
-            <div class="su-pi-rows"><div class="su-pi-row"><span>Attributed Docker volumes</span><span>${fmt(inst.storage)} GB</span></div></div>
+            <div class="su-pi-rows"><div class="su-pi-row"><span>Attributed Docker storage</span><span>${fmt(inst.storage)} GB</span></div></div>
           </div>`;
         }).join('')}
       </div>
@@ -1403,15 +1763,10 @@ function toggleCrmMetrics() {
 
 // Rendering
 function renderInstanceRow(instance, mode = 'compact') {
-  const extraCols = mode === 'full'
-    ? `<td><span class="version-chip">${esc(instance.typeLabel)}</span></td>
-       <td><span class="version-chip">Not connected</span></td>`
-    : '';
-
   return `<tr>
     <td><div class="cell-school"><strong>${esc(instance.name)}</strong><div class="cell-domain">${esc(instance.domain)}</div></div></td>
+    <td><span class="instance-category-chip">${esc(instance.typeLabel || 'Other / unclassified')}</span></td>
     <td><span class="badge ${statusCls(instance.status)}">${esc(instance.status)}</span></td>
-    ${extraCols}
     <td>${fmtDate(instance.created)}</td>
     <td><span class="version-chip">${esc(instance.version)}</span></td>
     <td><div class="port-list">FE :${instance.fe}<br>BE :${instance.be}<br>${esc(instance.db)}</div></td>
@@ -1442,6 +1797,12 @@ function inferComponent(instance) {
 }
 
 function inferGroupKey(instance) {
+  // Compose project is the deployment boundary for every product type and
+  // avoids merging unrelated services that happen to share similar names.
+  if (instance.composeProject) return String(instance.composeProject).toLowerCase();
+  if (instance.appType && !['school', 'other', 'platform'].includes(instance.appType)) {
+    return slugify(instance.key || instance.name || instance.domain || instance.appType);
+  }
   const fromDomain = String(instance.domain || '').split('.')[0].toLowerCase();
   const fromName = slugify(instance.name || '');
   const base = (fromDomain || fromName)
@@ -1453,7 +1814,8 @@ function inferGroupKey(instance) {
 }
 
 function prettyGroupName(groupKey) {
-  return groupKey
+  const cleanKey = String(groupKey || '').replace(/^zawadijrn$/i, 'jrn').replace(/^zawadi-/i, '');
+  return cleanKey
     .split('-')
     .filter(Boolean)
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
@@ -1471,7 +1833,9 @@ function groupInstances(instances) {
     if (!map.has(groupKey)) {
       map.set(groupKey, {
         key: groupKey,
-        name: prettyGroupName(groupKey),
+        name: instance.displayName || prettyGroupName(groupKey),
+        appType: instance.appType || 'other',
+        typeLabel: instance.typeLabel || 'Other / unclassified',
         items: [],
         hasFrontend: false,
         hasBackend: false,
@@ -1480,6 +1844,9 @@ function groupInstances(instances) {
       });
     }
     const group = map.get(groupKey);
+    if (!group.name || group.name === prettyGroupName(groupKey)) {
+      group.name = instance.displayName || group.name;
+    }
     group.items.push(instance);
     group.storage += Number(instance.storage || 0);
     const component = inferComponent(instance);
@@ -1497,6 +1864,15 @@ function groupInstances(instances) {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+const INSTANCE_CATEGORY_OPEN = { education: true };
+const INSTANCE_GROUP_OPEN = {};
+
+function categoryForAppType(appType) {
+  const metadata = INSTANCE_TYPE_METADATA.find(type => type.id === appType) || INSTANCE_TYPE_METADATA.find(type => type.id === 'other');
+  return metadata ? { key: slugify(metadata.category), label: metadata.category, icon: metadata.categoryIcon || '📦', order: Number(metadata.categoryOrder || 99) }
+    : { key: 'other', label: 'Other', icon: '📦', order: 99 };
+}
+
 function resolveServerIp() {
   const rows = Array.from(document.querySelectorAll('.sb-footer-row'));
   for (const row of rows) {
@@ -1511,6 +1887,13 @@ function resolveServerIp() {
 
 function renderInstances() {
   const groups = groupInstances(INSTANCES);
+  const categoryGroups = new Map();
+  groups.forEach(group => {
+    const category = categoryForAppType(group.appType);
+    if (!categoryGroups.has(category.key)) categoryGroups.set(category.key, { ...category, groups: [] });
+    categoryGroups.get(category.key).groups.push(group);
+  });
+  const categories = Array.from(categoryGroups.values()).sort((a, b) => a.order - b.order);
   const serverIp = resolveServerIp();
 
   const renderGroupHeader = group => {
@@ -1521,8 +1904,11 @@ function renderInstances() {
     const openDomainUrl = domain ? `https://${domain}` : '';
     const domainLink = openDomainUrl ? `<a class="group-open-link group-open-domain-link" href="${esc(openDomainUrl)}" target="_blank" rel="noopener noreferrer" title="Open domain" style="margin-left:8px;display:inline-flex;align-items:center;text-decoration:none;">↗</a>` : '';
     const ipLink = openIpUrl ? `<a class="group-open-link group-open-ip-link" href="${esc(openIpUrl)}" target="_blank" rel="noopener noreferrer" title="Open IP endpoint" style="margin-left:8px;display:inline-flex;align-items:center;text-decoration:none;">↗</a>` : '';
-    return `<tr class="group-head" data-group="${esc(group.key)}" style="background:#f6f8ff;cursor:pointer">
-      <td colspan="7">
+    const category = categoryForAppType(group.appType);
+    const categoryOpen = INSTANCE_CATEGORY_OPEN[category.key] === true;
+    const groupOpen = INSTANCE_GROUP_OPEN[group.key] === true;
+    return `<tr class="group-head category-child" data-category-owner="${esc(category.key)}" data-group="${esc(group.key)}" style="display:${categoryOpen ? '' : 'none'};background:#f6f8ff;cursor:pointer">
+      <td colspan="8">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
           <div>
             <strong>${esc(group.name)}</strong>
@@ -1531,51 +1917,50 @@ function renderInstances() {
             <span style="margin-left:12px;font-family:var(--mono);font-size:12px;color:var(--muted)">FE ${esc(feLabel)}</span>${ipLink}
           </div>
           <div style="display:flex;align-items:center;gap:8px;">
-            <span class="group-chevron" style="font-size:16px;line-height:1">▸</span>
+            <span class="group-chevron" style="font-size:16px;line-height:1">${groupOpen ? '▾' : '▸'}</span>
           </div>
         </div>
       </td>
     </tr>`;
   };
 
-  const renderGroupedBody = mode => groups.map(group => {
+  const renderCategoryHeader = category => {
+    const count = category.groups.length;
+    const healthy = category.groups.filter(group => group.items.some(item => item.status === 'Online')).length;
+    const isOpen = INSTANCE_CATEGORY_OPEN[category.key] === true;
+    return `<tr class="instance-category-head"><td colspan="8"><button class="instance-category-toggle" type="button" data-instance-category-toggle="${esc(category.key)}" aria-expanded="${isOpen}"><span class="instance-category-icon" aria-hidden="true">${category.icon}</span><span class="instance-category-name">${esc(category.label)}</span><span class="instance-category-count">${count} deployments · ${healthy} online</span><span class="instance-category-chevron">${isOpen ? '▾' : '▸'}</span></button></td></tr>`;
+  };
+
+  const renderGroupedBody = mode => categories.map(category => {
+    const categoryOpen = INSTANCE_CATEGORY_OPEN[category.key] === true;
+    const groupsHtml = category.groups.map(group => {
     const rows = group.items.map(instance =>
-      renderInstanceRow(instance, mode).replace('<tr>', `<tr class="group-row" data-group="${esc(group.key)}" style="display:none">`)
+      renderInstanceRow(instance, mode).replace('<tr>', `<tr class="group-row category-child" data-category-owner="${esc(category.key)}" data-group="${esc(group.key)}" style="display:${categoryOpen && INSTANCE_GROUP_OPEN[group.key] === true ? '' : 'none'}">`)
     ).join('');
     return `${renderGroupHeader(group)}${rows}`;
+    }).join('');
+    return `${renderCategoryHeader(category)}${groupsHtml}`;
   }).join('');
 
   const overview = $('instance-table');
-  if (overview) overview.innerHTML = groups.length ? renderGroupedBody('compact') : '<tr><td colspan="7">No runtime instances are available.</td></tr>';
+  if (overview) overview.innerHTML = groups.length ? renderGroupedBody('compact') : '<tr><td colspan="8">No runtime instances are available.</td></tr>';
 
   const full = $('instance-table-full');
-  if (full) full.innerHTML = groups.length ? renderGroupedBody('full') : '<tr><td colspan="9">No runtime instances are available.</td></tr>';
+  if (full) full.innerHTML = groups.length ? renderGroupedBody('full') : '<tr><td colspan="8">No runtime instances are available.</td></tr>';
 }
 
 function renderMetrics() {
-  const totalStorage = INSTANCES.reduce((sum, instance) => sum + instance.storage, 0);
   const healthy = INSTANCES.filter(instance => instance.status === 'Online').reduce((sum, instance) => sum + instance.containers, 0);
   const total = INSTANCES.reduce((sum, instance) => sum + instance.containers, 0);
-  const schoolGroups = groupInstances(INSTANCES).filter(group => group.complete).length;
 
-  if ($('m-schools')) $('m-schools').textContent = liveMode ? (Number.isFinite(Number(RUNTIME_METRICS?.liveSchools)) ? RUNTIME_METRICS.liveSchools : schoolGroups) : '—';
+  if ($('m-instances')) $('m-instances').textContent = liveMode ? (Number.isFinite(Number(RUNTIME_METRICS?.liveInstances)) ? RUNTIME_METRICS.liveInstances : INSTANCES.length) : '—';
   if ($('m-containers')) $('m-containers').textContent = liveMode ? (RUNTIME_METRICS?.containersHealthy || `${healthy}/${total}`) : '—';
-  if ($('m-storage')) $('m-storage').textContent = liveMode ? `${fmt(Number(RUNTIME_METRICS?.storageUsedGb ?? totalStorage))} GB` : '—';
+  if ($('m-storage')) $('m-storage').textContent = liveMode && RUNTIME_METRICS?.dockerUsageAvailable ? `${fmt(Number(RUNTIME_METRICS.storageUsedGb || 0))} GB` : '—';
 
-  const latestDeploy = DEPLOYMENTS[0];
-  if ($('m-deploy')) {
-    $('m-deploy').textContent = latestDeploy?.imageTag || latestDeploy?.title?.replace(/^Promoted /, '')?.slice(0, 12) || '—';
-  }
-  if ($('m-deploy-sub')) {
-    $('m-deploy-sub').textContent = latestDeploy?.copy || 'No deployment record is available.';
-  }
-  if ($('m-deploy-badge')) {
-    $('m-deploy-badge').textContent = latestDeploy?.time || 'No deployment yet';
-  }
   if ($('overview-sub')) {
     $('overview-sub').textContent = liveMode
-      ? 'Live snapshot of all managed school instances'
-      : 'Live snapshot of all managed school instances · waiting for live metrics';
+      ? 'Live snapshot of all managed instances'
+      : 'Live snapshot of all managed instances · waiting for live metrics';
   }
 }
 
@@ -1586,14 +1971,22 @@ function renderTimeline(elId, maxItems = 99) {
     el.innerHTML = '<div class="tl-item"><div class="tl-copy">No deployment history is available.</div></div>';
     return;
   }
-  el.innerHTML = DEPLOYMENTS.slice(0, maxItems).map(item => `
+  el.innerHTML = DEPLOYMENTS.slice(0, maxItems).map(item => {
+    const status = String(item.status || (/fail|error/i.test(item.title || '') ? 'Failed' : 'Success'));
+    const failed = /fail|error/i.test(status);
+    const rawTitle = String(item.title || 'Deployment');
+    const title = /^deploy failed|^promoted\b/i.test(rawTitle)
+      ? 'School release'
+      : (/^console\b/i.test(rawTitle) ? 'Admin console' : rawTitle);
+    return `
     <div class="tl-item">
       <div class="tl-time">${esc(item.time)}</div>
       <div class="tl-body">
-        <div class="tl-title">${esc(item.title)}</div>
-        <div class="tl-copy">${esc(item.copy)}</div>
+        <span class="tl-status ${failed ? 'failed' : 'success'}">${failed ? 'Failed' : 'Complete'}</span>
+        <div class="tl-title" title="${esc(title)}">${esc(title)}</div>
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 function renderCapacity() {
@@ -1606,61 +1999,75 @@ function renderCapacity() {
   }
 
   const diskTotal = totalDiskGb();
-  if (capacitySub) capacitySub.textContent = `VPS disk allocation \u00b7 ${fmt(diskTotal)} GB total`;
-  const totalStorage = INSTANCES.reduce((sum, instance) => sum + instance.storage, 0);
-  const imagesUsed = Number(RUNTIME_METRICS?.imagesGb || 0);
-  const volumesUsed = Number(RUNTIME_METRICS?.volumesGb || 0);
-  const runtimeUsed = Number(RUNTIME_METRICS?.storageUsedGb || 0);
-  const stackUsed = Math.max(0, runtimeUsed - totalStorage);
-  const freeUsed = Math.max(0, diskTotal - Number(RUNTIME_METRICS.diskUsedGb || 0));
+  if (capacitySub) capacitySub.textContent = `Detected host filesystem \u00b7 ${fmt(diskTotal)} GB total`;
+  const hostUsed = Number(RUNTIME_METRICS.diskUsedGb || 0);
+  const freeUsed = Math.max(0, diskTotal - hostUsed);
+  const dockerAvailable = RUNTIME_METRICS.dockerUsageAvailable === true;
   const items = [
-    { label: 'Images', used: imagesUsed, total: diskTotal, color: 'brand', meta: 'Docker images stored on this server' },
-    { label: 'Volumes', used: volumesUsed, total: diskTotal, color: 'teal', meta: 'Persistent Docker volumes' },
-    { label: 'Other Docker storage', used: stackUsed, total: diskTotal, color: 'amber', meta: 'Docker usage not attributed to school project volumes' },
-    { label: 'School project volumes', used: totalStorage, total: diskTotal, color: 'teal', meta: 'Docker volumes attributed to runtime school projects' },
-    { label: 'Host free space', used: freeUsed, total: diskTotal, color: 'green', meta: 'Filesystem free space, including non-Docker files' },
+    { label: 'Host disk used', used: hostUsed, total: diskTotal, color: 'brand', meta: 'Filesystem usage, including Docker data and other files' },
+    { label: 'Host disk available', used: freeUsed, total: diskTotal, color: 'green', meta: 'Free space on the detected root filesystem' },
   ];
+  if (dockerAvailable) {
+    items.push(
+      { label: 'Docker images', used: Number(RUNTIME_METRICS.imagesGb || 0), total: diskTotal, color: 'teal', meta: 'Image layer storage; included in host disk used' },
+      { label: 'Docker volumes', used: Number(RUNTIME_METRICS.volumesGb || 0), total: diskTotal, color: 'amber', meta: 'All Docker volumes; includes the two subsets below' },
+      { label: 'Managed instance volumes', used: Number(RUNTIME_METRICS.managedInstanceVolumesGb || 0), total: diskTotal, color: 'teal', meta: 'Subset of volumes mapped to detected instance projects' },
+      { label: 'Unassigned Docker volumes', used: Number(RUNTIME_METRICS.unassignedVolumesGb || 0), total: diskTotal, color: 'amber', meta: 'Volume data not mapped to a detected instance project' },
+      { label: 'Container writable layers', used: Number(RUNTIME_METRICS.containerWritableGb || 0), total: diskTotal, color: 'brand', meta: 'Container-local changes; included in Docker storage and host disk used' },
+      { label: 'Docker build cache', used: Number(RUNTIME_METRICS.buildCacheGb || 0), total: diskTotal, color: 'amber', meta: 'Build cache; included in Docker storage and host disk used' },
+    );
+  } else {
+    items.push({ label: 'Docker storage details', used: null, total: diskTotal, color: 'amber', meta: 'Detailed Docker usage is unavailable from the host.' });
+  }
   if (!el) return;
   el.innerHTML = items.map(item => {
-    const pct = Math.round(Math.max(0, item.used) / Math.max(item.total, 1) * 100);
+    const hasValue = item.used !== null && item.used !== undefined && Number.isFinite(Number(item.used));
+    const pct = hasValue ? Math.round(Math.max(0, item.used) / Math.max(item.total, 1) * 100) : null;
     return `<div class="capacity-item">
-      <div class="cap-row"><span class="cap-name">${esc(item.label)}</span><span class="cap-val">${fmt(item.used)} GB</span></div>
-      <div class="meter"><div class="meter-fill ${item.color}" style="width:${pct}%"></div></div>
-      <div class="cap-meta">${esc(item.meta)} · ${pct}% of ${fmt(item.total)} GB</div>
+      <div class="cap-row"><span class="cap-name">${esc(item.label)}</span><span class="cap-val">${hasValue ? `${fmt(item.used)} GB` : '—'}</span></div>
+      <div class="meter"><div class="meter-fill ${item.color}" style="width:${pct ?? 0}%"></div></div>
+      <div class="cap-meta">${esc(item.meta)}${pct === null ? '' : ` · ${pct}% of ${fmt(item.total)} GB host disk`}</div>
     </div>`;
   }).join('');
 }
 
 function renderStorageSection() {
   if (!liveMode || !RUNTIME_METRICS) {
-    if ($('s-total')) $('s-total').textContent = '—';
+    if ($('s-host-total')) $('s-host-total').textContent = '—';
+    if ($('s-docker-total')) $('s-docker-total').textContent = '—';
+    if ($('s-instance-volumes')) $('s-instance-volumes').textContent = '—';
     if ($('disk-breakdown')) $('disk-breakdown').innerHTML = '<div class="capacity-item">Live storage metrics are unavailable.</div>';
     if ($('per-instance-storage')) $('per-instance-storage').innerHTML = '<div class="storage-item">No instance storage figures are shown without live metrics.</div>';
     return;
   }
 
-  const total = INSTANCES.reduce((sum, instance) => sum + instance.storage, 0);
-  if ($('s-total')) $('s-total').textContent = fmt(total) + ' GB';
+  if ($('s-host-total')) $('s-host-total').textContent = `${fmt(totalDiskGb())} GB`;
+  if ($('s-docker-total')) $('s-docker-total').textContent = RUNTIME_METRICS.dockerUsageAvailable ? `${fmt(Number(RUNTIME_METRICS.storageUsedGb || 0))} GB` : '—';
+  if ($('s-instance-volumes')) $('s-instance-volumes').textContent = RUNTIME_METRICS.dockerUsageAvailable ? `${fmt(Number(RUNTIME_METRICS.managedInstanceVolumesGb || 0))} GB` : '—';
 
   const disk = $('disk-breakdown');
   if (disk) {
     const diskTotal = totalDiskGb();
-    const runtimeUsed = Number(RUNTIME_METRICS?.storageUsedGb || 0);
-    const imagesUsed = Number(RUNTIME_METRICS?.imagesGb || 0);
-    const volumesUsed = Number(RUNTIME_METRICS?.volumesGb || 0);
-    const otherDockerUsed = Math.max(0, runtimeUsed - imagesUsed - volumesUsed);
     const rows = [
-      { label: 'Docker images', used: imagesUsed, total: diskTotal, color: 'brand' },
-      { label: 'Docker volumes', used: volumesUsed, total: diskTotal, color: 'green' },
-      { label: 'Other Docker layers', used: otherDockerUsed, total: diskTotal, color: 'amber' },
-      { label: 'School project volumes (subset of volumes)', used: total, total: diskTotal, color: 'teal' },
+      { label: 'Host disk used (includes Docker)', used: Number(RUNTIME_METRICS.diskUsedGb || 0), total: diskTotal, color: 'brand' },
+      { label: 'Host disk available', used: Math.max(0, diskTotal - Number(RUNTIME_METRICS.diskUsedGb || 0)), total: diskTotal, color: 'green' },
     ];
+    if (RUNTIME_METRICS.dockerUsageAvailable) rows.push(
+      { label: 'Docker images', used: Number(RUNTIME_METRICS.imagesGb || 0), total: diskTotal, color: 'brand' },
+      { label: 'Docker volumes (includes subsets below)', used: Number(RUNTIME_METRICS.volumesGb || 0), total: diskTotal, color: 'green' },
+      { label: 'Managed instance volumes', used: Number(RUNTIME_METRICS.managedInstanceVolumesGb || 0), total: diskTotal, color: 'teal' },
+      { label: 'Unassigned Docker volumes', used: Number(RUNTIME_METRICS.unassignedVolumesGb || 0), total: diskTotal, color: 'amber' },
+      { label: 'Container writable layers', used: Number(RUNTIME_METRICS.containerWritableGb || 0), total: diskTotal, color: 'amber' },
+      { label: 'Docker build cache', used: Number(RUNTIME_METRICS.buildCacheGb || 0), total: diskTotal, color: 'amber' },
+    );
+    else rows.push({ label: 'Docker usage details unavailable', used: null, total: diskTotal, color: 'amber' });
     disk.innerHTML = rows.map(row => {
-      const pct = Math.round(row.used / row.total * 100);
+      const hasValue = Number.isFinite(Number(row.used)) && row.used !== null;
+      const pct = hasValue ? Math.round(row.used / row.total * 100) : null;
       return `<div class="capacity-item">
-        <div class="cap-row"><span class="cap-name">${esc(row.label)}</span><span class="cap-val">${fmt(row.used)} GB</span></div>
-        <div class="meter"><div class="meter-fill ${row.color}" style="width:${pct}%"></div></div>
-        <div class="cap-meta">${pct}% of ${row.total} GB total disk</div>
+        <div class="cap-row"><span class="cap-name">${esc(row.label)}</span><span class="cap-val">${hasValue ? `${fmt(row.used)} GB` : '—'}</span></div>
+        <div class="meter"><div class="meter-fill ${row.color}" style="width:${pct ?? 0}%"></div></div>
+        <div class="cap-meta">${pct === null ? 'Metric not reported by Docker.' : `${pct}% of ${row.total} GB host disk`}</div>
       </div>`;
     }).join('');
   }
@@ -1670,7 +2077,7 @@ function renderStorageSection() {
     perInstance.innerHTML = INSTANCES.map(instance => `
       <div class="storage-item">
         <div class="sto-row"><span class="sto-name">${esc(instance.name)}</span><span class="sto-size">${fmt(instance.storage)} GB</span></div>
-        <div class="sto-meta">Attributed Docker volume/container storage; DB, uploads, and backups are not separately measured.</div>
+        <div class="sto-meta">Attributed Docker volume or writable-layer usage; database, uploads, and backups are not measured separately.</div>
       </div>`).join('');
   }
 }
@@ -2022,7 +2429,7 @@ function runConsoleDeploy() {
 }
 
 // Navigation
-const SECTIONS = ['overview', 'instances', 'storage', 'deployments', 'controls', 'billing', 'logs', 'leads'];
+const SECTIONS = ['overview', 'instances', 'storage', 'deployments', 'controls', 'billing', 'communications', 'logs', 'leads', 'agents'];
 const SECTION_LABELS = {
   overview: 'Overview',
   instances: 'Instances',
@@ -2030,8 +2437,10 @@ const SECTION_LABELS = {
   deployments: 'Promote Release',
   controls: 'Controls',
   billing: 'Billing & Invoices',
+  communications: 'Communications Settings',
   logs: 'Audit Log',
   leads: 'Leads & CRM',
+  agents: 'Field Agents & Commissions',
 };
 
 function sectionFromHash() {
@@ -2054,6 +2463,8 @@ function showSection(id, options = {}) {
     refreshDeployPanel(options.deployPrefill || null);
   }
   if (targetSection === 'billing') loadBillingData();
+  if (targetSection === 'communications') loadCommunicationsSettings();
+  if (targetSection === 'agents') loadAgentsData();
 
   if (!options.skipHashUpdate) {
     const nextHash = `#${targetSection}`;
@@ -2076,6 +2487,8 @@ window.addEventListener('hashchange', () => {
 
 window.addEventListener('console:authenticated', () => {
   if (sectionFromHash() === 'billing') loadBillingData();
+  if (sectionFromHash() === 'communications') loadCommunicationsSettings();
+  if (sectionFromHash() === 'agents') loadAgentsData();
 });
 
 function setSidebarCollapsed(collapsed) {
@@ -2158,6 +2571,40 @@ async function callControlApi(action, instanceKey = '') {
     return { ok: false, error: error.message || 'Control API is unavailable.' };
   }
 }
+
+function renderInstanceTypePicker(types) {
+  const host = $('instance-type-options');
+  if (!host) return;
+  const grouped = new Map();
+  for (const type of types.filter(item => item.inProvisionPicker !== false)) {
+    if (!grouped.has(type.category)) grouped.set(type.category, []);
+    grouped.get(type.category).push(type);
+  }
+  const icons = { school: '🎓', sacco: '🏦', hospital: '🏥', hotel: '🏨', organization: '🏢', odoo: '🧩', wordpress: '🌐', platform: '⚙️' };
+  const isSuperAdmin = window.consoleUserRole === 'super_admin';
+  host.innerHTML = Array.from(grouped.entries()).map(([category, items]) => `<section class="instance-type-group"><h3>${esc(category)}</h3><div class="instance-type-grid">${items.map(type => {
+    const canChoose = type.provisionable && isSuperAdmin;
+    const status = type.provisionable ? (isSuperAdmin ? 'Available' : 'Super Admin only') : 'Setup recipe needed';
+    const tag = type.provisionable ? 'ready' : 'planned';
+    return `<button class="instance-type-card ${canChoose ? '' : 'is-unavailable'}" type="button" data-instance-type="${esc(type.id)}" ${canChoose ? '' : 'disabled'}><span class="instance-type-icon" aria-hidden="true">${icons[type.id] || '📦'}</span><span class="instance-type-card-main"><strong>${esc(type.label)}</strong><small>${esc(type.description)}</small><span class="instance-type-status ${tag}">${esc(status)}</span></span><span class="instance-type-arrow" aria-hidden="true">${canChoose ? '→' : '·'}</span></button>`;
+  }).join('')}</div></section>`).join('');
+}
+
+async function openNewInstanceTypePicker() {
+  $('instance-type-overlay')?.classList.add('open');
+  const host = $('instance-type-options');
+  if (host) host.innerHTML = '<div class="billing-empty">Loading available instance types…</div>';
+  try {
+    const response = await fetch('/api/instances/types', { credentials: 'same-origin' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !Array.isArray(data.types)) throw new Error(data.error || 'Could not load instance types');
+    renderInstanceTypePicker(data.types);
+  } catch (error) {
+    if (host) host.innerHTML = `<div class="billing-empty">${esc(error.message)}. Refresh the console and try again.</div>`;
+  }
+}
+
+function closeInstanceTypePicker() { $('instance-type-overlay')?.classList.remove('open'); }
 
 async function runControl(action, label, options = {}) {
   const instance = selectedInstance();
@@ -2257,16 +2704,35 @@ document.body.addEventListener('click', event => {
     return;
   }
 
+  const categoryToggle = event.target.closest('[data-instance-category-toggle]');
+  if (categoryToggle) {
+    const categoryKey = categoryToggle.dataset.instanceCategoryToggle;
+    const isOpen = INSTANCE_CATEGORY_OPEN[categoryKey] !== true;
+    INSTANCE_CATEGORY_OPEN[categoryKey] = isOpen;
+    document.querySelectorAll(`.instance-category-toggle[data-instance-category-toggle="${categoryKey}"]`).forEach(button => {
+      button.setAttribute('aria-expanded', String(isOpen));
+      const chevron = button.querySelector('.instance-category-chevron');
+      if (chevron) chevron.textContent = isOpen ? '▾' : '▸';
+    });
+    document.querySelectorAll(`.category-child[data-category-owner="${categoryKey}"]`).forEach(row => {
+      const groupOpen = INSTANCE_GROUP_OPEN[row.dataset.group] === true;
+      row.style.display = !isOpen ? 'none' : row.classList.contains('group-row') && !groupOpen ? 'none' : '';
+    });
+    return;
+  }
+
   const groupHead = event.target.closest('.group-head');
   if (groupHead) {
     const groupKey = groupHead.dataset.group;
+    const categoryKey = groupHead.dataset.categoryOwner;
     const rows = document.querySelectorAll(`.group-row[data-group="${groupKey}"]`);
-    const chevron = groupHead.querySelector('.group-chevron');
-    const isClosed = Array.from(rows).every(row => row.style.display === 'none');
+    const isClosed = INSTANCE_GROUP_OPEN[groupKey] !== true;
+    INSTANCE_GROUP_OPEN[groupKey] = isClosed;
+    groupHead.style.display = INSTANCE_CATEGORY_OPEN[categoryKey] === true ? '' : 'none';
     rows.forEach(row => {
-      row.style.display = isClosed ? '' : 'none';
+      row.style.display = INSTANCE_CATEGORY_OPEN[categoryKey] === true && isClosed ? '' : 'none';
     });
-    if (chevron) chevron.textContent = isClosed ? '▾' : '▸';
+    document.querySelectorAll(`.group-head[data-group="${groupKey}"] .group-chevron`).forEach(chevron => { chevron.textContent = isClosed ? '▾' : '▸'; });
     return;
   }
 
@@ -2286,34 +2752,25 @@ document.body.addEventListener('click', event => {
   }
 
   const id = btn.id;
+  if (id === 'btn-new-instance-overview' || id === 'btn-new-instance-list') {
+    openNewInstanceTypePicker();
+    return;
+  }
+  if (id === 'instance-type-close' || id === 'instance-type-cancel') {
+    closeInstanceTypePicker();
+    return;
+  }
+  const selectedInstanceType = btn.dataset.instanceType;
+  if (selectedInstanceType) {
+    closeInstanceTypePicker();
+    openModal(selectedInstanceType);
+    return;
+  }
   const billingPickKind = btn.dataset.billingPickKind;
   if (billingPickKind) {
     selectBillingCustomerSuggestion(billingPickKind, btn.dataset.billingPickId);
     return;
   }
-  const createButtonMap = {
-    'btn-create-school': 'school',
-    'btn-create2-school': 'school',
-    'btn-create3-school': 'school',
-    'btn-create2-odoo': 'odoo',
-    'btn-create3-odoo': 'odoo',
-    'btn-create2-wordpress': 'wordpress',
-    'btn-create3-wordpress': 'wordpress',
-    'btn-create2-sacco': 'sacco',
-    'btn-create3-sacco': 'sacco',
-    'btn-create2-hospital': 'hospital',
-    'btn-create3-hospital': 'hospital',
-    'btn-create2-hotel': 'hotel',
-    'btn-create3-hotel': 'hotel',
-    'btn-create2-organization': 'organization',
-    'btn-create3-organization': 'organization',
-  };
-
-  if (createButtonMap[id]) {
-    openModal(createButtonMap[id]);
-    return;
-  }
-
   if (id === 'btn-refresh') {
     (async () => {
       await refreshFromRuntime();
@@ -2339,12 +2796,91 @@ document.body.addEventListener('click', event => {
     return;
   }
 
+  if (id === 'billing-reset-btn') {
+    const confirmInput = $('billing-reset-confirm');
+    const phrase = confirmInput?.value.trim() || '';
+    if (phrase !== 'RESET BILLING') { toast('Type RESET BILLING exactly to confirm.'); return; }
+    (async () => {
+      try {
+        const r = await fetch('/api/billing/reset', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ confirm: phrase }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) { toast(data.error || 'Billing reset failed.'); return; }
+        if (confirmInput) confirmInput.value = '';
+        toast(`Billing reset. Backup saved as ${data.backupFile}.`);
+        if (typeof loadBillingData === 'function') await loadBillingData();
+      } catch (e) { toast(`Billing reset failed: ${e.message}`); }
+    })();
+    return;
+  }
   if (id === 'billing-add-customer') {
     openBillingCustomer();
     return;
   }
   if (id === 'billing-quote-add') {
     openBillingQuote();
+    return;
+  }
+  if (id === 'billing-invoice-close' || id === 'billing-invoice-cancel') {
+    $('billing-invoice-overlay')?.classList.remove('open');
+    return;
+  }
+  if (id === 'billing-payment-close' || id === 'billing-payment-cancel') {
+    $('billing-payment-overlay')?.classList.remove('open');
+    return;
+  }
+  if (id === 'billing-payment-add') {
+    openBillingPayment();
+    return;
+  }
+  if (id === 'billing-mail-close' || id === 'billing-mail-cancel') {
+    $('billing-mail-overlay')?.classList.remove('open');
+    BILLING_MAIL_DRAFT = null;
+    return;
+  }
+  if (btn.dataset.billingMailTab) {
+    const showPdf = btn.dataset.billingMailTab === 'pdf';
+    $('billing-mail-tab-email')?.classList.toggle('active', !showPdf);
+    $('billing-mail-tab-email')?.setAttribute('aria-selected', String(!showPdf));
+    $('billing-mail-tab-pdf')?.classList.toggle('active', showPdf);
+    $('billing-mail-tab-pdf')?.setAttribute('aria-selected', String(showPdf));
+    $('billing-mail-preview-email').hidden = showPdf;
+    $('billing-mail-preview-pdf').hidden = !showPdf;
+    return;
+  }
+  if (id === 'billing-mail-send') {
+    if (!BILLING_MAIL_DRAFT) return;
+    const kind = $('billing-mail-kind').value;
+    const isDraftInvoice = BILLING_MAIL_DRAFT.isDraftInvoice === true;
+    const mailId = $('billing-mail-id').value;
+    const sendButton = $('billing-mail-send');
+    sendButton.disabled = true;
+    sendButton.textContent = 'Sending…';
+    (async () => {
+      try {
+        const endpoint = kind === 'quote'
+          ? `/api/billing/quotes/${encodeURIComponent(mailId)}/send`
+          : `/api/billing/invoices/${encodeURIComponent(mailId)}/send-review-email`;
+        const response = await fetch(endpoint, {
+          method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ recipient: $('billing-mail-to').value, subject: $('billing-mail-subject').value, message: $('billing-mail-message').value }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'Could not send email');
+        $('billing-mail-overlay')?.classList.remove('open');
+        BILLING_MAIL_DRAFT = null;
+        await loadBillingData();
+        toast(kind === 'quote' ? 'Quotation email sent with the reviewed PDF attached.' : isDraftInvoice ? 'Draft invoice review copy sent. It remains unissued.' : 'Commercial invoice emailed with the PDF attached.');
+      } catch (error) {
+        toast(error.message || 'Could not send email');
+      } finally {
+        sendButton.disabled = false;
+        sendButton.textContent = kind === 'quote' ? 'Send quotation' : 'Send review copy';
+      }
+    })();
     return;
   }
   if (id === 'billing-quote-close' || id === 'billing-quote-cancel') {
@@ -2363,6 +2899,85 @@ document.body.addEventListener('click', event => {
   const customerEditId = btn.dataset.billingCustomerEdit;
   if (customerEditId) {
     openBillingCustomer(BILLING_CUSTOMERS.find(item => item.id === customerEditId));
+    return;
+  }
+  const quoteEditId = btn.dataset.quoteEdit;
+  if (quoteEditId) {
+    const quote = BILLING_QUOTES.find(item => item.id === quoteEditId);
+    if (quote) openBillingQuote(quote);
+    return;
+  }
+  const quoteDeleteId = btn.dataset.quoteDelete;
+  if (quoteDeleteId) {
+    const quote = BILLING_QUOTES.find(item => item.id === quoteDeleteId);
+    if (!quote || !window.confirm(`Permanently delete unsent draft ${quote.quoteNumber}? This is only available before any email attempt.`)) return;
+    (async () => {
+      try {
+        const response = await fetch(`/api/billing/quotes/${encodeURIComponent(quoteDeleteId)}`, { method: 'DELETE', credentials: 'same-origin' });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'Could not delete quote');
+        await loadBillingData(); toast('Unsent draft quote deleted.');
+      } catch (error) { toast(error.message); }
+    })();
+    return;
+  }
+  const quoteCancelId = btn.dataset.quoteCancel;
+  if (quoteCancelId) {
+    const reason = window.prompt('Reason for cancelling this quote (required):');
+    if (!reason?.trim()) return;
+    (async () => {
+      try {
+        const response = await fetch(`/api/billing/quotes/${encodeURIComponent(quoteCancelId)}/cancel`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason }) });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'Could not cancel quote');
+        await loadBillingData(); toast('Quote cancelled and retained in the audit history.');
+      } catch (error) { toast(error.message); }
+    })();
+    return;
+  }
+  const invoiceEditId = btn.dataset.invoiceEdit;
+  if (invoiceEditId) {
+    const invoice = BILLING_INVOICES.find(item => item.id === invoiceEditId);
+    if (!invoice) return;
+    $('bi-id').value = invoice.id;
+    $('bi-due-date').value = invoice.invoiceSnapshot?.dueDate || '';
+    $('bi-terms').value = invoice.invoiceSnapshot?.termsNote || '';
+    $('billing-invoice-overlay')?.classList.add('open');
+    return;
+  }
+  const invoiceCancelId = btn.dataset.invoiceCancel;
+  if (invoiceCancelId) {
+    const invoice = BILLING_INVOICES.find(item => item.id === invoiceCancelId);
+    const reason = window.prompt(`Reason for cancelling draft ${invoice?.invoiceNumber || ''} (required):`);
+    if (!reason?.trim()) return;
+    (async () => {
+      try {
+        const response = await fetch(`/api/billing/invoices/${encodeURIComponent(invoiceCancelId)}/cancel`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason }) });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'Could not cancel draft invoice');
+        await loadBillingData(); toast('Draft invoice cancelled and retained in the register.');
+      } catch (error) { toast(error.message); }
+    })();
+    return;
+  }
+  const invoiceIssueId = btn.dataset.invoiceIssue;
+  if (invoiceIssueId) {
+    const invoice = BILLING_INVOICES.find(item => item.id === invoiceIssueId);
+    if (!invoice || !window.confirm(`Issue ${invoice.invoiceNumber} as a commercial invoice? This action makes it payable and changes its reference. It is not an eTIMS tax invoice.`)) return;
+    (async () => {
+      try {
+        const response = await fetch(`/api/billing/invoices/${encodeURIComponent(invoiceIssueId)}/issue`, { method: 'POST', credentials: 'same-origin' });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'Could not issue the invoice');
+        await loadBillingData();
+        toast(`Commercial invoice ${payload.invoice.invoiceNumber} issued. You can now email it or record payments.`);
+      } catch (error) { toast(error.message); }
+    })();
+    return;
+  }
+  const invoiceSendReviewId = btn.dataset.invoiceSendReview;
+  if (invoiceSendReviewId) {
+    openBillingEmailComposer('invoice', invoiceSendReviewId);
     return;
   }
   const contractAddCustomerId = btn.dataset.billingContractAdd;
@@ -2398,33 +3013,62 @@ document.body.addEventListener('click', event => {
   if (id === 'billing-quote-save') {
     (async () => {
       try {
-        const response = await fetch('/api/billing/quotes', {
-          method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+        const quoteId = $('bq-id').value;
+        const response = await fetch(quoteId ? `/api/billing/quotes/${encodeURIComponent(quoteId)}` : '/api/billing/quotes', {
+          method: quoteId ? 'PUT' : 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(billingQuotePayload()),
         });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(payload.error || 'Could not save quote');
         closeBillingQuote();
         await loadBillingData();
-        toast(`Draft ${payload.quote.quoteNumber} saved. Download the PDF or email it from the Quotes table.`);
+        toast(`${quoteId ? 'Draft changes saved for' : 'Draft'} ${payload.quote.quoteNumber}. Download the PDF or email it from the Quotes table.`);
       } catch (error) { toast(error.message); }
+    })();
+    return;
+  }
+
+  if (id === 'billing-invoice-save') {
+    (async () => {
+      try {
+        const invoiceId = $('bi-id').value;
+        const response = await fetch(`/api/billing/invoices/${encodeURIComponent(invoiceId)}`, {
+          method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dueDate: $('bi-due-date').value, termsNote: $('bi-terms').value }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'Could not save invoice details');
+        $('billing-invoice-overlay')?.classList.remove('open');
+        await loadBillingData(); toast('Draft invoice details saved.');
+      } catch (error) { toast(error.message); }
+    })();
+    return;
+  }
+
+  if (id === 'billing-payment-save') {
+    const saveButton = $('billing-payment-save');
+    saveButton.disabled = true;
+    saveButton.textContent = 'Recording…';
+    (async () => {
+      try {
+        const response = await fetch('/api/billing/payments', {
+          method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ invoiceId: $('bp-invoice').value, amountKsh: Number($('bp-amount').value), paymentDate: $('bp-date').value, method: $('bp-method').value, reference: $('bp-reference').value, notes: $('bp-notes').value }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'Could not record payment');
+        $('billing-payment-overlay')?.classList.remove('open');
+        await loadBillingData();
+        toast(`Payment of ${formatBillingKsh(payload.payment.amountKsh)} recorded against ${payload.invoice.invoiceNumber}.`);
+      } catch (error) { toast(error.message); }
+      finally { saveButton.disabled = false; saveButton.textContent = 'Record payment'; }
     })();
     return;
   }
 
   const quoteSendId = btn.dataset.quoteSend;
   if (quoteSendId) {
-    (async () => {
-      btn.disabled = true;
-      try {
-        const response = await fetch(`/api/billing/quotes/${encodeURIComponent(quoteSendId)}/send`, { method: 'POST', credentials: 'same-origin' });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(payload.error || 'Could not send quote');
-        await loadBillingData();
-        toast('Quote email sent with PDF attachment.');
-      } catch (error) { toast(error.message); }
-      finally { btn.disabled = false; }
-    })();
+    openBillingEmailComposer('quote', quoteSendId);
     return;
   }
 
@@ -2518,6 +3162,9 @@ document.body.addEventListener('change', event => {
 });
 
 function bindModalEvents() {
+  $('instance-type-close')?.addEventListener('click', closeInstanceTypePicker);
+  $('instance-type-cancel')?.addEventListener('click', closeInstanceTypePicker);
+  $('instance-type-overlay')?.addEventListener('click', event => { if (event.target === $('instance-type-overlay')) closeInstanceTypePicker(); });
   $('modal-close')?.addEventListener('click', closeModal);
   $('modal-cancel')?.addEventListener('click', closeModal);
   $('modal-overlay')?.addEventListener('click', event => { if (event.target === $('modal-overlay')) closeModal(); });
@@ -2538,6 +3185,11 @@ function bindModalEvents() {
   ['f-domain', 'f-port-fe', 'f-port-be', 'f-admin-email', 'f-notes', 'f-type', 'f-image'].forEach(id => {
     $(id)?.addEventListener('input', renderComposePreview);
     $(id)?.addEventListener('change', renderComposePreview);
+  });
+
+  $('f-bill-mode')?.addEventListener('change', () => {
+    const fields = $('f-bill-fields');
+    if (fields) fields.style.display = $('f-bill-mode').value === 'later' ? 'none' : 'grid';
   });
 
   $('modal-submit')?.addEventListener('click', () => {
@@ -2564,7 +3216,20 @@ function bindModalEvents() {
         adminEmail: $('f-admin-email')?.value.trim() || '',
         notes: $('f-notes')?.value.trim() || '',
         db: `${currentProvisionApp}_${slugify(name).replace(/-/g, '_')}`,
+        billing: {
+          mode: $('f-bill-mode')?.value || 'now',
+          schoolType: $('f-bill-school-type')?.value || '',
+          enrollmentCount: $('f-bill-students')?.value.trim() || '',
+          communicationsIncluded: $('f-bill-comms')?.checked === true,
+          ownSmsProvider: $('f-bill-own-sms')?.checked === true,
+          extraModules: ($('f-bill-extras')?.value || '').split(',').map(value => value.trim()).filter(Boolean),
+          discount: { amountKsh: $('f-bill-discount')?.value.trim() || '', reason: $('f-bill-discount-reason')?.value.trim() || '' },
+        },
       };
+      if (payload.billing.mode !== 'later' && !payload.billing.schoolType) {
+        toast('Choose the school type — every instance is billed on creation.');
+        return;
+      }
 
       try {
         setProvisionSubmitBusy(true);
@@ -2643,6 +3308,13 @@ function bindModalEvents() {
           return;
         }
 
+        try {
+          const created = await response.clone().json();
+          if (created?.billing?.deferred) toast('Billing deferred — add the customer and quote from Billing when ready.');
+          else if (created?.billing?.ok) toast(`Billing: draft quote ${created.billing.quoteNumber} ready for review.`);
+          else if (created?.billing?.error) toast(created.billing.error);
+          if (typeof loadBillingData === 'function') loadBillingData();
+        } catch { /* response body not JSON */ }
         addAudit({
           action: `Provision ${app.label}`,
           instance: payload.name,
@@ -2677,7 +3349,7 @@ function bindModalEvents() {
         renderEverything();
         closeModal();
         finishInstallProgress(true);
-        toast(`Provisioning "${name}" (${app.label}) started.`);
+        toast(`${app.label} "${name}" is provisioned. Its configured service health checks passed.`);
         return;
       } catch (error) {
         finishInstallProgress(false);
@@ -2841,15 +3513,6 @@ function bindDeployEvents() {
   const openPromote = () => openPromoteDeploy();
   $('deploy-promote-btn')?.addEventListener('click', runPromoteDeploy);
   $('btn-deploy-open-promote')?.addEventListener('click', runPromoteDeploy);
-  $('btn-header-promote')?.addEventListener('click', openPromote);
-  $('btn-overview-promote')?.addEventListener('click', openPromote);
-  $('metric-last-deploy')?.addEventListener('click', openPromote);
-  $('metric-last-deploy')?.addEventListener('keydown', event => {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      openPromote();
-    }
-  });
   $('btn-deploy-clear-log')?.addEventListener('click', () => clearDeployLog());
   $('deploy-console-btn')?.addEventListener('click', runConsoleDeploy);
   $('deploy-select-all')?.addEventListener('click', () => {
@@ -2871,9 +3534,537 @@ function bindDeployEvents() {
   });
 }
 
+// ── Field Agents & Commissions Store & UI ──────────────────────────────────
+let AGENTS = [];
+let CURRENT_AGENT = null;
+let AGENTS_STATUS = 'idle';
+
+function formatKsh(amount) {
+  const num = Number(amount || 0);
+  return 'KES ' + num.toLocaleString('en-KE', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+
+async function loadAgentsData() {
+  AGENTS_STATUS = 'loading';
+  const tableBody = $('agents-table-body');
+  if (tableBody && (!AGENTS || AGENTS.length === 0)) {
+    tableBody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:24px">Loading field agents…</td></tr>';
+  }
+
+  try {
+    const search = $('agent-search')?.value.trim() || '';
+    const status = $('agent-filter-status')?.value || 'all';
+    const params = new URLSearchParams();
+    if (search) params.set('search', search);
+    if (status !== 'all') params.set('status', status);
+
+    const [overviewRes, listRes] = await Promise.all([
+      fetch('/api/agents/overview', { credentials: 'same-origin' }),
+      fetch(`/api/agents?${params.toString()}`, { credentials: 'same-origin' }),
+    ]);
+
+    if (overviewRes.ok) {
+      const { overview } = await overviewRes.json();
+      renderAgentsOverview(overview);
+    }
+
+    if (listRes.ok) {
+      const data = await listRes.json();
+      AGENTS = Array.isArray(data.agents) ? data.agents : [];
+      renderAgentsTable();
+    }
+    AGENTS_STATUS = 'ready';
+  } catch (err) {
+    AGENTS_STATUS = 'error';
+    if (tableBody) {
+      tableBody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--red);padding:24px">Failed to load agents: ${esc(err.message)}</td></tr>`;
+    }
+  }
+}
+
+function renderAgentsOverview(overview = {}) {
+  if ($('metric-agents-total')) $('metric-agents-total').textContent = overview.totalAgents || 0;
+  if ($('metric-agents-active-sub')) $('metric-agents-active-sub').textContent = `${overview.activeAgents || 0} active in field`;
+  if ($('metric-agents-schools')) $('metric-agents-schools').textContent = overview.totalAssignedSchools || 0;
+  if ($('metric-agents-earned')) $('metric-agents-earned').textContent = formatKsh(overview.totalEarnedAll || 0);
+  if ($('metric-agents-balance')) $('metric-agents-balance').textContent = formatKsh(overview.totalBalanceDue || 0);
+  if ($('metric-agents-disbursed-sub')) $('metric-agents-disbursed-sub').textContent = `Disbursed: ${formatKsh(overview.totalPayoutsDisbursed || 0)}`;
+}
+
+function renderAgentsTable() {
+  const tableBody = $('agents-table-body');
+  if (!tableBody) return;
+
+  if (AGENTS.length === 0) {
+    tableBody.innerHTML = `
+      <tr>
+        <td colspan="10" style="text-align:center;color:var(--muted);padding:32px">
+          No field agents found. Click <strong>"+ Register Field Agent"</strong> above to register your first partner.
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  tableBody.innerHTML = AGENTS.map(agent => {
+    const rateLabel = agent.commission_type === 'percentage'
+      ? `${agent.commission_rate}% of subscription`
+      : agent.commission_type === 'fixed_per_student'
+      ? `${formatKsh(agent.commission_rate)} / student`
+      : `${formatKsh(agent.commission_rate)} / school`;
+
+    const statusBadge = agent.status === 'active'
+      ? '<span class="status-badge" style="background:rgba(5,150,105,.12);color:#059669;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:700">● Active</span>'
+      : agent.status === 'pending'
+      ? '<span class="status-badge" style="background:rgba(217,119,6,.12);color:#d97706;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:700">● Pending</span>'
+      : '<span class="status-badge" style="background:rgba(220,38,38,.12);color:#dc2626;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:700">● Inactive</span>';
+
+    const balanceColor = Number(agent.balance_due_ksh || 0) > 0 ? 'var(--brand)' : 'var(--muted)';
+
+    return `
+      <tr style="border-bottom:1px solid var(--border)">
+        <td><span class="pill" style="font-weight:700;font-size:11px">${esc(agent.agent_code)}</span></td>
+        <td>
+          <div style="font-weight:700;color:var(--ink)">${esc(agent.full_name)}</div>
+          ${agent.national_id ? `<div style="font-size:11px;color:var(--muted)">ID: ${esc(agent.national_id)}</div>` : ''}
+        </td>
+        <td>
+          <div style="font-size:12px;font-weight:600"><a href="tel:${esc(agent.phone)}" style="color:var(--brand)">${esc(agent.phone)}</a></div>
+          ${agent.email ? `<div style="font-size:11px;color:var(--muted)">${esc(agent.email)}</div>` : ''}
+          ${agent.mpesa_number && agent.mpesa_number !== agent.phone ? `<div style="font-size:11px;color:#059669">M-Pesa: ${esc(agent.mpesa_number)}</div>` : ''}
+        </td>
+        <td>
+          <div style="font-weight:600;font-size:12px">${esc(agent.county || 'Unspecified')}</div>
+          ${agent.base_location ? `<div style="font-size:11px;color:var(--muted)">${esc(agent.base_location)}</div>` : ''}
+        </td>
+        <td><span style="font-size:12px;font-weight:600;color:var(--ink)">${esc(rateLabel)}</span></td>
+        <td>
+          <span class="pill" style="font-size:11px;font-weight:600">${agent.total_schools || 0} schools</span>
+        </td>
+        <td style="font-weight:600;font-size:12px">${formatKsh(agent.total_earned_ksh || 0)}</td>
+        <td style="font-weight:700;font-size:13px;color:${balanceColor}">${formatKsh(agent.balance_due_ksh || 0)}</td>
+        <td>${statusBadge}</td>
+        <td>
+          <div style="display:flex;gap:4px">
+            <button class="btn" style="padding:3px 8px;font-size:11px" onclick="openAgentDetailModal('${agent.id}')" title="View Profile & Statement">View</button>
+            <button class="btn primary" style="padding:3px 8px;font-size:11px" onclick="openPayoutModal('${agent.id}')" title="Record Payout">Payout</button>
+            <button class="btn" style="padding:3px 8px;font-size:11px" onclick="openEditAgentModal('${agent.id}')" title="Edit Agent">Edit</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function openNewAgentModal() {
+  $('agent-form-id').value = '';
+  $('agent-modal-title').textContent = 'Register Field Agent';
+  $('agent-form-name').value = '';
+  $('agent-form-phone').value = '';
+  $('agent-form-email').value = '';
+  $('agent-form-national-id').value = '';
+  $('agent-form-county').value = '';
+  $('agent-form-base').value = '';
+  $('agent-form-commission-type').value = 'percentage';
+  $('agent-form-commission-rate').value = '10.0';
+  $('agent-form-mpesa').value = '';
+  $('agent-form-status').value = 'active';
+  $('agent-form-bank-name').value = '';
+  $('agent-form-bank-account').value = '';
+  $('agent-form-pin').value = '';
+  $('agent-form-notes').value = '';
+  $('agent-modal-overlay').style.display = 'grid';
+}
+
+function openEditAgentModal(agentId) {
+  const agent = AGENTS.find(a => a.id === agentId);
+  if (!agent) return;
+  $('agent-form-id').value = agent.id;
+  $('agent-modal-title').textContent = `Edit Agent — ${agent.agent_code}`;
+  $('agent-form-name').value = agent.full_name || '';
+  $('agent-form-phone').value = agent.phone || '';
+  $('agent-form-email').value = agent.email || '';
+  $('agent-form-national-id').value = agent.national_id || '';
+  $('agent-form-county').value = agent.county || '';
+  $('agent-form-base').value = agent.base_location || '';
+  $('agent-form-commission-type').value = agent.commission_type || 'percentage';
+  $('agent-form-commission-rate').value = agent.commission_rate ?? 10.0;
+  $('agent-form-mpesa').value = agent.mpesa_number || '';
+  $('agent-form-status').value = agent.status || 'active';
+  $('agent-form-bank-name').value = agent.bank_name || '';
+  $('agent-form-bank-account').value = agent.bank_account || '';
+  $('agent-form-pin').value = '';
+  $('agent-form-notes').value = agent.notes || '';
+  $('agent-modal-overlay').style.display = 'grid';
+}
+
+async function saveAgentForm() {
+  const id = $('agent-form-id').value.trim();
+  const full_name = $('agent-form-name').value.trim();
+  const phone = $('agent-form-phone').value.trim();
+  if (!full_name) return alert('Full Name is required');
+  if (!phone) return alert('Primary Phone number is required');
+
+  const payload = {
+    full_name,
+    phone,
+    email: $('agent-form-email').value.trim(),
+    national_id: $('agent-form-national-id').value.trim(),
+    county: $('agent-form-county').value.trim(),
+    base_location: $('agent-form-base').value.trim(),
+    commission_type: $('agent-form-commission-type').value,
+    commission_rate: parseFloat($('agent-form-commission-rate').value) || 0,
+    mpesa_number: $('agent-form-mpesa').value.trim(),
+    status: $('agent-form-status').value,
+    bank_name: $('agent-form-bank-name').value.trim(),
+    bank_account: $('agent-form-bank-account').value.trim(),
+    notes: $('agent-form-notes').value.trim(),
+  };
+
+  const pin = $('agent-form-pin').value.trim();
+  if (pin) payload.pin = pin;
+
+  try {
+    const url = id ? `/api/agents/${id}` : '/api/agents';
+    const method = id ? 'PUT' : 'POST';
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      credentials: 'same-origin',
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Failed to save agent');
+    toast(id ? 'Agent updated successfully' : `Agent ${result.agent?.agent_code || ''} registered`);
+    $('agent-modal-overlay').style.display = 'none';
+    loadAgentsData();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
+}
+
+async function openAgentDetailModal(agentId) {
+  try {
+    const res = await fetch(`/api/agents/${agentId}`, { credentials: 'same-origin' });
+    if (!res.ok) throw new Error('Agent not found');
+    const { agent } = await res.json();
+    CURRENT_AGENT = agent;
+    renderAgentDetailModal(agent);
+    $('agent-detail-overlay').style.display = 'grid';
+  } catch (err) {
+    alert('Error loading agent: ' + err.message);
+  }
+}
+
+function renderAgentDetailModal(agent) {
+  $('agent-detail-code').textContent = agent.agent_code;
+  $('agent-detail-name').textContent = agent.full_name;
+  $('agent-detail-sub').textContent = `Phone: ${agent.phone} · County: ${agent.county || 'N/A'} · Rate: ${agent.commission_rate}${agent.commission_type === 'percentage' ? '%' : ' KES'}`;
+
+  const statusBadge = $('agent-detail-status-badge');
+  if (statusBadge) {
+    statusBadge.innerHTML = agent.status === 'active'
+      ? '<span style="background:rgba(5,150,105,.12);color:#059669;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700">Active</span>'
+      : '<span style="background:rgba(217,119,6,.12);color:#d97706;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700">' + esc(agent.status) + '</span>';
+  }
+
+  $('agent-stat-earned').textContent = formatKsh(agent.financials?.totalEarnedKsh || 0);
+  $('agent-stat-paid').textContent = formatKsh(agent.financials?.totalPaidKsh || 0);
+  $('agent-stat-balance').textContent = formatKsh(agent.financials?.balanceDueKsh || 0);
+
+  // Render Schools Table
+  const schoolsBody = $('agent-schools-body');
+  if (schoolsBody) {
+    const schools = agent.schools || [];
+    if (schools.length === 0) {
+      schoolsBody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:18px">No schools assigned to this agent yet.</td></tr>';
+    } else {
+      schoolsBody.innerHTML = schools.map(s => `
+        <tr>
+          <td style="font-weight:600">${esc(s.school_name)}</td>
+          <td><span class="pill" style="font-size:11px">${esc(s.status)}</span></td>
+          <td>${esc(s.contact_person || '—')}</td>
+          <td>${esc(s.contact_phone || '—')}</td>
+          <td>${esc(s.created_at ? s.created_at.slice(0, 10) : '—')}</td>
+          <td><button class="btn" style="padding:2px 6px;font-size:10px" onclick="deleteSchoolAssignment('${s.id}')">Remove</button></td>
+        </tr>
+      `).join('');
+    }
+  }
+
+  // Render Earnings Table
+  const earningsBody = $('agent-earnings-body');
+  if (earningsBody) {
+    const earnings = agent.earnings || [];
+    if (earnings.length === 0) {
+      earningsBody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:18px">No commissions recorded yet.</td></tr>';
+    } else {
+      earningsBody.innerHTML = earnings.map(e => `
+        <tr>
+          <td>${esc(e.earned_date)}</td>
+          <td style="font-weight:600">${esc(e.school_name || 'General')}</td>
+          <td>${esc(e.description)}</td>
+          <td>${formatKsh(e.gross_amount_ksh)}</td>
+          <td style="font-weight:700;color:var(--brand)">${formatKsh(e.earned_amount_ksh)}</td>
+          <td><span class="pill" style="font-size:11px;font-weight:600">${esc(e.status)}</span></td>
+        </tr>
+      `).join('');
+    }
+  }
+
+  // Render Payouts Table
+  const payoutsBody = $('agent-payouts-body');
+  if (payoutsBody) {
+    const payouts = agent.payouts || [];
+    if (payouts.length === 0) {
+      payoutsBody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:18px">No payouts disbursed to this agent yet.</td></tr>';
+    } else {
+      payoutsBody.innerHTML = payouts.map(p => `
+        <tr>
+          <td>${esc(p.payout_date)}</td>
+          <td style="text-transform:uppercase;font-weight:600">${esc(p.payout_method)}</td>
+          <td style="font-family:monospace;font-weight:700">${esc(p.reference || '—')}</td>
+          <td style="font-weight:700;color:var(--green)">${formatKsh(p.amount_ksh)}</td>
+          <td><span class="pill" style="font-size:11px">${esc(p.status)}</span></td>
+          <td>${esc(p.processed_by || 'admin')}</td>
+        </tr>
+      `).join('');
+    }
+  }
+
+  switchAgentDetailTab('schools');
+}
+
+function switchAgentDetailTab(tab) {
+  const tabs = ['schools', 'earnings', 'payouts'];
+  tabs.forEach(t => {
+    const btn = $(`tab-btn-${t}`);
+    const pane = $(`pane-agent-${t}`);
+    if (btn) {
+      if (t === tab) {
+        btn.classList.add('active');
+        btn.style.borderBottomColor = 'var(--brand)';
+        btn.style.color = 'var(--ink)';
+      } else {
+        btn.classList.remove('active');
+        btn.style.borderBottomColor = 'transparent';
+        btn.style.color = 'var(--muted)';
+      }
+    }
+    if (pane) pane.style.display = t === tab ? 'block' : 'none';
+  });
+}
+
+function openPayoutModal(agentId) {
+  const agent = CURRENT_AGENT && CURRENT_AGENT.id === agentId ? CURRENT_AGENT : AGENTS.find(a => a.id === agentId);
+  if (!agent) return;
+  CURRENT_AGENT = agent;
+
+  $('payout-modal-agent-name').textContent = `${agent.full_name} (${agent.agent_code})`;
+  $('payout-modal-agent-mpesa').textContent = `M-Pesa / Phone: ${agent.mpesa_number || agent.phone}`;
+  const balance = agent.financials ? agent.financials.balanceDueKsh : (agent.balance_due_ksh || 0);
+  $('payout-modal-balance-hint').textContent = `Current Outstanding Balance: ${formatKsh(balance)}`;
+  $('payout-form-amount').value = balance > 0 ? balance : '';
+  $('payout-form-ref').value = '';
+  $('payout-form-notes').value = '';
+  $('payout-form-date').value = new Date().toISOString().slice(0, 10);
+  $('agent-payout-overlay').style.display = 'grid';
+}
+
+async function submitPayout() {
+  if (!CURRENT_AGENT) return;
+  const amount_ksh = parseFloat($('payout-form-amount').value);
+  const reference = $('payout-form-ref').value.trim();
+  if (isNaN(amount_ksh) || amount_ksh <= 0) return alert('Please enter a valid payout amount');
+  if (!reference) return alert('Transaction reference (e.g. M-Pesa receipt code) is required');
+
+  try {
+    const res = await fetch(`/api/agents/${CURRENT_AGENT.id}/payouts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        amount_ksh,
+        payout_method: $('payout-form-method').value,
+        reference,
+        payout_date: $('payout-form-date').value,
+        notes: $('payout-form-notes').value.trim(),
+      }),
+      credentials: 'same-origin',
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Failed to record payout');
+    toast(`Payout of KES ${amount_ksh.toLocaleString()} recorded`);
+    $('agent-payout-overlay').style.display = 'none';
+    if ($('agent-detail-overlay').style.display !== 'none') {
+      openAgentDetailModal(CURRENT_AGENT.id);
+    }
+    loadAgentsData();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
+}
+
+function openEarningModal(agentId) {
+  const agent = CURRENT_AGENT && CURRENT_AGENT.id === agentId ? CURRENT_AGENT : AGENTS.find(a => a.id === agentId);
+  if (!agent) return;
+  CURRENT_AGENT = agent;
+  $('earning-form-school').value = '';
+  $('earning-form-gross').value = '';
+  $('earning-form-earned').value = '';
+  $('earning-form-invoice').value = '';
+  $('earning-form-desc').value = '';
+  $('earning-form-status').value = 'approved';
+  $('agent-earning-overlay').style.display = 'grid';
+}
+
+async function submitEarning() {
+  if (!CURRENT_AGENT) return;
+  const school_name = $('earning-form-school').value.trim();
+  const earned_amount_ksh = parseFloat($('earning-form-earned').value);
+  if (!school_name) return alert('School name is required');
+  if (isNaN(earned_amount_ksh) || earned_amount_ksh <= 0) return alert('Valid commission amount is required');
+
+  try {
+    const res = await fetch(`/api/agents/${CURRENT_AGENT.id}/earnings`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        school_name,
+        gross_amount_ksh: parseFloat($('earning-form-gross').value) || 0,
+        earned_amount_ksh,
+        invoice_ref: $('earning-form-invoice').value.trim(),
+        description: $('earning-form-desc').value.trim(),
+        status: $('earning-form-status').value,
+      }),
+      credentials: 'same-origin',
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Failed to record commission');
+    toast(`Commission of KES ${earned_amount_ksh.toLocaleString()} recorded`);
+    $('agent-earning-overlay').style.display = 'none';
+    if ($('agent-detail-overlay').style.display !== 'none') {
+      openAgentDetailModal(CURRENT_AGENT.id);
+    }
+    loadAgentsData();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
+}
+
+function openAssignSchoolModal(agentId) {
+  const agent = CURRENT_AGENT && CURRENT_AGENT.id === agentId ? CURRENT_AGENT : AGENTS.find(a => a.id === agentId);
+  if (!agent) return;
+  CURRENT_AGENT = agent;
+  $('school-form-name').value = '';
+  $('school-form-contact').value = '';
+  $('school-form-phone').value = '';
+  $('school-form-status').value = 'pitching';
+  $('agent-school-overlay').style.display = 'grid';
+}
+
+async function submitAssignSchool() {
+  if (!CURRENT_AGENT) return;
+  const school_name = $('school-form-name').value.trim();
+  if (!school_name) return alert('School name is required');
+
+  try {
+    const res = await fetch(`/api/agents/${CURRENT_AGENT.id}/schools`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        school_name,
+        contact_person: $('school-form-contact').value.trim(),
+        contact_phone: $('school-form-phone').value.trim(),
+        status: $('school-form-status').value,
+      }),
+      credentials: 'same-origin',
+    });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error || 'Failed to assign school');
+    toast(`School ${school_name} assigned to agent`);
+    $('agent-school-overlay').style.display = 'none';
+    if ($('agent-detail-overlay').style.display !== 'none') {
+      openAgentDetailModal(CURRENT_AGENT.id);
+    }
+    loadAgentsData();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
+}
+
+async function deleteSchoolAssignment(schoolId) {
+  if (!confirm('Remove this school from the agent?')) return;
+  try {
+    const res = await fetch(`/api/agents/schools/${schoolId}`, {
+      method: 'DELETE',
+      credentials: 'same-origin',
+    });
+    if (!res.ok) throw new Error('Failed to remove school assignment');
+    toast('School removed');
+    if (CURRENT_AGENT) openAgentDetailModal(CURRENT_AGENT.id);
+    loadAgentsData();
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
+}
+
+function bindAgentEvents() {
+  $('btn-new-agent')?.addEventListener('click', openNewAgentModal);
+  $('btn-refresh-agents')?.addEventListener('click', loadAgentsData);
+  $('agent-search')?.addEventListener('input', () => {
+    clearTimeout(window._agentSearchTimer);
+    window._agentSearchTimer = setTimeout(loadAgentsData, 250);
+  });
+  $('agent-filter-status')?.addEventListener('change', loadAgentsData);
+
+  // Agent form
+  $('agent-modal-close')?.addEventListener('click', () => { $('agent-modal-overlay').style.display = 'none'; });
+  $('agent-form-cancel')?.addEventListener('click', () => { $('agent-modal-overlay').style.display = 'none'; });
+  $('agent-form-save')?.addEventListener('click', saveAgentForm);
+
+  // Detail modal
+  $('agent-detail-close')?.addEventListener('click', () => { $('agent-detail-overlay').style.display = 'none'; });
+  $('agent-detail-dismiss')?.addEventListener('click', () => { $('agent-detail-overlay').style.display = 'none'; });
+  $('tab-btn-schools')?.addEventListener('click', () => switchAgentDetailTab('schools'));
+  $('tab-btn-earnings')?.addEventListener('click', () => switchAgentDetailTab('earnings'));
+  $('tab-btn-payouts')?.addEventListener('click', () => switchAgentDetailTab('payouts'));
+
+  $('btn-agent-record-payout')?.addEventListener('click', () => { if (CURRENT_AGENT) openPayoutModal(CURRENT_AGENT.id); });
+  $('btn-agent-add-earning')?.addEventListener('click', () => { if (CURRENT_AGENT) openEarningModal(CURRENT_AGENT.id); });
+  $('btn-agent-add-school')?.addEventListener('click', () => { if (CURRENT_AGENT) openAssignSchoolModal(CURRENT_AGENT.id); });
+  $('btn-agent-edit-profile')?.addEventListener('click', () => {
+    if (CURRENT_AGENT) {
+      $('agent-detail-overlay').style.display = 'none';
+      openEditAgentModal(CURRENT_AGENT.id);
+    }
+  });
+
+  // Payout modal
+  $('agent-payout-close')?.addEventListener('click', () => { $('agent-payout-overlay').style.display = 'none'; });
+  $('payout-form-cancel')?.addEventListener('click', () => { $('agent-payout-overlay').style.display = 'none'; });
+  $('payout-form-submit')?.addEventListener('click', submitPayout);
+
+  // Earning modal
+  $('agent-earning-close')?.addEventListener('click', () => { $('agent-earning-overlay').style.display = 'none'; });
+  $('earning-form-cancel')?.addEventListener('click', () => { $('agent-earning-overlay').style.display = 'none'; });
+  $('earning-form-submit')?.addEventListener('click', submitEarning);
+
+  // School modal
+  $('agent-school-close')?.addEventListener('click', () => { $('agent-school-overlay').style.display = 'none'; });
+  $('school-form-cancel')?.addEventListener('click', () => { $('agent-school-overlay').style.display = 'none'; });
+  $('school-form-submit')?.addEventListener('click', submitAssignSchool);
+}
+
+// Make functions globally available for inline onclick handlers
+window.openAgentDetailModal = openAgentDetailModal;
+window.openPayoutModal = openPayoutModal;
+window.openEditAgentModal = openEditAgentModal;
+window.deleteSchoolAssignment = deleteSchoolAssignment;
+
 async function init() {
   bindModalEvents();
   bindDeployEvents();
+  bindAgentEvents();
   initSidebarToggle();
   showSection(sectionFromHash(), { skipHashUpdate: true });
   await loadLeadsFromApi();

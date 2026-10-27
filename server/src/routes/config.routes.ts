@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { configController } from '../controllers/config.controller';
+import { getAcademicYear, saveAcademicYearSetup } from '../controllers/academicYear.controller';
 import { authenticate, authorize } from '../middleware/auth.middleware';
 import { requireRole, auditLog } from '../middleware/permissions.middleware';
 import { rateLimit } from '../middleware/enhanced-rateLimit.middleware';
@@ -83,6 +84,57 @@ router.put(
   validateTermConfig,
   auditLog('UPDATE_TERM_CONFIG'),
   configController.updateTermConfig
+);
+
+// ============================================
+// ACADEMIC YEAR SETUP (all three terms in one save)
+// ============================================
+
+const dateKey = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD');
+const optionalDateKey = z.union([dateKey, z.literal(''), z.null()]).optional();
+const termId = z.enum(['TERM_1', 'TERM_2', 'TERM_3']);
+
+const academicYearSchema = z.object({
+  academicYear: z.number().int().min(2000).max(2100),
+  terms: z.array(z.object({
+    term: termId,
+    startDate: dateKey,
+    endDate: dateKey,
+    midtermStart: optionalDateKey,
+    midtermEnd: optionalDateKey,
+    examStart: optionalDateKey,
+    examEnd: optionalDateKey,
+  })).length(3),
+  activeTerm: termId.optional(),
+  dryRun: z.boolean().optional(),
+  confirmRunningTermChange: z.boolean().optional(),
+  reason: z.string().max(500).optional(),
+});
+
+/**
+ * @route   GET /api/config/academic-year/:year
+ * @desc    Current term and break dates for one academic year
+ * @access  ADMIN, SUPER_ADMIN, HEAD_TEACHER
+ */
+router.get(
+  '/academic-year/:year',
+  requireRole(['ADMIN', 'SUPER_ADMIN', 'HEAD_TEACHER']),
+  rateLimit({ windowMs: 60_000, maxRequests: 60 }),
+  getAcademicYear
+);
+
+/**
+ * @route   POST /api/config/academic-year
+ * @desc    Validate (dryRun) or save all three terms with their break and exam dates
+ * @access  ADMIN, SUPER_ADMIN
+ */
+router.post(
+  '/academic-year',
+  requireRole(['ADMIN', 'SUPER_ADMIN']),
+  rateLimit({ windowMs: 60_000, maxRequests: 30 }),
+  validate(academicYearSchema),
+  auditLog('SETUP_ACADEMIC_YEAR'),
+  saveAcademicYearSetup
 );
 
 // ============================================

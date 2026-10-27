@@ -166,8 +166,7 @@ const AdminClockInLiveFeed = ({ schoolId, onNewEvent }) => {
 
         socket.on('connect', () => {
             // Join the school attendance room
-            const room = `attendance:${schoolId || 'school'}`;
-            socket.emit('join_attendance', room);
+            socket.emit('join_attendance', 'attendance:school');
         });
 
         socket.on('hr:clock_event', (event) => {

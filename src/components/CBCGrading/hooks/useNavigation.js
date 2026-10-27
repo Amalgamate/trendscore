@@ -167,10 +167,12 @@ export const allNavSections = [
         app: 'planner',
         permission: null,
         items: [
-            { id: 'planner-timetable', label: 'Timetable', path: 'planner-timetable', permission: 'ACCESS_TIMETABLE', app: 'timetable' },
-            { id: 'planner-calendar', label: 'Calendar', path: 'planner-calendar', permission: null },
+            { id: 'annual-planner', label: 'Year Planner', path: 'annual-planner', params: { tab: 'dashboard' }, permission: null, app: 'planner' },
+            { id: 'planner-calendar', label: 'Calendar', path: 'planner-calendar', permission: null, app: 'planner' },
+            { id: 'planner-term-setup', label: 'Term Setup', path: 'annual-planner', params: { tab: 'terms' }, permission: null, app: 'planner' },
+            { id: 'planner-events', label: 'All Events', path: 'annual-planner', params: { tab: 'events' }, permission: null, app: 'planner' },
             { id: 'planner-duty-roster', label: 'Duty Roster', path: 'planner-duty-roster', permission: null, app: 'planner' },
-            { id: 'planner-schemes', label: 'Schemes of Work', path: 'planner-schemes', permission: null, icon: ClipboardList, app: 'curriculum' },
+            { id: 'planner-timetable', label: 'Timetable', path: 'planner-timetable', permission: 'ACCESS_TIMETABLE', app: 'timetable' },
         ]
     },
     {
@@ -234,7 +236,6 @@ export const allNavSections = [
                 label: 'Formative',
                 type: 'group',
                 icon: Sparkles,
-                hidden: true,
                 items: [
                     { id: 'assess-formative',        label: 'Record Assessment',  path: 'assess-formative',        permission: 'ACCESS_ASSESSMENT_MODULE', icon: Sparkles },
                     { id: 'assess-formative-report', label: 'Formative Progress', path: 'assess-formative-report', permission: 'ACCESS_ASSESSMENT_MODULE', icon: TrendingUp },
@@ -245,7 +246,6 @@ export const allNavSections = [
                 label: 'Holistic Development',
                 type: 'group',
                 icon: Star,
-                hidden: true,
                 items: [
                     { id: 'assess-holistic-summary',  label: 'Development Summary', path: 'assess-holistic-summary',  permission: 'ACCESS_ASSESSMENT_MODULE', icon: Activity },
                     { id: 'assess-core-competencies', label: 'Core Competencies', path: 'assess-core-competencies', permission: 'ACCESS_ASSESSMENT_MODULE', icon: Star },
@@ -843,6 +843,7 @@ export const useNavigation = () => {
 
     const buildNav = (sourceSections) => {
         const isItemVisible = (item) => {
+            if (item.id === 'planner-term-setup' && !['ADMIN', 'SUPER_ADMIN'].some((allowedRole) => isRole(allowedRole))) return false;
             // Teachers may access their own class admissions only (special override).
             if (item.path === 'learners-admissions' && isRole('TEACHER')) return true;
 
@@ -958,6 +959,7 @@ export const useNavigation = () => {
 
     const navSections = useMemo(() => {
         const isItemVisible = (item) => {
+            if (item.id === 'planner-term-setup' && !['ADMIN', 'SUPER_ADMIN'].some((allowedRole) => isRole(allowedRole))) return false;
             // A junior school guides transition decisions; it does not deliver
             // Grade 10–12 subjects. School Offerings is therefore a senior-only
             // setting and must not appear in the Junior Transition Centre.

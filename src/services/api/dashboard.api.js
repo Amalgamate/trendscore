@@ -13,6 +13,8 @@ const buildQuery = (params = {}) => {
 export const dashboardAPI = {
   getSetupStatus: async () =>
     fetchWithAuth('/dashboard/setup-status'),
+  getKeyDates: async () =>
+    fetchWithAuth('/dashboard/key-dates'),
   getStarterMetrics: async () =>
     fetchWithAuth('/dashboard/starter'),
   getSecondaryMetrics: async () =>

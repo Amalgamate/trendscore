@@ -23,6 +23,8 @@ declare global {
         email: string;
         role: Role;
         roles?: Role[];
+        institutionType?: string;
+        exp?: number;
         /**
          * `true` when the request is made with an impersonation token.
          * Set by `authenticate` middleware; `false` (or absent) for normal sessions.
@@ -38,6 +40,7 @@ declare global {
       };
       school?: School;
       requestId?: string;
+  accessToken?: string;
       resolvedInstitutionType?: string;
       requestedInstitutionType?: string | null;
     }
@@ -53,6 +56,8 @@ export interface AuthRequest extends Request {
     email: string;
     role: Role;
     roles?: Role[];
+    institutionType?: string;
+    exp?: number;
     /**
      * `true` when the request is made with an impersonation token.
      * Set by `authenticate` middleware. Requirement 6.1

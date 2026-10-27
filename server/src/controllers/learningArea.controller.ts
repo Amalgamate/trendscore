@@ -208,14 +208,44 @@ export const deleteLearningArea = async (req: AuthRequest, res: Response) => {
       throw new ApiError(404, 'Learning area not found');
     }
 
-    await prisma.learningArea.delete({
-      where: { id }
-    });
+    // Learning areas are referenced by timetable, assignment and LMS records.
+    // Hard deleting one can fail with a database FK error, so report the
+    // records that must be cleared before deletion.
+    const referenceCounts = await Promise.all([
+      prisma.subjectAssignment.count({ where: { learningAreaId: id } }),
+      prisma.learningLesson.count({ where: { learningAreaId: id } }),
+      prisma.learningAssignment.count({ where: { learningAreaId: id } }),
+      prisma.learningResource.count({ where: { learningAreaId: id } }),
+      prisma.timetableEntry.count({ where: { learningAreaId: id } }),
+      prisma.instructionalAllocation.count({ where: { learningAreaId: id } }),
+      prisma.classSchedule.count({ where: { learningAreaId: id } }),
+      prisma.timetableChangeRequest.count({ where: { learningAreaId: id } }),
+    ]);
+    const [assignments, lessons, lmsAssignments, resources, timetable, allocations, schedules, changeRequests] = referenceCounts;
+    const references = assignments + lessons + lmsAssignments + resources + timetable + allocations + schedules + changeRequests;
+
+    if (references > 0) {
+      throw new ApiError(
+        409,
+        `Cannot delete ${learningArea.name}: it is used by ${assignments} teacher assignment(s), ${lessons + lmsAssignments + resources} LMS item(s), and ${timetable + allocations + schedules + changeRequests} timetable record(s). Remove those references first.`
+      ).withCode('LEARNING_AREA_IN_USE');
+    }
+
+    try {
+      await prisma.learningArea.delete({ where: { id } });
+    } catch (error: any) {
+      if (error?.code === 'P2003' || error?.code === 'P2014') {
+        throw new ApiError(409, `Cannot delete ${learningArea.name} because it is still referenced by school records. Remove those references first.`)
+          .withCode('LEARNING_AREA_IN_USE');
+      }
+      throw error;
+    }
 
     return res.json({ success: true, message: 'Learning area deleted successfully' });
   } catch (error: any) {
+    if (error instanceof ApiError) throw error;
     logger.error('Error deleting learning area:', error);
-    throw new ApiError(500, error.message || 'Failed to delete learning area');
+    throw new ApiError(500, 'Failed to delete learning area');
   }
 };
 

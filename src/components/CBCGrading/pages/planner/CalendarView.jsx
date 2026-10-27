@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
 import { format, parse, startOfWeek, getDay, isValid } from 'date-fns';
 import { enUS } from 'date-fns/locale';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import api from '../../../../services/api';
-import { Plus, Video, RefreshCw, CalendarPlus, Download } from 'lucide-react';
+import { Plus, Video, RefreshCw, CalendarPlus, Download, CheckCircle2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import {
   Dialog,
@@ -14,10 +14,20 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../../../ui/dialog';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from '../../../ui/sheet';
 import { Button } from '../../../ui/button';
+import { usePermissions } from '../../../../hooks/usePermissions';
 import { Input } from '../../../ui/input';
 import { Label } from '../../../ui/label';
 import { Textarea } from '../../../ui/textarea';
+import EventAudiencePicker from './EventAudiencePicker';
 import {
   buildGoogleCalendarUrl,
   buildIcsEventContent,
@@ -54,7 +64,18 @@ const EVENT_TYPE_OPTIONS = [
   { value: 'SPORTS', label: 'Sports' },
   { value: 'MEETING', label: 'Meeting' },
   { value: 'HOLIDAY', label: 'Holiday' },
+  { value: 'ASSESSMENT', label: 'Assessment' },
   { value: 'EXAM', label: 'Exam' },
+  { value: 'TERM_OPENING', label: 'Term opening' },
+  { value: 'TERM_CLOSING', label: 'Term closing' },
+  { value: 'MIDTERM_BREAK', label: 'Mid-term break' },
+  { value: 'EXAM_WEEK', label: 'Exam week' },
+  { value: 'FINANCE', label: 'Finance' },
+  { value: 'TRIP', label: 'Trip' },
+  { value: 'STAFF_EVENT', label: 'Staff event' },
+  { value: 'PARENT_EVENT', label: 'Parent event' },
+  { value: 'NATIONAL_EVENT', label: 'National event' },
+  { value: 'OTHER', label: 'Other' },
 ];
 
 function pad2(n) {
@@ -119,15 +140,20 @@ function emptyForm() {
     type: 'GENERAL',
     location: '',
     meetingLink: '',
+    audience: [],
+    classIds: [],
   };
 }
 
 const CalendarView = () => {
+  const { isAnyRole } = usePermissions();
+  const canCreateEvents = isAnyRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'TEACHER']);
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('month');
   const [date, setDate] = useState(new Date());
-  const [termLabel, setTermLabel] = useState('');
+  const [monthLabel, setMonthLabel] = useState('');
+  const requestSequence = useRef(0);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [createPhase, setCreatePhase] = useState('form'); // 'form' | 'success'
@@ -141,18 +167,24 @@ const CalendarView = () => {
   const getMonthRange = (referenceDate) => {
     const ref = isValid(referenceDate) ? referenceDate : new Date();
     const start = new Date(ref.getFullYear(), ref.getMonth(), 1);
-    const end = new Date(ref.getFullYear(), ref.getMonth() + 1, 0);
+    const end = new Date(ref.getFullYear(), ref.getMonth() + 1, 0, 23, 59, 59, 999);
     return {
       start: start.toISOString(),
       end: end.toISOString(),
     };
   };
 
+  useEffect(() => {
+    const ref = isValid(date) ? date : new Date();
+    setMonthLabel(format(ref, 'MMMM yyyy'));
+  }, [date]);
+
   const fetchEvents = useCallback(async (params = {}) => {
+    const requestId = ++requestSequence.current;
     try {
       setLoading(true);
       const response = await api.planner.getEvents(params);
-      if (response.success) {
+      if (requestId === requestSequence.current && response.success) {
         const formattedEvents = (response.data || [])
           .map((evt) => {
             let start = safeDate(evt.startDate);
@@ -174,54 +206,22 @@ const CalendarView = () => {
         setEvents(formattedEvents);
       }
     } catch (error) {
-      console.error('Error fetching events:', error);
-      toast.error('Calendar is temporarily unavailable. Please try again shortly.');
+      if (requestId === requestSequence.current) {
+        console.error('Error fetching events:', error);
+        toast.error('Calendar is temporarily unavailable. Please try again shortly.');
+      }
     } finally {
-      setLoading(false);
+      if (requestId === requestSequence.current) setLoading(false);
     }
   }, []);
 
-  const fetchTermConfig = useCallback(async () => {
-    try {
-      const response = await api.config.getActiveTermConfig();
-      const active = response?.data ?? response ?? null;
-
-      if (active) {
-        const termStart = safeDate(active.startDate);
-        const termEnd = safeDate(active.endDate);
-        if (!termStart || !termEnd) {
-          toast.error('Active term has invalid dates; showing current month instead');
-          const range = getMonthRange(date);
-          setTermLabel('Current month');
-          await fetchEvents(range);
-        } else {
-          setTermLabel(`${active.term} ${active.academicYear}`);
-          await fetchEvents({
-            start: termStart.toISOString(),
-            end: termEnd.toISOString(),
-          });
-        }
-      } else {
-        const range = getMonthRange(date);
-        setTermLabel('Current month');
-        await fetchEvents(range);
-      }
-    } catch (error) {
-      const message = String(error?.message || '').toLowerCase();
-      const isForbidden = message.includes('access denied') || message.includes('forbidden');
-      const range = getMonthRange(date);
-      setTermLabel('Current month');
-      if (!isForbidden) {
-        console.error('Error loading term configuration:', error);
-        toast.error('Failed to load academic term configuration');
-      }
-      await fetchEvents(range);
-    }
+  const fetchCurrentMonthEvents = useCallback(async () => {
+    await fetchEvents(getMonthRange(date));
   }, [date, fetchEvents]);
 
   useEffect(() => {
-    fetchTermConfig();
-  }, [fetchTermConfig]);
+    fetchCurrentMonthEvents();
+  }, [fetchCurrentMonthEvents]);
 
   const openCreateDefaults = useCallback(() => {
     const { start, end } = defaultTimedRange();
@@ -310,6 +310,8 @@ const CalendarView = () => {
       endDate,
       allDay: form.allDay,
       type: form.type,
+      audience: form.audience,
+      classIds: form.classIds,
     };
     const desc = form.description.trim();
     if (desc) payload.description = desc;
@@ -330,7 +332,7 @@ const CalendarView = () => {
       const res = await api.planner.createEvent(payload);
       if (res?.success) {
         toast.success('Event saved');
-        await fetchTermConfig();
+        await fetchCurrentMonthEvents();
         const start = new Date(payload.startDate);
         const end = new Date(payload.endDate);
         setSuccessMeta({
@@ -423,26 +425,26 @@ const CalendarView = () => {
           </h2>
           <p className="text-sm text-gray-500">
             Showing events for:{' '}
-            <span className="font-medium text-gray-700">{termLabel || 'Active term'}</span>
+            <span className="font-medium text-gray-700">{monthLabel}</span>
           </p>
         </div>
         <div className="flex gap-2">
           <button
             type="button"
-            onClick={() => fetchTermConfig()}
+            onClick={() => fetchCurrentMonthEvents()}
             className="p-2 text-gray-600 hover:bg-gray-100 rounded-full"
             title="Refresh"
           >
             <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
           </button>
-          <button
+          {canCreateEvents && <button
             type="button"
             onClick={openCreateDefaults}
             className="flex items-center gap-2 px-4 py-2 bg-brand-teal text-white rounded-lg hover:bg-teal-700 transition"
           >
             <Plus size={18} />
             Create Event
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -459,43 +461,46 @@ const CalendarView = () => {
           const d = next instanceof Date ? next : safeDate(next);
           if (d) setDate(d);
         }}
-        selectable
+        selectable={canCreateEvents}
         onSelectSlot={handleSelectSlot}
         onSelectEvent={handleSelectEvent}
         eventPropGetter={eventStyleGetter}
         views={['month', 'week', 'day', 'agenda']}
       />
 
-      <Dialog open={createOpen} onOpenChange={(o) => !o && closeCreateModal()}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <Sheet open={createOpen} onOpenChange={(o) => !o && closeCreateModal()}>
+        <SheetContent side="right" className="w-full sm:max-w-xl md:max-w-2xl p-0 flex flex-col h-full bg-white border-l border-gray-200 shadow-2xl">
           {createPhase === 'form' ? (
-            <form onSubmit={handleCreateSubmit}>
-              <DialogHeader>
-                <DialogTitle>Create event</DialogTitle>
-                <DialogDescription>
-                  Saved to the school planner. Use the buttons after save to add reminders in Google Calendar
-                  or download an .ics file for Apple / Outlook.
-                </DialogDescription>
-              </DialogHeader>
+            <form onSubmit={handleCreateSubmit} className="flex flex-col h-full min-h-0">
+              <SheetHeader className="px-6 py-5 border-b border-gray-100 bg-slate-50/70 shrink-0">
+                <div className="flex items-center gap-2 text-brand-teal mb-1">
+                  <CalendarPlus className="h-4 w-4" />
+                  <span className="text-[11px] font-bold tracking-wider uppercase text-teal-700">Academic &amp; School Planner</span>
+                </div>
+                <SheetTitle className="text-xl font-bold text-gray-900">Create Event</SheetTitle>
+                <SheetDescription>
+                  Saved to the school planner. After saving, you can instantly sync reminders to Google Calendar or export an .ics file.
+                </SheetDescription>
+              </SheetHeader>
 
-              <div className="grid gap-4 py-2">
+              <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4 min-h-0">
                 <div className="grid gap-2">
-                  <Label htmlFor="evt-title">Title</Label>
+                  <Label htmlFor="evt-title">Title *</Label>
                   <Input
                     id="evt-title"
                     value={form.title}
                     onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-                    placeholder="e.g. Staff meeting, Sports day"
+                    placeholder="e.g. Staff meeting, Sports day, Midterm exams"
                     required
                     minLength={2}
                   />
                 </div>
 
                 <div className="grid gap-2">
-                  <Label htmlFor="evt-type">Type</Label>
+                  <Label htmlFor="evt-type">Event Type</Label>
                   <select
                     id="evt-type"
-                    className="flex h-10 w-full rounded-lg border-2 border-gray-200 bg-white px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-purple"
+                    className="flex h-10 w-full rounded-lg border-2 border-gray-200 bg-white px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-teal"
                     value={form.type}
                     onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}
                   >
@@ -507,16 +512,16 @@ const CalendarView = () => {
                   </select>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2.5 p-3 rounded-lg bg-gray-50 border border-gray-100">
                   <input
                     id="evt-allday"
                     type="checkbox"
-                    className="h-4 w-4 rounded border-gray-300"
+                    className="h-4 w-4 rounded border-gray-300 text-brand-teal focus:ring-brand-teal"
                     checked={form.allDay}
                     onChange={(e) => setForm((f) => ({ ...f, allDay: e.target.checked }))}
                   />
-                  <Label htmlFor="evt-allday" className="font-normal cursor-pointer">
-                    All day
+                  <Label htmlFor="evt-allday" className="font-medium text-gray-800 cursor-pointer">
+                    All-day event (no specific start/end times)
                   </Label>
                 </div>
 
@@ -575,109 +580,132 @@ const CalendarView = () => {
                     rows={3}
                     value={form.description}
                     onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                    placeholder="Notes for attendees"
+                    placeholder="Details or notes for attendees"
                   />
                 </div>
 
-                <div className="grid gap-2">
-                  <Label htmlFor="evt-loc">Location (optional)</Label>
-                  <Input
-                    id="evt-loc"
-                    value={form.location}
-                    onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
-                    placeholder="Room, field, or address"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid gap-2">
+                    <Label htmlFor="evt-loc">Location (optional)</Label>
+                    <Input
+                      id="evt-loc"
+                      value={form.location}
+                      onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
+                      placeholder="e.g. Main Hall, Sports Field"
+                    />
+                  </div>
+
+                  <div className="grid gap-2">
+                    <Label htmlFor="evt-link">Meeting Link (optional)</Label>
+                    <Input
+                      id="evt-link"
+                      type="url"
+                      value={form.meetingLink}
+                      onChange={(e) => setForm((f) => ({ ...f, meetingLink: e.target.value }))}
+                      placeholder="https://meet.google.com/…"
+                    />
+                  </div>
                 </div>
 
-                <div className="grid gap-2">
-                  <Label htmlFor="evt-link">Meeting link (optional)</Label>
-                  <Input
-                    id="evt-link"
-                    type="url"
-                    value={form.meetingLink}
-                    onChange={(e) => setForm((f) => ({ ...f, meetingLink: e.target.value }))}
-                    placeholder="https://…"
+                <div className="pt-2 border-t border-gray-100">
+                  <EventAudiencePicker
+                    audience={form.audience}
+                    classIds={form.classIds}
+                    onChange={({ audience, classIds }) => setForm((f) => ({ ...f, audience, classIds }))}
                   />
                 </div>
               </div>
 
-              <DialogFooter className="gap-2 sm:gap-0">
+              <SheetFooter className="px-6 py-4 border-t border-gray-100 bg-slate-50/80 shrink-0 gap-3 sm:gap-2">
                 <Button type="button" variant="secondary" onClick={closeCreateModal}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={saving} className="bg-brand-teal hover:bg-teal-700">
-                  {saving ? 'Saving…' : 'Save event'}
+                <Button type="submit" disabled={saving} className="bg-brand-teal hover:bg-teal-700 text-white gap-2">
+                  {saving ? 'Saving…' : 'Save Event'}
                 </Button>
-              </DialogFooter>
+              </SheetFooter>
             </form>
           ) : (
-            <>
-              <DialogHeader>
-                <DialogTitle>Event saved</DialogTitle>
-                <DialogDescription>
-                  Your reminders live in Google / Apple / Outlook — not automatically synced from this app yet.
-                  Use one of the options below right after saving.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="flex flex-col gap-3 py-2">
-                <Button
-                  asChild
-                  variant="outline"
-                  className="w-full gap-2 border-teal-600 text-teal-800"
-                >
-                  <a
-                    href={
-                      successMeta
-                        ? buildGoogleCalendarUrl({
-                            title: successMeta.title,
-                            start: successMeta.start,
-                            end: successMeta.end,
-                            allDay: successMeta.allDay,
-                            description: successMeta.description,
-                            location: successMeta.location,
-                          })
-                        : '#'
-                    }
-                    target="_blank"
-                    rel="noopener noreferrer"
+            <div className="flex flex-col h-full min-h-0">
+              <SheetHeader className="px-6 py-5 border-b border-gray-100 bg-teal-50/50 shrink-0">
+                <div className="flex items-center gap-2 text-teal-700 mb-1">
+                  <CheckCircle2 className="h-5 w-5 text-teal-600" />
+                  <span className="text-[11px] font-bold tracking-wider uppercase">Event Created</span>
+                </div>
+                <SheetTitle className="text-xl font-bold text-gray-900">Event Saved to Planner</SheetTitle>
+                <SheetDescription>
+                  Reminders can be added to your personal or staff calendars using Google Calendar or an .ics file download.
+                </SheetDescription>
+              </SheetHeader>
+              <div className="flex-1 overflow-y-auto px-6 py-6 space-y-4 min-h-0">
+                <div className="p-4 rounded-xl bg-gray-50 border border-gray-100 space-y-1">
+                  <div className="font-semibold text-gray-900 text-base">{successMeta?.title || form.title}</div>
+                  <div className="text-xs text-gray-500">
+                    {form.allDay ? `${form.startDateOnly} to ${form.endDateOnly}` : `${form.startLocal} - ${form.endLocal}`}
+                  </div>
+                  {form.location && <div className="text-xs text-gray-600">📍 {form.location}</div>}
+                </div>
+
+                <div className="flex flex-col gap-3 pt-2">
+                  <Button
+                    asChild
+                    variant="outline"
+                    className="w-full gap-2 border-teal-600 text-teal-800 hover:bg-teal-50"
                   >
-                    <CalendarPlus size={18} />
-                    Add to Google Calendar
-                  </a>
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="w-full gap-2"
-                  onClick={() => {
-                    if (!successMeta) return;
-                    const uid = `${crypto.randomUUID()}@trendscore`;
-                    const ics = buildIcsEventContent({
-                      uid,
-                      title: successMeta.title,
-                      start: successMeta.start,
-                      end: successMeta.end,
-                      allDay: successMeta.allDay,
-                      description: successMeta.description,
-                      location: successMeta.location,
-                    });
-                    const safe = (successMeta.title || 'event').replace(/[^\w\s-]/g, '').slice(0, 60) || 'event';
-                    downloadIcsFile(safe, ics);
-                  }}
-                >
-                  <Download size={18} />
-                  Download .ics (Apple / Outlook)
-                </Button>
+                    <a
+                      href={
+                        successMeta
+                          ? buildGoogleCalendarUrl({
+                              title: successMeta.title,
+                              start: successMeta.start,
+                              end: successMeta.end,
+                              allDay: successMeta.allDay,
+                              description: successMeta.description,
+                              location: successMeta.location,
+                            })
+                          : '#'
+                      }
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <CalendarPlus size={18} />
+                      Add to Google Calendar
+                    </a>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="w-full gap-2"
+                    onClick={() => {
+                      if (!successMeta) return;
+                      const uid = `${crypto.randomUUID()}@trendscore`;
+                      const ics = buildIcsEventContent({
+                        uid,
+                        title: successMeta.title,
+                        start: successMeta.start,
+                        end: successMeta.end,
+                        allDay: successMeta.allDay,
+                        description: successMeta.description,
+                        location: successMeta.location,
+                      });
+                      const safe = (successMeta.title || 'event').replace(/[^\w\s-]/g, '').slice(0, 60) || 'event';
+                      downloadIcsFile(safe, ics);
+                    }}
+                  >
+                    <Download size={18} />
+                    Download .ics (Apple / Outlook)
+                  </Button>
+                </div>
               </div>
-              <DialogFooter>
-                <Button type="button" onClick={closeCreateModal}>
+              <SheetFooter className="px-6 py-4 border-t border-gray-100 bg-slate-50/80 shrink-0">
+                <Button type="button" onClick={closeCreateModal} className="w-full sm:w-auto bg-brand-teal hover:bg-teal-700 text-white">
                   Done
                 </Button>
-              </DialogFooter>
-            </>
+              </SheetFooter>
+            </div>
           )}
-        </DialogContent>
-      </Dialog>
+        </SheetContent>
+      </Sheet>
 
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
         <DialogContent className="max-w-md">

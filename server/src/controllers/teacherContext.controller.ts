@@ -55,8 +55,10 @@ export class TeacherContextController {
       return res.status(401).json({ success: false, message: 'Authentication required' });
     }
 
-    // Privileged roles get unrestricted context — no DB lookups needed
-    if (hasAnyRole(req.user, PRIVILEGED_ROLES as unknown as string[])) {
+    // A user who also holds TEACHER must retain their teacher assignment context
+    // for assessment entry, even when ADMIN grants broader access elsewhere.
+    const hasTeacherRole = hasAnyRole(req.user, ['TEACHER']);
+    if (hasAnyRole(req.user, PRIVILEGED_ROLES as unknown as string[]) && !hasTeacherRole) {
       return res.json({
         success: true,
         data: {
@@ -70,7 +72,7 @@ export class TeacherContextController {
       });
     }
 
-    const cacheKey = `teacher:context:v3:${userId}`;
+    const cacheKey = `teacher:context:v2:${userId}`;
     const cached = await redisCacheService.get<any>(cacheKey);
     if (cached) {
       return res.json({ success: true, data: cached, _cached: true });
@@ -118,7 +120,6 @@ export class TeacherContextController {
         where: { teacherId: userId, active: true },
         select: {
           grade: true,
-          classId: true,
           learningArea: { select: { id: true, name: true, shortName: true } },
         },
       });
@@ -134,7 +135,7 @@ export class TeacherContextController {
       // From timetable schedules
       for (const s of scheduleClasses) {
         if (!s.class) continue;
-        const key = `${s.class.grade}::${s.class.id}::${s.learningArea?.id ?? s.subject ?? ''}`;
+        const key = `${s.class.grade}::${s.learningArea?.id ?? s.subject ?? ''}`;
         if (!subjectMap.has(key)) {
           subjectMap.set(key, {
             grade: s.class.grade,
@@ -147,13 +148,13 @@ export class TeacherContextController {
 
       // From explicit subject-assignment table
       for (const a of subjectAssignments) {
-        const key = `${a.grade}::${a.classId ?? '*'}::${a.learningArea.id}`;
+        const key = `${a.grade}::${a.learningArea.id}`;
         if (!subjectMap.has(key)) {
           subjectMap.set(key, {
             grade: a.grade,
             learningAreaId: a.learningArea.id,
             learningAreaName: a.learningArea.name,
-            classId: a.classId,
+            classId: null,
           });
         }
       }
@@ -163,9 +164,6 @@ export class TeacherContextController {
       for (const assignedClass of classTeacherClasses) assignedClassIds.add(assignedClass.id);
       for (const s of scheduleClasses) {
         if (s.class?.id) assignedClassIds.add(s.class.id);
-      }
-      for (const assignment of subjectAssignments) {
-        if (assignment.classId) assignedClassIds.add(assignment.classId);
       }
 
       const assignedGrades = Array.from(
