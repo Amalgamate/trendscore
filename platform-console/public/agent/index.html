@@ -16,13 +16,8 @@
 </head>
 <body>
 
-  <!-- Toast Notification Container -->
-  <div id="toastNotice" class="toast-notice"></div>
-
-  <div class="app-container">
-
-    <!-- ── 1. LOGIN & SELF-REGISTRATION VIEW ────────────────────────────── -->
-    <div id="viewLogin" class="login-view">
+  <!-- ── 1. LOGIN & SELF-REGISTRATION VIEW (standalone full-screen) ─── -->
+  <div id="viewLogin" class="login-view">
       <div class="auth-desktop-wrapper">
         <!-- Desktop Left Branding Hero (visible on tablets/laptops) -->
         <div class="auth-hero-pane">
@@ -128,7 +123,7 @@
           <form id="formRegister" onsubmit="handleRegister(event)" style="display: none;">
             <div class="form-group">
               <label class="form-label" for="regFullName">Full Legal Name *</label>
-              <input type="text" id="regFullName" class="form-input" placeholder="e.g. Grace Wambui Kariuki" required autocomplete="name">
+              <input type="text" id="regFullName" class="form-input" placeholder="e.g. Joe Doe" required autocomplete="name">
             </div>
 
             <div class="form-row-2">
@@ -180,7 +175,7 @@
             <div class="form-row-2">
               <div class="form-group">
                 <label class="form-label" for="regBaseLocation">Base Location / Town</label>
-                <input type="text" id="regBaseLocation" class="form-input" placeholder="e.g. Ruiru, Westlands, Naivasha">
+                <input type="text" id="regBaseLocation" class="form-input" placeholder="e.g. Town or Area">
               </div>
 
               <div class="form-group">
@@ -191,7 +186,7 @@
 
             <div class="form-group">
               <label class="form-label" for="regEmail">Email Address (Optional)</label>
-              <input type="email" id="regEmail" class="form-input" placeholder="agent@example.com" autocomplete="email">
+              <input type="email" id="regEmail" class="form-input" placeholder="agent@email.com" autocomplete="email">
             </div>
 
             <div class="form-row-2">
@@ -221,10 +216,13 @@
           </p>
         </div>
       </div>
-    </div>
+  </div><!-- end #viewLogin -->
 
-    <!-- ── 2. AUTHENTICATED APP SHELL ───────────────────────────────────── -->
-    <div id="viewApp" class="app-shell-container" style="display: none;">
+  <!-- Toast Notification Container -->
+  <div id="toastNotice" class="toast-notice"></div>
+
+  <!-- ── 2. AUTHENTICATED APP SHELL ───────────────────────────────────── -->
+  <div id="viewApp" class="app-container app-shell-container" style="display: none;">
       
       <!-- Desktop Left Sidebar (>= 1024px) -->
       <aside class="desktop-sidebar" id="desktopSidebar">
@@ -855,8 +853,8 @@
         </form>
       </div>
     </div>
+  </div><!-- end #viewApp -->
 
-  </div>
 
   <script src="/agent/agent.js"></script>
 </body>

@@ -846,14 +846,26 @@ body {
   transform: scale(0.99);
 }
 
-/* Login Screen */
+/* Login Screen — full-screen standalone view */
 .login-view {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  overflow-y: auto;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
   justify-content: center;
   padding: 24px 20px;
   background: var(--bg-main);
+}
+
+#viewLogin[style*="display: none"],
+#viewApp[style*="display: none"],
+.login-view[style*="display: none"],
+.app-container[style*="display: none"],
+.app-shell-container[style*="display: none"] {
+  display: none !important;
 }
 
 .login-card {
@@ -1693,7 +1705,7 @@ body {
     align-items: center;
     justify-content: center;
     padding: 40px 24px;
-    background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+    background: #f1f5f9;
   }
 
   .auth-desktop-wrapper {
@@ -1710,7 +1722,7 @@ body {
   .auth-hero-pane {
     display: flex;
     flex: 1.1;
-    background: linear-gradient(145deg, #0f766e 0%, #115e59 55%, #042f2e 100%);
+    background: var(--teal-800);
     color: #ffffff;
     padding: 44px 36px;
     flex-direction: column;
@@ -1855,20 +1867,17 @@ body {
 
 /* ── Desktop Web App (>= 1024px) ────────────────────────────────────────── */
 @media (min-width: 1024px) {
-  .app-container {
+  .app-container,
+  .app-shell-container {
     max-width: 100%;
     margin: 0;
     border: none;
     box-shadow: none;
     background: #f8fafc;
-  }
-
-  .app-shell-container {
-    display: flex !important;
-    flex-direction: row !important;
+    display: flex;
+    flex-direction: row;
     min-height: 100vh;
     width: 100%;
-    background: #f8fafc;
   }
 
   .desktop-sidebar {
