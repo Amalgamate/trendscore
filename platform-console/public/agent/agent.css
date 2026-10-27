@@ -925,7 +925,7 @@ body {
   to { transform: rotate(360deg); }
 }
 
-/* Login Screen — full-screen standalone view */
+/* Login Screen — full-screen standalone view with centered white card on full teal background */
 .login-view {
   position: fixed;
   inset: 0;
@@ -933,10 +933,10 @@ body {
   overflow-y: auto;
   min-height: 100vh;
   display: flex;
-  flex-direction: column;
+  align-items: center;
   justify-content: center;
   padding: 24px 20px;
-  background: var(--bg-main);
+  background: #042f2e;
 }
 
 #viewLogin[style*="display: none"],
@@ -947,13 +947,22 @@ body {
   display: none !important;
 }
 
+.auth-desktop-wrapper {
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: auto;
+}
+
 .login-card {
+  width: 100%;
   background: #ffffff;
-  border: 1px solid var(--border-color);
-  border-top: 4px solid var(--teal-700);
-  border-radius: var(--radius-lg);
-  padding: 30px 22px;
-  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
+  border-radius: 16px;
+  padding: 38px 34px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35), 0 4px 16px rgba(0, 0, 0, 0.15);
+  border: none;
 }
 
 .login-card-inner {
@@ -1817,144 +1826,6 @@ body {
 
 /* ── Tablet & Desktop Breakpoints (>= 768px) ────────────────────────────── */
 @media (min-width: 768px) {
-  .login-view {
-    align-items: center;
-    justify-content: center;
-    padding: 40px 24px;
-    background: #f1f5f9;
-  }
-
-  .auth-desktop-wrapper {
-    display: flex;
-    flex-direction: row;
-    max-width: 960px;
-    background: #ffffff;
-    border-radius: var(--radius-lg);
-    overflow: hidden;
-    box-shadow: 0 20px 45px rgba(15, 23, 42, 0.12);
-    border: 1px solid var(--border-color);
-  }
-
-  .auth-hero-pane {
-    display: flex;
-    flex: 1.1;
-    background: var(--teal-800);
-    color: #ffffff;
-    padding: 44px 36px;
-    flex-direction: column;
-    justify-content: space-between;
-    position: relative;
-  }
-
-  .auth-hero-badge {
-    display: inline-block;
-    font-size: 10px;
-    font-weight: 800;
-    letter-spacing: 0.8px;
-    text-transform: uppercase;
-    background: rgba(255, 255, 255, 0.15);
-    border: 1px solid rgba(255, 255, 255, 0.25);
-    color: #ffffff;
-    padding: 3px 8px;
-    border-radius: var(--radius-xs);
-    margin-bottom: 16px;
-    align-self: flex-start;
-  }
-
-  .auth-hero-title {
-    font-size: 32px;
-    font-weight: 900;
-    line-height: 1.1;
-    margin-bottom: 4px;
-  }
-
-  .auth-hero-title .brand-teal {
-    color: #ffffff;
-  }
-
-  .auth-hero-title .brand-orange {
-    color: var(--orange-400);
-  }
-
-  .auth-hero-subtitle {
-    font-size: 13px;
-    font-weight: 700;
-    color: var(--orange-300);
-    letter-spacing: 0.5px;
-    margin-bottom: 16px;
-  }
-
-  .auth-hero-desc {
-    font-size: 13.5px;
-    line-height: 1.6;
-    color: #ccfbf1;
-    margin-bottom: 24px;
-  }
-
-  .auth-features-list {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    margin-bottom: 24px;
-  }
-
-  .auth-feature-item {
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-  }
-
-  .auth-feature-icon {
-    width: 34px;
-    height: 34px;
-    border-radius: 6px;
-    background: rgba(255, 255, 255, 0.12);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    color: var(--orange-400);
-  }
-
-  .auth-feature-text {
-    display: flex;
-    flex-direction: column;
-    font-size: 12.5px;
-  }
-
-  .auth-feature-text strong {
-    color: #ffffff;
-    font-weight: 700;
-    font-size: 13px;
-  }
-
-  .auth-feature-text span {
-    color: #99f6e4;
-    font-size: 11.5px;
-    margin-top: 2px;
-  }
-
-  .auth-hero-footer {
-    font-size: 11.5px;
-    color: #5eead4;
-    border-top: 1px solid rgba(255, 255, 255, 0.15);
-    padding-top: 16px;
-    margin-top: auto;
-  }
-
-  .login-card {
-    flex: 1;
-    padding: 36px 32px;
-    border: none;
-    box-shadow: none;
-    border-radius: 0;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    background: #ffffff;
-  }
-
   /* Modals center as dialogs on larger screens */
   .modal-overlay {
     align-items: center;
