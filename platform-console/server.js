@@ -2961,6 +2961,10 @@ app.put('/api/billing/contracts/:id', requireAuth, requireRole('super_admin'), (
   }
 });
 
+app.get('/health', (_req, res) => {
+  res.json({ ok: true, status: 'healthy', version: APP_VERSION });
+});
+
 // Only the public/ dir is served statically — server.js, auth-config.js, .env,
 // data/*.store.json and everything else in __dirname stay unreachable over HTTP.
 app.use(express.static(path.join(__dirname, 'public')));
