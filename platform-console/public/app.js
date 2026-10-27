@@ -3544,10 +3544,13 @@ function formatKsh(amount) {
   return 'KES ' + num.toLocaleString('en-KE', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
-async function loadAgentsData() {
-  AGENTS_STATUS = 'loading';
+async function loadAgentsData(options = {}) {
+  const isBackground = options?.background === true;
+  if (!isBackground) {
+    AGENTS_STATUS = 'loading';
+  }
   const tableBody = $('agents-table-body');
-  if (tableBody && (!AGENTS || AGENTS.length === 0)) {
+  if (!isBackground && tableBody && (!AGENTS || AGENTS.length === 0)) {
     tableBody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:24px">Loading field agents…</td></tr>';
   }
 
@@ -3571,13 +3574,18 @@ async function loadAgentsData() {
     if (listRes.ok) {
       const data = await listRes.json();
       AGENTS = Array.isArray(data.agents) ? data.agents : [];
-      renderAgentsTable();
+      // Only re-render table if user is not actively typing in the search box
+      if (!isBackground || document.activeElement !== $('agent-search')) {
+        renderAgentsTable();
+      }
     }
     AGENTS_STATUS = 'ready';
   } catch (err) {
-    AGENTS_STATUS = 'error';
-    if (tableBody) {
-      tableBody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--red);padding:24px">Failed to load agents: ${esc(err.message)}</td></tr>`;
+    if (!isBackground) {
+      AGENTS_STATUS = 'error';
+      if (tableBody) {
+        tableBody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--red);padding:24px">Failed to load agents: ${esc(err.message)}</td></tr>`;
+      }
     }
   }
 }
@@ -4115,6 +4123,10 @@ let audioCtx = null;
 let notifSoundEnabled = true;
 let lastSeenPendingAgents = null;
 let lastSeenTotalAgents = null;
+let lastSeenTotalSchools = null;
+let lastSeenTotalEarned = null;
+let lastSeenTotalBalance = null;
+let lastSeenLatestSchoolName = null;
 let adminNotifications = [];
 
 function initAudioContext() {
@@ -4172,6 +4184,14 @@ async function checkAdminNotifications() {
     const overview = data.overview || {};
     const pendingCount = Number(overview.pendingAgents || 0);
     const totalCount = Number(overview.totalAgents || 0);
+    const totalSchools = Number(overview.totalAssignedSchools || 0);
+    const totalEarned = Number(overview.totalEarnedAll || 0);
+    const totalBalance = Number(overview.totalBalanceDue || 0);
+    const latestSchool = overview.latestSchool || null;
+    const latestAgent = overview.latestAgent || null;
+
+    // Always keep overview metric cards updated in real-time
+    renderAgentsOverview(overview);
 
     const badge = $('admin-notif-badge');
     const navBadge = $('nav-agents-badge');
@@ -4193,22 +4213,51 @@ async function checkAdminNotifications() {
       }
     }
 
-    if (lastSeenPendingAgents !== null) {
-      if (pendingCount > lastSeenPendingAgents || (lastSeenTotalAgents !== null && totalCount > lastSeenTotalAgents)) {
-        // Event trigger: New agent registered or awaiting approval!
-        playNotificationBeep();
+    let shouldRefreshTable = false;
 
+    if (lastSeenPendingAgents !== null) {
+      // Event 1: New agent registered or awaiting approval
+      if (totalCount > lastSeenTotalAgents || pendingCount > lastSeenPendingAgents) {
+        playNotificationBeep();
+        const agentName = latestAgent?.full_name || 'New Field Agent';
+        const agentCode = latestAgent?.agent_code ? ` (${latestAgent.agent_code})` : '';
         adminNotifications.unshift({
           id: 'agent-' + Date.now(),
           title: 'New Field Agent Registration',
-          desc: `${pendingCount} agent(s) awaiting review & approval`,
+          desc: `${agentName}${agentCode} joined the network`,
           time: new Date().toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' }),
         });
-        renderAdminNotificationsList();
+        shouldRefreshTable = true;
+      }
 
-        if (typeof AGENTS_STATUS !== 'undefined' && $('section-agents')?.classList.contains('section-visible')) {
-          loadAgentsData();
-        }
+      // Event 2: Agent added a new prospective school to the pipeline
+      if (lastSeenTotalSchools !== null && (totalSchools > lastSeenTotalSchools || (latestSchool && latestSchool.school_name !== lastSeenLatestSchoolName))) {
+        playNotificationBeep();
+        const schoolName = latestSchool?.school_name || 'New CBC School';
+        const agentBy = latestSchool?.full_name ? ` by ${latestSchool.full_name}` : (latestSchool?.agent_code ? ` by ${latestSchool.agent_code}` : '');
+        adminNotifications.unshift({
+          id: 'school-' + Date.now(),
+          title: 'New School Lead Registered',
+          desc: `"${schoolName}" registered${agentBy}`,
+          time: new Date().toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' }),
+        });
+        shouldRefreshTable = true;
+      }
+
+      // Event 3: Commission credited on school payment
+      if (lastSeenTotalEarned !== null && totalEarned > lastSeenTotalEarned) {
+        playNotificationBeep();
+        adminNotifications.unshift({
+          id: 'earned-' + Date.now(),
+          title: 'Commission Credited',
+          desc: `Earned +${formatKsh(totalEarned - lastSeenTotalEarned)} on school subscription`,
+          time: new Date().toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' }),
+        });
+        shouldRefreshTable = true;
+      }
+
+      if (shouldRefreshTable) {
+        renderAdminNotificationsList();
       }
     } else {
       if (pendingCount > 0) {
@@ -4224,6 +4273,16 @@ async function checkAdminNotifications() {
 
     lastSeenPendingAgents = pendingCount;
     lastSeenTotalAgents = totalCount;
+    lastSeenTotalSchools = totalSchools;
+    lastSeenTotalEarned = totalEarned;
+    lastSeenTotalBalance = totalBalance;
+    if (latestSchool) lastSeenLatestSchoolName = latestSchool.school_name;
+
+    // Real-time table refresh when viewing the agents tab
+    const isAgentsTabVisible = $('section-agents')?.classList.contains('section-visible') || sectionFromHash() === 'agents';
+    if (isAgentsTabVisible && (shouldRefreshTable || !document.activeElement || document.activeElement.id !== 'agent-search')) {
+      loadAgentsData({ background: true });
+    }
   } catch (err) {
     console.warn('Failed to check admin notifications:', err);
   }
@@ -4304,7 +4363,7 @@ async function init() {
   renderRuntimeStamp();
   startRuntimePolling(20000);
   checkAdminNotifications();
-  setInterval(checkAdminNotifications, 10000);
+  setInterval(checkAdminNotifications, 4000);
 }
 
 init();
