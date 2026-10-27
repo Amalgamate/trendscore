@@ -76,8 +76,10 @@ function switchTab(tab) {
   tabs.forEach(t => {
     const el = document.getElementById(`tab${t.charAt(0).toUpperCase() + t.slice(1)}`);
     const nav = document.getElementById(`nav${t.charAt(0).toUpperCase() + t.slice(1)}`);
+    const navDesktop = document.getElementById(`navDesktop${t.charAt(0).toUpperCase() + t.slice(1)}`);
     if (el) el.style.display = (t === tab) ? 'block' : 'none';
     if (nav) nav.classList.toggle('active', t === tab);
+    if (navDesktop) navDesktop.classList.toggle('active', t === tab);
   });
   if (tab === 'marketplace') {
     renderMarketplace();
@@ -87,6 +89,30 @@ function switchTab(tab) {
 
 
 // ── Authentication ────────────────────────────────────────────────────────
+function switchAuthTab(tab) {
+  const isLogin = tab === 'login';
+  const tabBtnLogin = document.getElementById('tabBtnLogin');
+  const tabBtnRegister = document.getElementById('tabBtnRegister');
+  const formLogin = document.getElementById('formLogin');
+  const formRegister = document.getElementById('formRegister');
+  const authHeading = document.getElementById('authHeading');
+  const authSubheading = document.getElementById('authSubheading');
+
+  if (tabBtnLogin) tabBtnLogin.classList.toggle('active', isLogin);
+  if (tabBtnRegister) tabBtnRegister.classList.toggle('active', !isLogin);
+  if (formLogin) formLogin.style.display = isLogin ? 'block' : 'none';
+  if (formRegister) formRegister.style.display = !isLogin ? 'block' : 'none';
+
+  if (authHeading) {
+    authHeading.textContent = isLogin ? 'Field Agent Portal' : 'Join Field Agent Network';
+  }
+  if (authSubheading) {
+    authSubheading.textContent = isLogin 
+      ? 'Access your school portfolio, commissions, and marketplace'
+      : 'Self-register to start onboarding schools and earning 10% commission';
+  }
+}
+
 async function handleLogin(e) {
   e.preventDefault();
   const phone = document.getElementById('loginPhone').value.trim();
@@ -118,6 +144,70 @@ async function handleLogin(e) {
   } finally {
     btn.disabled = false;
     btn.innerHTML = '<span>Sign In to Portal</span>';
+  }
+}
+
+async function handleRegister(e) {
+  e.preventDefault();
+  const fullName = document.getElementById('regFullName').value.trim();
+  const phone = document.getElementById('regPhone').value.trim();
+  const county = document.getElementById('regCounty').value.trim();
+  const baseLocation = (document.getElementById('regBaseLocation')?.value || '').trim();
+  const mpesa = (document.getElementById('regMpesa')?.value || '').trim();
+  const email = (document.getElementById('regEmail')?.value || '').trim();
+  const pin = document.getElementById('regPin').value.trim();
+  const pinConfirm = document.getElementById('regPinConfirm').value.trim();
+  const btn = document.getElementById('btnRegister');
+
+  if (!fullName || fullName.length < 2) {
+    showToast('Please enter your full name', true);
+    return;
+  }
+  if (!phone || phone.length < 9) {
+    showToast('Please enter a valid phone number (e.g. 07... or 01...)', true);
+    return;
+  }
+  if (!county) {
+    showToast('Please select your county', true);
+    return;
+  }
+  if (!/^\d{4}$/.test(pin)) {
+    showToast('Security PIN must be exactly 4 numeric digits', true);
+    return;
+  }
+  if (pin !== pinConfirm) {
+    showToast('PINs do not match. Please verify your 4-digit PIN.', true);
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span>Creating Account...</span>';
+
+  try {
+    const data = await api('/api/agent/register', {
+      method: 'POST',
+      body: JSON.stringify({
+        full_name: fullName,
+        phone,
+        county,
+        base_location: baseLocation,
+        mpesa_number: mpesa || phone,
+        email,
+        pin,
+      }),
+    });
+
+    if (data.token) setStoredToken(data.token);
+    currentAgent = data.agent;
+    showToast(data.message || `Welcome to TrendSCORE, ${data.agent.full_name}!`);
+    showAppView();
+    renderAgent();
+    switchTab('dashboard');
+  } catch (err) {
+    showToast(err.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<span>Create Account &amp; Start Earning</span>';
   }
 }
 
@@ -214,6 +304,22 @@ function renderAgent() {
   const dashStatusTag = document.getElementById('dashStatusTag');
   dashStatusTag.textContent = `${currentAgent.commission_rate}${currentAgent.commission_type === 'percentage' ? '%' : ' KES'} Commission`;
 
+  // Desktop Sidebar sync
+  const sidebarInitials = document.getElementById('sidebarAvatarInitials');
+  if (sidebarInitials) sidebarInitials.textContent = getInitials(currentAgent.full_name);
+
+  const sidebarName = document.getElementById('sidebarAgentName');
+  if (sidebarName) sidebarName.textContent = currentAgent.full_name;
+
+  const sidebarCode = document.getElementById('sidebarAgentCode');
+  if (sidebarCode) sidebarCode.textContent = currentAgent.agent_code;
+
+  const sidebarBal = document.getElementById('sidebarBalanceDue');
+  if (sidebarBal) sidebarBal.textContent = `KES ${formatKsh(fin.balanceDueKsh)}`;
+
+  const sidebarSchools = document.getElementById('sidebarSchoolsCount');
+  if (sidebarSchools) sidebarSchools.textContent = (currentAgent.schools || []).length;
+
   // Render Schools
   renderSchoolsList();
 
@@ -228,6 +334,8 @@ function renderSchoolsList() {
   const schools = currentAgent.schools || [];
   document.getElementById('dashSchoolsCount').textContent = schools.length;
   document.getElementById('schoolsTotalBadge').textContent = schools.length;
+  const sidebarSchools = document.getElementById('sidebarSchoolsCount');
+  if (sidebarSchools) sidebarSchools.textContent = schools.length;
 
   const dashContainer = document.getElementById('dashSchoolsList');
   const fullContainer = document.getElementById('fullSchoolsList');

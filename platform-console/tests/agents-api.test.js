@@ -194,4 +194,40 @@ test('Field Agent Mobile App & Billing Auto-Attribution Integration', async (t) 
     assert.equal(postWithdraw.financials.totalPaidKsh, 14500);
     assert.equal(postWithdraw.financials.balanceDueKsh, 2500); // 5000 - 2500 = 2500 remaining!
   });
+
+  await t.test('7. Field Agent self-registration and phone lookup', () => {
+    // Phone lookup before registration
+    const notFound = agentsStore.getAgentByPhone('0799887766');
+    assert.equal(notFound, null);
+
+    // Self-register new agent
+    const newSelfAgent = agentsStore.createAgent({
+      full_name: 'Kevin Omondi',
+      phone: '0799887766',
+      email: 'kevin@trendscore.co.ke',
+      county: 'Kisumu',
+      base_location: 'Kisumu Central',
+      mpesa_number: '0799887766',
+      pin: '1234',
+      status: 'active',
+      commission_type: 'percentage',
+      commission_rate: 10.0,
+      notes: 'Self-registered via Field Agent Web Portal',
+    });
+
+    assert.ok(newSelfAgent);
+    assert.equal(newSelfAgent.full_name, 'Kevin Omondi');
+    assert.equal(newSelfAgent.has_pin, true);
+
+    // Lookup by phone
+    const foundByPhone = agentsStore.getAgentByPhone('0799887766');
+    assert.ok(foundByPhone);
+    assert.equal(foundByPhone.id, newSelfAgent.id);
+
+    // Can immediately authenticate with PIN
+    const authSelf = agentsStore.authenticateAgent('0799887766', '1234');
+    assert.ok(authSelf);
+    assert.equal(authSelf.id, newSelfAgent.id);
+  });
 });
+

@@ -1884,6 +1884,69 @@ function requireAgentAuth(req, res, next) {
   }
 }
 
+app.post('/api/agent/register', (req, res) => {
+  const { full_name, phone, pin, email, county, base_location, mpesa_number } = req.body || {};
+  const cleanName = String(full_name || '').trim();
+  const cleanPhone = String(phone || '').replace(/[\s\-_]/g, '').trim();
+  const cleanPin = String(pin || '').trim();
+
+  if (!cleanName || cleanName.length < 2) {
+    return res.status(400).json({ ok: false, error: 'Full name is required (minimum 2 characters)' });
+  }
+  if (!cleanPhone || cleanPhone.length < 9) {
+    return res.status(400).json({ ok: false, error: 'A valid Kenyan phone number is required (e.g. 07... or 01...)' });
+  }
+  if (!/^\d{4}$/.test(cleanPin)) {
+    return res.status(400).json({ ok: false, error: 'Security PIN must be exactly 4 digits' });
+  }
+
+  try {
+    const existing = agentsStore.getAgentByPhone(cleanPhone);
+    if (existing) {
+      return res.status(409).json({
+        ok: false,
+        error: 'An agent with this phone number is already registered. Please sign in or use another number.'
+      });
+    }
+
+    const cleanMpesa = String(mpesa_number || cleanPhone).replace(/[\s\-_]/g, '').trim();
+    const agent = agentsStore.createAgent({
+      full_name: cleanName,
+      phone: cleanPhone,
+      email: String(email || '').trim().toLowerCase(),
+      county: String(county || '').trim(),
+      base_location: String(base_location || '').trim(),
+      mpesa_number: cleanMpesa,
+      pin: cleanPin,
+      status: 'active',
+      commission_type: 'percentage',
+      commission_rate: 10.0,
+      notes: 'Self-registered via Field Agent Web Portal',
+    });
+
+    const token = jwt.sign(
+      { agentId: agent.id, agentCode: agent.agent_code, phone: agent.phone, role: 'field_agent' },
+      JWT_SECRET,
+      { expiresIn: '30d' }
+    );
+    res.cookie(AGENT_COOKIE_NAME, token, {
+      httpOnly: true,
+      secure: COOKIE_SECURE,
+      sameSite: 'lax',
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+    });
+    pushAudit('AGENT_SELF_REGISTER', agent.id, agent.phone, `Agent ${agent.full_name} (${agent.agent_code}) self-registered via Web Portal`, 'Success');
+    return res.status(201).json({
+      ok: true,
+      token,
+      agent,
+      message: 'Account created successfully! Welcome to TrendSCORE Field Agents.'
+    });
+  } catch (err) {
+    return res.status(400).json({ ok: false, error: err.message || 'Registration failed' });
+  }
+});
+
 app.post('/api/agent/login', (req, res) => {
   const { phone, pin } = req.body || {};
   if (!phone || !pin) {

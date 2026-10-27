@@ -202,6 +202,13 @@ function createAgentsStore(dataDir) {
       };
     },
 
+    getAgentByPhone(phone) {
+      if (!phone) return null;
+      const clean = String(phone).trim();
+      const match = db.prepare(`SELECT id FROM agents WHERE phone = ? OR mpesa_number = ? LIMIT 1`).get(clean, clean);
+      return match ? this.getAgent(match.id) : null;
+    },
+
     createAgent(data) {
       const now = new Date().toISOString();
       const id = 'agt_' + crypto.randomBytes(8).toString('hex');
