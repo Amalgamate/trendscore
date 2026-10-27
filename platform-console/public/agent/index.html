@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>TrendSCORE Field Agent Portal</title>
+  <title>TrendSCORE Agents Portal</title>
   <meta name="theme-color" content="#ffffff">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -16,16 +16,26 @@
 </head>
 <body>
 
+  <!-- ── 0. FULL PAGE APP PRELOADER (Mobile & Desktop) ─────────────── -->
+  <div id="appPreloader" class="app-preloader">
+    <div class="preloader-card">
+      <img src="/agent/trendscore-logo.png" alt="TrendSCORE" class="preloader-logo">
+      <div class="preloader-spinner-ring"></div>
+      <div class="preloader-label">Agents Portal</div>
+      <div class="preloader-subtext">Initializing secure session...</div>
+    </div>
+  </div>
+
   <!-- ── 1. LOGIN & SELF-REGISTRATION VIEW (standalone full-screen) ─── -->
   <div id="viewLogin" class="login-view">
       <div class="auth-desktop-wrapper">
         <!-- Desktop Left Branding Hero (visible on tablets/laptops) -->
         <div class="auth-hero-pane">
           <div class="auth-hero-content">
-            <div class="auth-hero-badge">OFFICIAL FIELD AGENT NETWORK</div>
-            <h1 class="auth-hero-title">
-              <span class="brand-teal">Trend</span><span class="brand-orange">SCORE</span>
-            </h1>
+            <div class="auth-hero-badge">OFFICIAL AGENTS NETWORK</div>
+            <div class="auth-hero-logo-box">
+              <img src="/agent/trendscore-logo.png" alt="TrendsCORE School ERP" class="auth-hero-logo-img">
+            </div>
             <p class="auth-hero-subtitle">Where Analytics Meets Pathways</p>
             <p class="auth-hero-desc">
               Powering Kenya's Competency-Based Curriculum (CBC) assessment, school fees, and analytics ecosystem across all 47 counties.
@@ -78,14 +88,15 @@
 
         <!-- Right / Mobile Form Pane -->
         <div class="login-card">
-          <div class="login-header">
-            <div class="login-brand-banner">
-              <span class="brand-teal">Trend</span><span class="brand-orange">SCORE</span>
+          <div class="login-card-inner">
+            <div class="login-header">
+              <div class="login-logo-container">
+                <img src="/agent/trendscore-logo.png" alt="TrendsCORE School ERP" class="login-logo-img">
+              </div>
+              <div class="login-motto">Where Analytics Meets Pathways</div>
+              <h2 id="authHeading">Agents Portal</h2>
+              <p id="authSubheading">Access your school portfolio, commissions, and marketplace</p>
             </div>
-            <div style="font-size: 11px; font-weight: 700; color: var(--orange-600); letter-spacing: 0.5px;">Where Analytics Meets Pathways</div>
-            <h2 id="authHeading">Field Agent Portal</h2>
-            <p id="authSubheading">Access your school portfolio, commissions, and marketplace</p>
-          </div>
 
           <!-- Auth Switcher Tabs -->
           <div class="auth-tab-switch">
@@ -212,8 +223,9 @@
           </form>
 
           <p style="text-align: center; font-size: 11px; color: var(--text-subtle); margin-top: 20px;">
-            TrendSCORE CBC Systems · For authorized field representatives only.
+            TrendSCORE CBC Systems · For authorized agents only.
           </p>
+          </div><!-- end .login-card-inner -->
         </div>
       </div>
   </div><!-- end #viewLogin -->
@@ -234,7 +246,7 @@
             <div class="brand-header-title">
               <span class="brand-teal">Trend</span><span class="brand-orange">SCORE</span>
             </div>
-            <span class="sidebar-tag">FIELD AGENT PORTAL</span>
+            <span class="sidebar-tag">AGENTS PORTAL</span>
           </div>
         </div>
 
@@ -299,7 +311,7 @@
             <div class="brand-info">
               <div class="brand-header-title">
                 <span class="brand-teal">Trend</span><span class="brand-orange">SCORE</span>
-                <span class="header-portal-tag">FIELD AGENT</span>
+                <span class="header-portal-tag">AGENTS PORTAL</span>
               </div>
             </div>
           </div>

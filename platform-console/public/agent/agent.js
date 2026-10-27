@@ -133,7 +133,7 @@ function switchAuthTab(tab) {
   if (formRegister) formRegister.style.display = !isLogin ? 'block' : 'none';
 
   if (authHeading) {
-    authHeading.textContent = isLogin ? 'Field Agent Portal' : 'Join Field Agent Network';
+    authHeading.textContent = isLogin ? 'Agents Portal' : 'Join Agents Network';
   }
   if (authSubheading) {
     authSubheading.textContent = isLogin 
@@ -896,11 +896,22 @@ function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
+function hidePreloader() {
+  const preloader = document.getElementById('appPreloader');
+  if (preloader) {
+    preloader.classList.add('fade-out');
+    setTimeout(() => {
+      preloader.style.display = 'none';
+    }, 350);
+  }
+}
+
 // ── Startup ───────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async () => {
   const token = getStoredToken();
   if (!token) {
     showLoginView();
+    hidePreloader();
     return;
   }
 
@@ -913,5 +924,11 @@ window.addEventListener('DOMContentLoaded', async () => {
     fetchNotifications();
   } catch {
     showLoginView();
+  } finally {
+    hidePreloader();
   }
 });
+
+// Failsafe: hide preloader after 4s in case of unexpected network stall
+setTimeout(hidePreloader, 4000);
+
