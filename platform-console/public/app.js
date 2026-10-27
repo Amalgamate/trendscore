@@ -4110,10 +4110,191 @@ window.openPayoutModal = openPayoutModal;
 window.openEditAgentModal = openEditAgentModal;
 window.deleteSchoolAssignment = deleteSchoolAssignment;
 
+// ── Admin Notifications & Audio Beep ───────────────────────────────────────
+let audioCtx = null;
+let notifSoundEnabled = true;
+let lastSeenPendingAgents = null;
+let lastSeenTotalAgents = null;
+let adminNotifications = [];
+
+function initAudioContext() {
+  if (!audioCtx) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (AudioContextClass) audioCtx = new AudioContextClass();
+  }
+  if (audioCtx && audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+}
+
+document.addEventListener('click', initAudioContext, { once: true });
+document.addEventListener('keydown', initAudioContext, { once: true });
+
+function playNotificationBeep() {
+  if (!notifSoundEnabled) return;
+  try {
+    initAudioContext();
+    if (!audioCtx) return;
+    const now = audioCtx.currentTime;
+
+    // Friendly 2-tone melodic chime: D5 (587.33Hz) then A5 (880Hz)
+    const osc1 = audioCtx.createOscillator();
+    const gain1 = audioCtx.createGain();
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(587.33, now);
+    gain1.gain.setValueAtTime(0.2, now);
+    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+    osc1.connect(gain1);
+    gain1.connect(audioCtx.destination);
+    osc1.start(now);
+    osc1.stop(now + 0.18);
+
+    const osc2 = audioCtx.createOscillator();
+    const gain2 = audioCtx.createGain();
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(880, now + 0.12);
+    gain2.gain.setValueAtTime(0.25, now + 0.12);
+    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+    osc2.connect(gain2);
+    gain2.connect(audioCtx.destination);
+    osc2.start(now + 0.12);
+    osc2.stop(now + 0.45);
+  } catch (err) {
+    console.warn('Audio chime error:', err);
+  }
+}
+
+async function checkAdminNotifications() {
+  try {
+    const res = await fetch('/api/agents/overview', { credentials: 'same-origin' });
+    if (!res.ok) return;
+    const data = await res.json();
+    const overview = data.overview || {};
+    const pendingCount = Number(overview.pendingAgents || 0);
+    const totalCount = Number(overview.totalAgents || 0);
+
+    const badge = $('admin-notif-badge');
+    const navBadge = $('nav-agents-badge');
+
+    if (badge) {
+      if (pendingCount > 0) {
+        badge.textContent = pendingCount;
+        badge.style.display = 'flex';
+      } else {
+        badge.style.display = 'none';
+      }
+    }
+    if (navBadge) {
+      if (pendingCount > 0) {
+        navBadge.textContent = pendingCount;
+        navBadge.style.display = 'inline-block';
+      } else {
+        navBadge.style.display = 'none';
+      }
+    }
+
+    if (lastSeenPendingAgents !== null) {
+      if (pendingCount > lastSeenPendingAgents || (lastSeenTotalAgents !== null && totalCount > lastSeenTotalAgents)) {
+        // Event trigger: New agent registered or awaiting approval!
+        playNotificationBeep();
+
+        adminNotifications.unshift({
+          id: 'agent-' + Date.now(),
+          title: 'New Field Agent Registration',
+          desc: `${pendingCount} agent(s) awaiting review & approval`,
+          time: new Date().toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit' }),
+        });
+        renderAdminNotificationsList();
+
+        if (typeof AGENTS_STATUS !== 'undefined' && $('section-agents')?.classList.contains('section-visible')) {
+          loadAgentsData();
+        }
+      }
+    } else {
+      if (pendingCount > 0) {
+        adminNotifications = [{
+          id: 'agent-initial',
+          title: 'Field Agents Awaiting Approval',
+          desc: `${pendingCount} self-registered agent(s) need review`,
+          time: 'Pending',
+        }];
+        renderAdminNotificationsList();
+      }
+    }
+
+    lastSeenPendingAgents = pendingCount;
+    lastSeenTotalAgents = totalCount;
+  } catch (err) {
+    console.warn('Failed to check admin notifications:', err);
+  }
+}
+
+function renderAdminNotificationsList() {
+  const list = $('admin-notif-list');
+  if (!list) return;
+  if (!adminNotifications || adminNotifications.length === 0) {
+    list.innerHTML = '<div class="notif-dropdown-empty">No unread notifications</div>';
+    return;
+  }
+  list.innerHTML = adminNotifications.map((notif, idx) => `
+    <div class="notif-item" data-notif-idx="${idx}">
+      <div class="notif-item-title">
+        <span>🤝</span>
+        <span>${esc(notif.title)}</span>
+      </div>
+      <div class="notif-item-desc">${esc(notif.desc)}</div>
+      <div class="notif-item-time">${esc(notif.time)} · Click to open Agents tab</div>
+    </div>
+  `).join('');
+
+  list.querySelectorAll('.notif-item').forEach(item => {
+    item.addEventListener('click', () => {
+      showSection('agents');
+      loadAgentsData();
+      const dropdown = $('admin-notif-dropdown');
+      if (dropdown) dropdown.style.display = 'none';
+    });
+  });
+}
+
+function bindNotificationEvents() {
+  const notifBtn = $('btn-admin-notif');
+  const dropdown = $('admin-notif-dropdown');
+  const soundBtn = $('btn-notif-sound');
+
+  notifBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    initAudioContext();
+    if (dropdown) {
+      const isShown = dropdown.style.display !== 'none';
+      dropdown.style.display = isShown ? 'none' : 'block';
+    }
+  });
+
+  document.addEventListener('click', (e) => {
+    if (dropdown && !$('admin-notif-wrap')?.contains(e.target)) {
+      dropdown.style.display = 'none';
+    }
+  });
+
+  soundBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    notifSoundEnabled = !notifSoundEnabled;
+    const icon = $('notif-sound-icon');
+    const text = $('notif-sound-text');
+    if (icon) icon.textContent = notifSoundEnabled ? '🔔' : '🔕';
+    if (text) text.textContent = notifSoundEnabled ? 'Beep On' : 'Muted';
+    if (notifSoundEnabled) {
+      playNotificationBeep();
+    }
+  });
+}
+
 async function init() {
   bindModalEvents();
   bindDeployEvents();
   bindAgentEvents();
+  bindNotificationEvents();
   initSidebarToggle();
   showSection(sectionFromHash(), { skipHashUpdate: true });
   await loadLeadsFromApi();
@@ -4122,6 +4303,8 @@ async function init() {
   renderLogs();
   renderRuntimeStamp();
   startRuntimePolling(20000);
+  checkAdminNotifications();
+  setInterval(checkAdminNotifications, 10000);
 }
 
 init();

@@ -94,6 +94,7 @@
     </a>
     <a class="nav-item" data-section="agents" href="#">
       <span class="nav-icon">🤝</span> Field Agents &amp; Earnings
+      <span class="nav-badge" id="nav-agents-badge" style="display:none">0</span>
     </a>
     <a class="nav-item" data-section="instances" href="#">
       <span class="nav-icon">🏫</span> Instances
@@ -149,6 +150,30 @@
         <div class="topbar-meta">
           <span class="topbar-live" id="last-updated" title="Data freshness">Loading…</span>
         </div>
+        
+        <!-- Topbar Notification Bell -->
+        <div class="topbar-notif-wrap" id="admin-notif-wrap">
+          <button class="topbar-notif-btn" id="btn-admin-notif" type="button" aria-label="Notifications" title="Notifications">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+            </svg>
+            <span class="topbar-notif-badge" id="admin-notif-badge" style="display:none">0</span>
+          </button>
+          
+          <div class="topbar-notif-dropdown" id="admin-notif-dropdown" style="display:none">
+            <div class="notif-dropdown-header">
+              <span class="notif-dropdown-title">Notifications</span>
+              <button class="notif-sound-btn" id="btn-notif-sound" type="button" title="Toggle audio chime">
+                <span id="notif-sound-icon">🔔</span> <span id="notif-sound-text">Beep On</span>
+              </button>
+            </div>
+            <div class="notif-dropdown-list" id="admin-notif-list">
+              <div class="notif-dropdown-empty">No unread notifications</div>
+            </div>
+          </div>
+        </div>
+
         <div class="topbar-user" id="user-chip">
           <span class="topbar-user-avatar" id="user-chip-avatar" aria-hidden="true">—</span>
           <span class="topbar-user-text">
