@@ -3681,6 +3681,7 @@ function renderAgentsTable() {
             `}
             <button class="btn" style="padding:3px 8px;font-size:11px" onclick="openAgentDetailModal('${agent.id}')" title="View Profile & Statement">View</button>
             <button class="btn" style="padding:3px 8px;font-size:11px" onclick="openEditAgentModal('${agent.id}')" title="Edit Agent">Edit</button>
+            <button class="btn danger-outline" style="padding:3px 8px;font-size:11px" onclick="deleteAgent('${agent.id}')" title="Delete Agent">Delete</button>
           </div>
         </td>
       </tr>
@@ -3716,6 +3717,7 @@ window.rejectAgent = rejectAgent;
 function openNewAgentModal() {
   $('agent-form-id').value = '';
   $('agent-modal-title').textContent = 'Register Field Agent';
+  if ($('agent-form-delete')) $('agent-form-delete').style.display = 'none';
   $('agent-form-name').value = '';
   $('agent-form-phone').value = '';
   $('agent-form-email').value = '';
@@ -3738,6 +3740,7 @@ function openEditAgentModal(agentId) {
   if (!agent) return;
   $('agent-form-id').value = agent.id;
   $('agent-modal-title').textContent = `Edit Agent — ${agent.agent_code}`;
+  if ($('agent-form-delete')) $('agent-form-delete').style.display = 'inline-flex';
   $('agent-form-name').value = agent.full_name || '';
   $('agent-form-phone').value = agent.phone || '';
   $('agent-form-email').value = agent.email || '';
@@ -3753,6 +3756,37 @@ function openEditAgentModal(agentId) {
   $('agent-form-pin').value = '';
   $('agent-form-notes').value = agent.notes || '';
   $('agent-modal-overlay').style.display = 'grid';
+}
+
+async function deleteAgent(agentId) {
+  const agent = AGENTS.find(a => a.id === agentId) || CURRENT_AGENT;
+  const name = agent ? `${agent.full_name} (${agent.agent_code})` : 'this agent';
+
+  const confirmed = confirm(
+    `Are you sure you want to delete ${name}?\n\n` +
+    `This will permanently remove the agent and all associated school assignments, commissions, and payout records.\n\n` +
+    `This action cannot be undone.`
+  );
+  if (!confirmed) return;
+
+  try {
+    const res = await fetch(`/api/agents/${agentId}`, {
+      method: 'DELETE',
+      credentials: 'same-origin',
+    });
+    const result = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(result.error || 'Failed to delete agent');
+
+    toast(`Agent ${agent?.agent_code || ''} deleted`);
+
+    if ($('agent-detail-overlay')) $('agent-detail-overlay').style.display = 'none';
+    if ($('agent-modal-overlay')) $('agent-modal-overlay').style.display = 'none';
+
+    CURRENT_AGENT = null;
+    loadAgentsData();
+  } catch (err) {
+    alert('Error deleting agent: ' + err.message);
+  }
 }
 
 async function saveAgentForm() {
@@ -4078,6 +4112,10 @@ function bindAgentEvents() {
   $('agent-modal-close')?.addEventListener('click', () => { $('agent-modal-overlay').style.display = 'none'; });
   $('agent-form-cancel')?.addEventListener('click', () => { $('agent-modal-overlay').style.display = 'none'; });
   $('agent-form-save')?.addEventListener('click', saveAgentForm);
+  $('agent-form-delete')?.addEventListener('click', () => {
+    const id = $('agent-form-id')?.value;
+    if (id) deleteAgent(id);
+  });
 
   // Detail modal
   $('agent-detail-close')?.addEventListener('click', () => { $('agent-detail-overlay').style.display = 'none'; });
@@ -4094,6 +4132,9 @@ function bindAgentEvents() {
       $('agent-detail-overlay').style.display = 'none';
       openEditAgentModal(CURRENT_AGENT.id);
     }
+  });
+  $('btn-agent-delete')?.addEventListener('click', () => {
+    if (CURRENT_AGENT) deleteAgent(CURRENT_AGENT.id);
   });
 
   // Payout modal
@@ -4117,6 +4158,7 @@ window.openAgentDetailModal = openAgentDetailModal;
 window.openPayoutModal = openPayoutModal;
 window.openEditAgentModal = openEditAgentModal;
 window.deleteSchoolAssignment = deleteSchoolAssignment;
+window.deleteAgent = deleteAgent;
 
 // ── Admin Notifications & Audio Beep ───────────────────────────────────────
 let audioCtx = null;

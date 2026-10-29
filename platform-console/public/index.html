@@ -1317,9 +1317,12 @@
         </div>
       </div>
     </div>
-    <div class="modal-footer">
-      <button class="btn" id="agent-form-cancel" type="button">Cancel</button>
-      <button class="btn primary" id="agent-form-save" type="button">Save Agent</button>
+    <div class="modal-footer" style="display:flex;justify-content:space-between;align-items:center">
+      <button class="btn danger-outline" id="agent-form-delete" type="button" style="display:none">🗑️ Delete Agent</button>
+      <div style="display:flex;gap:8px;margin-left:auto">
+        <button class="btn" id="agent-form-cancel" type="button">Cancel</button>
+        <button class="btn primary" id="agent-form-save" type="button">Save Agent</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1361,6 +1364,7 @@
         <button class="btn" id="btn-agent-add-earning" type="button">+ Record Commission</button>
         <button class="btn" id="btn-agent-add-school" type="button">+ Assign School</button>
         <button class="btn" id="btn-agent-edit-profile" type="button">✏️ Edit Profile</button>
+        <button class="btn danger-outline" id="btn-agent-delete" type="button">🗑️ Delete Agent</button>
       </div>
 
       <!-- Tabbed Views -->
