@@ -857,19 +857,19 @@
             </div>
           </div>
           <div style="overflow-x:auto">
-            <table class="data-table">
+            <table class="data-table agents-table" style="min-width:960px">
               <thead>
                 <tr>
-                  <th>Agent Code</th>
-                  <th>Full Name</th>
-                  <th>Contacts</th>
-                  <th>Region / County</th>
+                  <th style="width:90px">Code</th>
+                  <th>Agent Name</th>
+                  <th>Phone &amp; Email</th>
+                  <th>County / Base</th>
                   <th>Commission Terms</th>
-                  <th>Schools</th>
+                  <th style="text-align:center;width:70px">Schools</th>
                   <th>Total Earned</th>
                   <th>Balance Due</th>
                   <th>Status</th>
-                  <th>Actions</th>
+                  <th style="width:48px;text-align:center">Action</th>
                 </tr>
               </thead>
               <tbody id="agents-table-body">
@@ -1351,9 +1351,11 @@
     </div>
 
     <div class="drawer-body">
-      <!-- Quick Action Buttons -->
+      <!-- Quick Action Buttons inside Drawer -->
       <div class="drawer-action-bar">
         <button class="btn primary" id="btn-agent-record-payout" type="button">💸 Record Payout</button>
+        <button class="btn" id="btn-agent-approve" type="button" style="display:none;background:rgba(5,150,105,.12);color:#059669;border-color:rgba(5,150,105,.3)">✓ Approve Application</button>
+        <button class="btn" id="btn-agent-reject" type="button" style="display:none;background:rgba(220,38,38,.08);color:#dc2626;border-color:rgba(220,38,38,.2)">✗ Reject Application</button>
         <button class="btn" id="btn-agent-add-school" type="button">+ Assign School</button>
         <button class="btn" id="btn-agent-add-earning" type="button">+ Record Commission</button>
         <button class="btn" id="btn-agent-edit-profile" type="button">✏️ Edit Profile</button>
