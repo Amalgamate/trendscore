@@ -772,6 +772,9 @@
             </div>
             <div style="display:flex;gap:6px;align-items:center">
               <input class="form-input" id="lead-search" placeholder="Search leads…" style="width:180px;padding:5px 10px;font-size:12px" type="text"/>
+              <select class="form-select" id="lead-agent-filter" style="width:150px;padding:5px 8px;font-size:12px">
+                <option value="">All agents</option>
+              </select>
               <button class="btn" id="btn-export-leads" type="button">↓ Export CSV</button>
             </div>
           </div>
@@ -786,6 +789,7 @@
                   <th>Current systems</th>
                   <th>Last contact</th>
                   <th>Notes</th>
+                  <th>Agent</th>
                   <th>Actions</th>
                 </tr>
               </thead>

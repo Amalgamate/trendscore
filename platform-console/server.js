@@ -11,6 +11,7 @@ const Docker = require('dockerode');
 const si = require('systeminformation');
 const { createBillingStore } = require('./billing-store');
 const { createAgentsStore } = require('./agents-store');
+const { createLeadsStore } = require('./leads-store');
 const { quotePdfBuffer, invoicePdfBuffer, paymentReceiptPdfBuffer } = require('./billing-documents');
 const { SCHOOL_TYPES, calculateCatalogueQuote, normalizeProductInput } = require('./billing-pricing');
 
@@ -52,10 +53,11 @@ const DEFAULT_DOMAIN_SUFFIX = process.env.CONSOLE_DEFAULT_DOMAIN_SUFFIX || 'tren
 // ── Persistent stores ─────────────────────────────────────────────────────
 const CONSOLE_DATA_DIR = process.env.CONSOLE_DATA_DIR || __dirname;
 fs.mkdirSync(CONSOLE_DATA_DIR, { recursive: true });
-const LEADS_STORE_FILE = path.join(CONSOLE_DATA_DIR, 'leads.store.json');
+
 const AUDIT_STORE_FILE = path.join(CONSOLE_DATA_DIR, 'audit.store.json');
 const billingStore = createBillingStore(CONSOLE_DATA_DIR);
 const agentsStore = createAgentsStore(CONSOLE_DATA_DIR);
+const leadsStore = createLeadsStore(CONSOLE_DATA_DIR);
 const MAX_AUDIT_ENTRIES = 2000;
 
 // In-memory deployment log (ephemeral — only tracks this process session)
@@ -513,27 +515,8 @@ function pushAudit(action, instance, by, details, status = 'Success') {
   writeAuditStore(logs);
 }
 
-// ── Leads store helpers ───────────────────────────────────────────────────
-function ensureLeadsStore() {
-  if (!fs.existsSync(LEADS_STORE_FILE)) {
-    fs.writeFileSync(LEADS_STORE_FILE, JSON.stringify({ leads: [] }, null, 2), 'utf8');
-  }
-}
-
-function readLeadsStore() {
-  ensureLeadsStore();
-  try {
-    const raw = fs.readFileSync(LEADS_STORE_FILE, 'utf8');
-    const parsed = JSON.parse(raw || '{}');
-    return Array.isArray(parsed.leads) ? parsed.leads : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeLeadsStore(leads) {
-  fs.writeFileSync(LEADS_STORE_FILE, JSON.stringify({ leads }, null, 2), 'utf8');
-}
+// ── Leads store helpers (JSON legacy — kept only for reference, no longer used) ──
+// All lead reads/writes now go through leadsStore (SQLite). See leads-store.js.
 
 // ── App catalog & port ranges ─────────────────────────────────────────────
 const APP_TYPE_METADATA = [
@@ -1453,6 +1436,12 @@ app.post('/api/instances/create', requireAuth, requireRole('super_admin'), async
       pushAudit('BILLING_DEFERRED', name, req.user.email, `Billing deferred for ${name}; create the customer and quote later from Billing.`);
       billingResult = { ok: true, deferred: true };
     }
+    // Two-way sync: link this provisioned school back to any matching agent lead
+    if (name) {
+      try {
+        leadsStore.syncProvisionedTenant({ schoolName: name, tenantKey: stdout?.trim() || name });
+      } catch (_) { /* non-critical */ }
+    }
     res.json({ ok: true, output: stdout?.trim(), warning: stderr?.trim() || null, billing: billingResult });
   } catch (error) {
     res.status(500).json({ error: `Provision failed: ${error.message}` });
@@ -1644,9 +1633,17 @@ app.get('/api/deployments', requireAuth, (_req, res) => {
 });
 
 // ── Leads endpoints ───────────────────────────────────────────────────────
-app.get('/api/leads', requireAuth, requireRole('super_admin', 'platform_owner'), (_req, res) => {
-  const leads = readLeadsStore();
-  res.json({ ok: true, leads });
+app.get('/api/leads', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  try {
+    const leads = leadsStore.listLeads({
+      search: String(req.query.search || '').trim(),
+      stage: String(req.query.stage || '').trim(),
+      agentId: String(req.query.agentId || '').trim(),
+    });
+    res.json({ ok: true, leads });
+  } catch (err) {
+    res.status(500).json({ error: err.message || 'Failed to load leads' });
+  }
 });
 
 app.post('/api/leads', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
@@ -1656,71 +1653,40 @@ app.post('/api/leads', requireAuth, requireRole('super_admin', 'platform_owner')
   if (!name || !school) {
     return res.status(400).json({ error: 'name and school are required' });
   }
-
-  const leads = readLeadsStore();
-  const lead = {
-    id: String(body.id || `L${Date.now()}`),
-    name,
-    school,
-    phone: String(body.phone || '').trim(),
-    stage: String(body.stage || 'new').trim() || 'new',
-    priority: String(body.priority || '1').trim() || '1',
-    students: Number(body.students || 0) || 0,
-    tags: Array.isArray(body.tags) ? body.tags : [],
-    systems: {
-      assessment: String(body?.systems?.assessment || 'None'),
-      fees: String(body?.systems?.fees || 'None'),
-      lms: String(body?.systems?.lms || 'None'),
-    },
-    notes: String(body.notes || '').trim(),
-    nextActivity: String(body.nextActivity || 'New lead added').trim(),
-    created: String(body.created || new Date().toISOString().slice(0, 10)),
-  };
-
-  leads.push(lead);
-  writeLeadsStore(leads);
-  pushAudit('LEAD_CREATE', lead.school, req.user.email, `Created lead ${lead.name}`, 'Success');
-  return res.json({ ok: true, lead });
+  try {
+    const lead = leadsStore.createLead(body);
+    pushAudit('LEAD_CREATE', lead.school, req.user.email, `Created lead ${lead.name}`, 'Success');
+    return res.json({ ok: true, lead });
+  } catch (err) {
+    return res.status(400).json({ error: err.message || 'Failed to create lead' });
+  }
 });
 
 app.put('/api/leads/:id', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
   const id = String(req.params.id || '').trim();
   if (!id) return res.status(400).json({ error: 'id is required' });
-
-  const leads = readLeadsStore();
-  const idx = leads.findIndex(l => String(l.id) === id);
-  if (idx < 0) return res.status(404).json({ error: 'Lead not found' });
-
-  const prev = leads[idx];
-  const body = req.body || {};
-  const updated = {
-    ...prev,
-    ...body,
-    id: prev.id,
-    systems: {
-      assessment: String(body?.systems?.assessment ?? prev?.systems?.assessment ?? 'None'),
-      fees: String(body?.systems?.fees ?? prev?.systems?.fees ?? 'None'),
-      lms: String(body?.systems?.lms ?? prev?.systems?.lms ?? 'None'),
-    },
-  };
-  leads[idx] = updated;
-  writeLeadsStore(leads);
-  pushAudit('LEAD_UPDATE', updated.school, req.user.email, `Updated lead ${updated.name}`, 'Success');
-  return res.json({ ok: true, lead: updated });
+  try {
+    const lead = leadsStore.updateLead(id, req.body || {});
+    if (!lead) return res.status(404).json({ error: 'Lead not found' });
+    pushAudit('LEAD_UPDATE', lead.school, req.user.email, `Updated lead ${lead.name}`, 'Success');
+    return res.json({ ok: true, lead });
+  } catch (err) {
+    return res.status(400).json({ error: err.message || 'Failed to update lead' });
+  }
 });
 
 app.delete('/api/leads/:id', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
   const id = String(req.params.id || '').trim();
   if (!id) return res.status(400).json({ error: 'id is required' });
-
-  const leads = readLeadsStore();
-  const idx = leads.findIndex(l => String(l.id) === id);
-  if (idx < 0) return res.status(404).json({ error: 'Lead not found' });
-
-  const [removed] = leads.splice(idx, 1);
-  writeLeadsStore(leads);
-  pushAudit('LEAD_DELETE', removed.school, req.user.email, `Deleted lead ${removed.name}`, 'Warning');
-  return res.json({ ok: true });
+  try {
+    const existing = leadsStore.getLead(id);
+    if (!existing) return res.status(404).json({ error: 'Lead not found' });
+    leadsStore.deleteLead(id);
+    pushAudit('LEAD_DELETE', existing.school, req.user.email, `Deleted lead ${existing.name}`, 'Warning');
+    return res.json({ ok: true });
+  } catch (err) {
+    return res.status(400).json({ error: err.message || 'Failed to delete lead' });
+  }
 });
 
 // ── Field Agents & Commission API ──────────────────────────────────────────
@@ -1816,11 +1782,23 @@ app.post('/api/agents/:id/reject', requireAuth, requireRole('super_admin', 'plat
 
 app.post('/api/agents/:id/schools', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
   try {
-    const school = agentsStore.addSchool(req.params.id, req.body || {});
-    pushAudit('AGENT_ASSIGN_SCHOOL', req.params.id, req.user.email, `Assigned school ${school.school_name} to agent`, 'Success');
-    return res.status(201).json({ ok: true, school });
+    const body = req.body || {};
+    const result = leadsStore.registerSchoolLead({
+      agentId: req.params.id,
+      schoolName: body.school_name,
+      contactPerson: body.contact_person,
+      contactPhone: body.contact_phone,
+      estimatedStudents: body.estimated_students || 0,
+      county: body.county || '',
+      notes: body.notes || '',
+      source: 'admin',
+    });
+    pushAudit('AGENT_ASSIGN_SCHOOL', req.params.id, req.user.email, `Assigned school ${result.school.school_name} to agent`, 'Success');
+    notifyNewAgentLead(result).catch(() => {});
+    return res.status(201).json({ ok: true, school: result.school, lead: result.lead });
   } catch (err) {
-    return res.status(400).json({ error: err.message || 'Failed to assign school' });
+    const status = err.message?.includes('already claimed') ? 409 : 400;
+    return res.status(status).json({ error: err.message || 'Failed to assign school' });
   }
 });
 
@@ -2018,47 +1996,22 @@ app.post('/api/agent/schools', requireAgentAuth, (req, res) => {
   }
 
   try {
-    const school = agentsStore.addSchool(req.agent.id, {
-      school_name: schoolName,
-      contact_person: contactPerson,
-      contact_phone: contactPhone,
-      status: 'pitching',
-      notes: notes ? `${notes} · County: ${county}` : (county ? `County: ${county}` : ''),
+    const result = leadsStore.registerSchoolLead({
+      agentId: req.agent.id,
+      schoolName,
+      contactPerson,
+      contactPhone,
+      estimatedStudents,
+      county,
+      notes,
+      source: 'field_agent',
     });
-
-    let leadId = '';
-    try {
-      const leads = readLeadsStore();
-      const newLead = {
-        id: `L${Date.now()}`,
-        name: contactPerson || 'Principal / Administrator',
-        school: schoolName,
-        phone: contactPhone || req.agent.phone,
-        stage: 'new',
-        priority: '1',
-        students: estimatedStudents,
-        tags: ['field_agent', req.agent.agent_code, county].filter(Boolean),
-        systems: {
-          assessment: 'None',
-          fees: 'None',
-          lms: 'None',
-        },
-        notes: `Registered via Field Agent Mobile App by ${req.agent.full_name} (${req.agent.agent_code}). ${notes}`.trim(),
-        nextActivity: 'Introductory demo / pitch presentation',
-        created: new Date().toISOString().slice(0, 10),
-      };
-      leads.push(newLead);
-      writeLeadsStore(leads);
-      leadId = newLead.id;
-      agentsStore.updateSchool(school.id, { lead_id: leadId });
-    } catch (leadErr) {
-      console.warn('[Agents] Lead sync notice:', leadErr?.message || leadErr);
-    }
-
+    notifyNewAgentLead(result).catch(() => {});
     pushAudit('AGENT_APP_SCHOOL_ADD', req.agent.id, req.agent.phone, `Agent registered prospective school: ${schoolName}`, 'Success');
-    return res.status(201).json({ ok: true, school: { ...school, lead_id: leadId } });
+    return res.status(201).json({ ok: true, school: result.school, lead: result.lead });
   } catch (err) {
-    return res.status(400).json({ ok: false, error: err.message || 'Failed to register school' });
+    const status = err.message?.includes('already claimed') ? 409 : 400;
+    return res.status(status).json({ ok: false, error: err.message || 'Failed to register school' });
   }
 });
 
@@ -2469,6 +2422,46 @@ async function deliverDraftInvoiceEmail(invoice, actor, draftInput = {}) {
     billingStore.recordInvoiceDelivery({ id: crypto.randomUUID(), invoiceId: invoice.id, recipient: draft.recipient, actor, providerMessageId: '', status: 'failed', error: billingText(error.message, 500) });
     throw error;
   }
+}
+
+// ── Field-agent lead notification ─────────────────────────────────────────
+async function notifyNewAgentLead({ school, lead, agent }) {
+  try {
+    const apiKey = process.env.RESEND_API_KEY;
+    const fromEmail = process.env.BILLING_FROM_EMAIL || process.env.EMAIL_FROM || process.env.SMTP_FROM;
+    const adminEmail = process.env.CONSOLE_SUPER_ADMIN_EMAIL;
+    const ownerEmail = process.env.CONSOLE_PLATFORM_OWNER_EMAIL;
+    if (!apiKey || !fromEmail || (!adminEmail && !ownerEmail)) return;
+    const toList = [adminEmail, ownerEmail].filter(Boolean);
+    const agentName = agent?.full_name || 'Unknown Agent';
+    const agentCode = agent?.agent_code || '';
+    const subject = `New Field Lead: ${school.school_name} via ${agentName}${agentCode ? ` (${agentCode})` : ''}`;
+    const text = [
+      `A new school has been registered by a field agent.`,
+      ``,
+      `School:            ${school.school_name}`,
+      `Contact:           ${lead.name}`,
+      `Phone:             ${lead.phone || '—'}`,
+      `Estimated Students: ${lead.students || 'Unknown'}`,
+      `County:            ${school.notes?.match(/County:\s*([^·\n]+)/)?.[1]?.trim() || '—'}`,
+      `Notes:             ${lead.notes || '—'}`,
+      `Agent:             ${agentName}${agentCode ? ` (${agentCode})` : ''}`,
+      `Source:            ${lead.source || 'field_agent'}`,
+      ``,
+      `Log in to the admin console to review this lead:`,
+      `https://admin.trendscore.co.ke`,
+    ].join('\n');
+    await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: `${process.env.BILLING_FROM_NAME || process.env.EMAIL_FROM_NAME || 'TrendSCORE'} <${fromEmail}>`,
+        to: toList,
+        subject,
+        text,
+      }),
+    });
+  } catch (_) { /* Non-critical — never block registration */ }
 }
 
 app.get('/api/billing/customers', requireAuth, requireRole('super_admin', 'platform_owner'), (_req, res) => {
