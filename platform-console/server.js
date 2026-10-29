@@ -1777,7 +1777,7 @@ app.put('/api/agents/:id', requireAuth, requireRole('super_admin', 'platform_own
   }
 });
 
-app.delete('/api/agents/:id', requireAuth, requireRole('super_admin'), (req, res) => {
+app.delete('/api/agents/:id', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
   try {
     const existing = agentsStore.getAgent(req.params.id);
     if (!existing) return res.status(404).json({ error: 'Agent not found' });

@@ -229,5 +229,24 @@ test('Field Agent Mobile App & Billing Auto-Attribution Integration', async (t) 
     assert.ok(authSelf);
     assert.equal(authSelf.id, newSelfAgent.id);
   });
+
+  await t.test('8. Admin deletes an agent and ensures associated records cleanup', () => {
+    // Delete agent created in step 1 (Faith Mutua who has school, earning, and payout)
+    const existing = agentsStore.getAgent(agent.id);
+    assert.ok(existing);
+    assert.ok(existing.schools.length > 0);
+    assert.ok(existing.earnings.length > 0);
+    assert.ok(existing.payouts.length > 0);
+
+    const deleted = agentsStore.deleteAgent(agent.id);
+    assert.equal(deleted, true);
+
+    // Agent profile is gone
+    assert.equal(agentsStore.getAgent(agent.id), null);
+
+    // Deleting again returns false
+    const deleteAgain = agentsStore.deleteAgent(agent.id);
+    assert.equal(deleteAgain, false);
+  });
 });
 

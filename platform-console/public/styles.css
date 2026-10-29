@@ -420,6 +420,10 @@ button,input,select,textarea{font:inherit}
 .btn.hotel:hover{background:#b45309}
 .btn.organization{background:#2563eb;border-color:#2563eb;color:#fff}
 .btn.organization:hover{background:#1d4ed8}
+.btn.danger{background:#dc2626;border-color:#dc2626;color:#fff}
+.btn.danger:hover{background:#b91c1c}
+.btn.danger-outline{background:rgba(220,38,38,.08);color:#dc2626;border-color:rgba(220,38,38,.25)}
+.btn.danger-outline:hover{background:rgba(220,38,38,.16);border-color:#dc2626}
 
 /* ── Content ───────────────────────────────────────────────────────── */
 .content{padding:24px 28px;flex:1}
