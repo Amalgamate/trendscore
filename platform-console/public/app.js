@@ -3698,54 +3698,49 @@ function renderAgentsTable() {
 
   tableBody.innerHTML = AGENTS.map(agent => {
     const rateLabel = agent.commission_type === 'percentage'
-      ? `${agent.commission_rate}% of subscription`
+      ? `${agent.commission_rate}% sub`
       : agent.commission_type === 'fixed_per_student'
-      ? `${formatKsh(agent.commission_rate)} / student`
-      : `${formatKsh(agent.commission_rate)} / school`;
+      ? `${formatKsh(agent.commission_rate)}/student`
+      : `${formatKsh(agent.commission_rate)}/school`;
 
     const statusBadge = agent.status === 'active'
-      ? '<span class="status-badge" style="background:rgba(5,150,105,.12);color:#059669;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:700">● Active</span>'
+      ? '<span class="status-badge" style="background:rgba(5,150,105,.12);color:#059669;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:700">● Active</span>'
       : agent.status === 'pending'
-      ? '<span class="status-badge" style="background:rgba(217,119,6,.12);color:#d97706;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:700">● Pending</span>'
-      : '<span class="status-badge" style="background:rgba(220,38,38,.12);color:#dc2626;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:700">● Inactive</span>';
+      ? '<span class="status-badge" style="background:rgba(217,119,6,.12);color:#d97706;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:700">● Pending</span>'
+      : '<span class="status-badge" style="background:rgba(220,38,38,.12);color:#dc2626;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:700">● Inactive</span>';
 
     const balanceColor = Number(agent.balance_due_ksh || 0) > 0 ? 'var(--brand)' : 'var(--muted)';
 
     return `
-      <tr style="border-bottom:1px solid var(--border)">
-        <td><span class="pill" style="font-weight:700;font-size:11px;cursor:pointer" onclick="openAgentDetailModal('${agent.id}')" title="View details">${esc(agent.agent_code)}</span></td>
+      <tr class="agent-dir-row" onclick="openAgentDetailModal('${agent.id}')" title="Click to open agent details & actions drawer">
+        <td><span class="pill" style="font-weight:700;font-size:11px">${esc(agent.agent_code)}</span></td>
         <td>
-          <div style="font-weight:700;color:var(--ink);cursor:pointer" onclick="openAgentDetailModal('${agent.id}')" title="View details">${esc(agent.full_name)}</div>
-          ${agent.national_id ? `<div style="font-size:11px;color:var(--muted)">ID: ${esc(agent.national_id)}</div>` : ''}
+          <div style="font-weight:700;color:var(--ink);font-size:13px">${esc(agent.full_name)}</div>
+          ${agent.national_id ? `<div style="font-size:10px;color:var(--muted)">ID: ${esc(agent.national_id)}</div>` : ''}
         </td>
         <td>
-          <div style="font-size:12px;font-weight:600"><a href="tel:${esc(agent.phone)}" style="color:var(--brand)">${esc(agent.phone)}</a></div>
-          ${agent.email ? `<div style="font-size:11px;color:var(--muted)">${esc(agent.email)}</div>` : ''}
-          ${agent.mpesa_number && agent.mpesa_number !== agent.phone ? `<div style="font-size:11px;color:#059669">M-Pesa: ${esc(agent.mpesa_number)}</div>` : ''}
+          <div style="font-size:12px;font-weight:600"><a href="tel:${esc(agent.phone)}" onclick="event.stopPropagation()" style="color:var(--brand)">${esc(agent.phone)}</a></div>
+          ${agent.email ? `<div style="font-size:10px;color:var(--muted)">${esc(agent.email)}</div>` : ''}
         </td>
         <td>
           <div style="font-weight:600;font-size:12px">${esc(agent.county || 'Unspecified')}</div>
-          ${agent.base_location ? `<div style="font-size:11px;color:var(--muted)">${esc(agent.base_location)}</div>` : ''}
+          ${agent.base_location ? `<div style="font-size:10px;color:var(--muted)">${esc(agent.base_location)}</div>` : ''}
         </td>
-        <td><span style="font-size:12px;font-weight:600;color:var(--ink)">${esc(rateLabel)}</span></td>
-        <td>
-          <span class="pill" style="font-size:11px;font-weight:600;cursor:pointer" onclick="openAgentDetailModal('${agent.id}')" title="View assigned schools">${agent.total_schools || 0} schools</span>
+        <td><span style="font-size:11px;font-weight:600;color:var(--ink)">${esc(rateLabel)}</span></td>
+        <td style="text-align:center">
+          <span class="pill" style="font-size:11px;font-weight:600">${agent.total_schools || 0}</span>
         </td>
         <td style="font-weight:600;font-size:12px">${formatKsh(agent.total_earned_ksh || 0)}</td>
-        <td style="font-weight:700;font-size:13px;color:${balanceColor}">${formatKsh(agent.balance_due_ksh || 0)}</td>
+        <td style="font-weight:700;font-size:12px;color:${balanceColor}">${formatKsh(agent.balance_due_ksh || 0)}</td>
         <td>${statusBadge}</td>
-        <td>
-          <div style="display:flex;gap:6px;align-items:center;white-space:nowrap">
-            <button class="btn primary" style="padding:4px 9px;font-size:11px;font-weight:600" onclick="openAgentDetailModal('${agent.id}')" title="Open Agent Details Drawer">View Details →</button>
-            ${agent.status === 'pending' ? `
-              <button class="btn" style="padding:4px 8px;font-size:11px;background:rgba(5,150,105,.12);color:#059669;border-color:rgba(5,150,105,.3)" onclick="approveAgent('${agent.id}')" title="Approve self-registered agent">✓ Approve</button>
-              <button class="btn" style="padding:4px 8px;font-size:11px;background:rgba(220,38,38,.08);color:#dc2626;border-color:rgba(220,38,38,.2)" onclick="rejectAgent('${agent.id}')" title="Reject self-registered agent">✗ Reject</button>
-            ` : `
-              <button class="btn" style="padding:4px 8px;font-size:11px" onclick="openPayoutModal('${agent.id}')" title="Record Payout">Payout</button>
-            `}
-            <button class="btn" style="padding:4px 8px;font-size:11px" onclick="openEditAgentModal('${agent.id}')" title="Edit Agent">Edit</button>
-            <button class="btn danger-outline" style="padding:4px 8px;font-size:11px" onclick="deleteAgent('${agent.id}')" title="Delete Agent">Delete</button>
-          </div>
+        <td style="text-align:center;padding:4px 6px" onclick="event.stopPropagation()">
+          <button class="btn-agent-more" onclick="openAgentDetailModal('${agent.id}')" title="Actions & Details" aria-label="Open Actions">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor">
+              <circle cx="8" cy="3" r="1.5"/>
+              <circle cx="8" cy="8" r="1.5"/>
+              <circle cx="8" cy="13" r="1.5"/>
+            </svg>
+          </button>
         </td>
       </tr>
     `;
@@ -3758,6 +3753,9 @@ async function approveAgent(agentId) {
     await fetch(`/api/agents/${agentId}/approve`, { method: 'POST', credentials: 'same-origin' });
     toast('Agent approved — they can now sign in to the portal');
     loadAgentsData();
+    if (CURRENT_AGENT && CURRENT_AGENT.id === agentId) {
+      openAgentDetailModal(agentId);
+    }
   } catch (err) {
     toast('Failed to approve agent: ' + err.message, true);
   }
@@ -3769,6 +3767,9 @@ async function rejectAgent(agentId) {
     await fetch(`/api/agents/${agentId}/reject`, { method: 'POST', credentials: 'same-origin' });
     toast('Agent application rejected');
     loadAgentsData();
+    if (CURRENT_AGENT && CURRENT_AGENT.id === agentId) {
+      openAgentDetailModal(agentId);
+    }
   } catch (err) {
     toast('Failed to reject agent: ' + err.message, true);
   }
@@ -3960,6 +3961,20 @@ function renderAgentDetailModal(agent) {
   $('agent-stat-earned').textContent = formatKsh(agent.financials?.totalEarnedKsh || 0);
   $('agent-stat-paid').textContent = formatKsh(agent.financials?.totalPaidKsh || 0);
   $('agent-stat-balance').textContent = formatKsh(agent.financials?.balanceDueKsh || 0);
+
+  // Toggle Pending Approval actions vs Payout
+  const btnPayout = $('btn-agent-record-payout');
+  const btnApprove = $('btn-agent-approve');
+  const btnReject = $('btn-agent-reject');
+  if (agent.status === 'pending') {
+    if (btnPayout) btnPayout.style.display = 'none';
+    if (btnApprove) btnApprove.style.display = 'inline-flex';
+    if (btnReject) btnReject.style.display = 'inline-flex';
+  } else {
+    if (btnPayout) btnPayout.style.display = 'inline-flex';
+    if (btnApprove) btnApprove.style.display = 'none';
+    if (btnReject) btnReject.style.display = 'none';
+  }
 
   // Meta Grid Details
   if ($('agent-detail-phone')) {
@@ -4262,6 +4277,8 @@ function bindAgentEvents() {
   $('tab-btn-payouts')?.addEventListener('click', () => switchAgentDetailTab('payouts'));
 
   $('btn-agent-record-payout')?.addEventListener('click', () => { if (CURRENT_AGENT) openPayoutModal(CURRENT_AGENT.id); });
+  $('btn-agent-approve')?.addEventListener('click', () => { if (CURRENT_AGENT) approveAgent(CURRENT_AGENT.id); });
+  $('btn-agent-reject')?.addEventListener('click', () => { if (CURRENT_AGENT) rejectAgent(CURRENT_AGENT.id); });
   $('btn-agent-add-earning')?.addEventListener('click', () => { if (CURRENT_AGENT) openEarningModal(CURRENT_AGENT.id); });
   $('btn-agent-add-school')?.addEventListener('click', () => { if (CURRENT_AGENT) openAssignSchoolModal(CURRENT_AGENT.id); });
   $('btn-agent-edit-profile')?.addEventListener('click', () => {

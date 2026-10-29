@@ -1592,6 +1592,40 @@ input:checked + .toggle-slider::before{transform:translateX(18px)}
   color: #fff;
 }
 
+/* ── Slim & Lean Agent Directory Table ──────────────────────────────────── */
+.agents-table th,
+.agents-table td {
+  padding: 8px 12px;
+  vertical-align: middle;
+}
+.agent-dir-row {
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+.agent-dir-row:hover td {
+  background: #f1f6ff !important;
+}
+.btn-agent-more {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+.btn-agent-more:hover {
+  background: #eef2ff;
+  border-color: var(--brand);
+  color: var(--brand);
+  box-shadow: 0 1px 4px rgba(3, 11, 130, 0.15);
+}
+
 /* Final responsive overrides: keep these after feature styles so they win. */
 @media(max-width:900px){
   .sidebar{position:relative;height:auto;max-height:none;overflow-x:auto;overflow-y:hidden}
