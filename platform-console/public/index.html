@@ -1332,83 +1332,130 @@
 </div>
 
 <!-- AGENT DETAILS / STATEMENT MODAL -->
-<div class="overlay" id="agent-detail-overlay" aria-modal="true" role="dialog" style="display:none">
-  <div class="modal" style="max-width:850px">
-    <div class="modal-header" style="align-items:center">
-      <div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <span class="pill" id="agent-detail-code">AGT-1001</span>
-          <span class="modal-title" id="agent-detail-name">Agent Name</span>
-          <span id="agent-detail-status-badge"></span>
+<!-- AGENT DETAIL DRAWER (SLIDE-IN FROM RIGHT) -->
+<div class="drawer-overlay" id="agent-detail-overlay" aria-modal="true" role="dialog" style="display:none">
+  <div class="drawer" id="agent-detail-drawer">
+    <div class="drawer-header">
+      <div style="display:flex;align-items:center;gap:12px;min-width:0">
+        <div class="drawer-avatar" id="agent-detail-avatar">AG</div>
+        <div style="min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <span class="pill" id="agent-detail-code" style="font-weight:700">AGT-1001</span>
+            <span class="modal-title" id="agent-detail-name" style="font-size:17px;font-weight:800;color:var(--ink)">Agent Name</span>
+            <span id="agent-detail-status-badge"></span>
+          </div>
+          <div class="panel-sub" id="agent-detail-sub" style="margin-top:2px;font-size:12px">Phone: - · County: -</div>
         </div>
-        <div class="panel-sub" id="agent-detail-sub" style="margin-top:4px">Phone: - · County: - · Commission: -</div>
       </div>
-      <button class="modal-close" id="agent-detail-close" type="button" aria-label="Close">×</button>
+      <button class="modal-close" id="agent-detail-close" type="button" aria-label="Close" style="font-size:24px;padding:4px 8px">×</button>
     </div>
-    <div class="modal-body" style="padding-top:12px">
-      <!-- Top Financial Stats -->
-      <div class="metric-row" style="margin-bottom:16px;grid-template-columns:repeat(3,1fr)">
-        <div class="metric-card" style="padding:10px 14px">
-          <div class="m-label">Total Commission Earned</div>
-          <div class="m-val" id="agent-stat-earned" style="font-size:18px">KES 0</div>
-        </div>
-        <div class="metric-card" style="padding:10px 14px">
-          <div class="m-label">Total Disbursed</div>
-          <div class="m-val" id="agent-stat-paid" style="font-size:18px;color:var(--green)">KES 0</div>
-        </div>
-        <div class="metric-card" style="padding:10px 14px">
-          <div class="m-label">Balance Pending Payout</div>
-          <div class="m-val" id="agent-stat-balance" style="font-size:18px;color:var(--brand)">KES 0</div>
-        </div>
-      </div>
 
+    <div class="drawer-body">
       <!-- Quick Action Buttons -->
-      <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+      <div class="drawer-action-bar">
         <button class="btn primary" id="btn-agent-record-payout" type="button">💸 Record Payout</button>
-        <button class="btn" id="btn-agent-add-earning" type="button">+ Record Commission</button>
         <button class="btn" id="btn-agent-add-school" type="button">+ Assign School</button>
+        <button class="btn" id="btn-agent-add-earning" type="button">+ Record Commission</button>
         <button class="btn" id="btn-agent-edit-profile" type="button">✏️ Edit Profile</button>
         <button class="btn danger-outline" id="btn-agent-delete" type="button">🗑️ Delete Agent</button>
       </div>
 
-      <!-- Tabbed Views -->
-      <div style="border-bottom:1px solid var(--border);display:flex;gap:16px;margin-bottom:14px">
-        <button class="billing-mail-preview-tab active" id="tab-btn-schools" type="button" style="padding:6px 2px;background:none;border:none;border-bottom:2px solid var(--brand);font-weight:600;cursor:pointer">Assigned Schools</button>
-        <button class="billing-mail-preview-tab" id="tab-btn-earnings" type="button" style="padding:6px 2px;background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);font-weight:600;cursor:pointer">Earnings Ledger</button>
-        <button class="billing-mail-preview-tab" id="tab-btn-payouts" type="button" style="padding:6px 2px;background:none;border:none;border-bottom:2px solid transparent;color:var(--muted);font-weight:600;cursor:pointer">Payout History</button>
-      </div>
-
-      <!-- Schools Pane -->
-      <div id="pane-agent-schools">
-        <div style="overflow-x:auto;max-height:260px">
-          <table class="data-table" style="font-size:12px">
-            <thead><tr><th>School Name</th><th>Status</th><th>Contact Person</th><th>Phone</th><th>Date Assigned</th><th>Action</th></tr></thead>
-            <tbody id="agent-schools-body"></tbody>
-          </table>
+      <!-- Financial Performance Stats -->
+      <div class="drawer-kpi-grid">
+        <div class="drawer-kpi-card">
+          <div class="kpi-label">Total Earned</div>
+          <div class="kpi-val" id="agent-stat-earned">KES 0</div>
+        </div>
+        <div class="drawer-kpi-card">
+          <div class="kpi-label">Disbursed</div>
+          <div class="kpi-val" id="agent-stat-paid" style="color:var(--green)">KES 0</div>
+        </div>
+        <div class="drawer-kpi-card" style="border-color:rgba(3,11,130,.25);background:rgba(3,11,130,.03)">
+          <div class="kpi-label" style="color:var(--brand)">Balance Due</div>
+          <div class="kpi-val" id="agent-stat-balance" style="color:var(--brand)">KES 0</div>
         </div>
       </div>
 
-      <!-- Earnings Pane -->
-      <div id="pane-agent-earnings" style="display:none">
-        <div style="overflow-x:auto;max-height:260px">
-          <table class="data-table" style="font-size:12px">
-            <thead><tr><th>Earned Date</th><th>School</th><th>Description</th><th>Gross (KES)</th><th>Commission (KES)</th><th>Status</th></tr></thead>
-            <tbody id="agent-earnings-body"></tbody>
-          </table>
+      <!-- Profile & Payout Details Grid -->
+      <div class="agent-meta-grid">
+        <div class="agent-meta-item">
+          <div class="meta-label">Phone Number</div>
+          <div class="meta-value" id="agent-detail-phone">-</div>
+        </div>
+        <div class="agent-meta-item">
+          <div class="meta-label">Email Address</div>
+          <div class="meta-value" id="agent-detail-email">-</div>
+        </div>
+        <div class="agent-meta-item">
+          <div class="meta-label">National ID</div>
+          <div class="meta-value" id="agent-detail-national-id">-</div>
+        </div>
+        <div class="agent-meta-item">
+          <div class="meta-label">County / Base</div>
+          <div class="meta-value" id="agent-detail-location">-</div>
+        </div>
+        <div class="agent-meta-item">
+          <div class="meta-label">Commission Plan</div>
+          <div class="meta-value" id="agent-detail-plan">-</div>
+        </div>
+        <div class="agent-meta-item">
+          <div class="meta-label">M-Pesa Disburse No.</div>
+          <div class="meta-value" id="agent-detail-mpesa">-</div>
+        </div>
+        <div class="agent-meta-item" style="grid-column:1/-1">
+          <div class="meta-label">Bank Payout Details</div>
+          <div class="meta-value" id="agent-detail-bank">-</div>
         </div>
       </div>
 
-      <!-- Payouts Pane -->
-      <div id="pane-agent-payouts" style="display:none">
-        <div style="overflow-x:auto;max-height:260px">
-          <table class="data-table" style="font-size:12px">
-            <thead><tr><th>Payout Date</th><th>Method</th><th>Reference</th><th>Amount (KES)</th><th>Status</th><th>Processed By</th></tr></thead>
-            <tbody id="agent-payouts-body"></tbody>
-          </table>
+      <!-- Tabbed Activity Sections -->
+      <div style="margin-top:20px">
+        <div class="drawer-tabs">
+          <button class="drawer-tab active" id="tab-btn-schools" type="button">
+            Assigned Schools <span class="tab-badge" id="tab-count-schools">0</span>
+          </button>
+          <button class="drawer-tab" id="tab-btn-earnings" type="button">
+            Earnings Ledger <span class="tab-badge" id="tab-count-earnings">0</span>
+          </button>
+          <button class="drawer-tab" id="tab-btn-payouts" type="button">
+            Payout History <span class="tab-badge" id="tab-count-payouts">0</span>
+          </button>
+        </div>
+
+        <!-- Schools Pane -->
+        <div id="pane-agent-schools">
+          <div style="overflow-x:auto;max-height:280px">
+            <table class="data-table" style="font-size:12px">
+              <thead><tr><th>School Name</th><th>Status</th><th>Contact Person</th><th>Phone</th><th>Assigned</th><th>Action</th></tr></thead>
+              <tbody id="agent-schools-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Earnings Pane -->
+        <div id="pane-agent-earnings" style="display:none">
+          <div style="overflow-x:auto;max-height:280px">
+            <table class="data-table" style="font-size:12px">
+              <thead><tr><th>Date</th><th>School</th><th>Description</th><th>Gross (KES)</th><th>Commission (KES)</th><th>Status</th></tr></thead>
+              <tbody id="agent-earnings-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Payouts Pane -->
+        <div id="pane-agent-payouts" style="display:none">
+          <div style="overflow-x:auto;max-height:280px">
+            <table class="data-table" style="font-size:12px">
+              <thead><tr><th>Date</th><th>Method</th><th>Reference</th><th>Amount (KES)</th><th>Status</th><th>Processed By</th></tr></thead>
+              <tbody id="agent-payouts-body"></tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
-    <div class="modal-footer">
+
+    <div class="drawer-footer">
+      <span style="font-size:11px;color:var(--muted)">Assigned schools and prospective leads sync directly with CRM</span>
       <button class="btn" id="agent-detail-dismiss" type="button">Close</button>
     </div>
   </div>

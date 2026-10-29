@@ -3713,9 +3713,9 @@ function renderAgentsTable() {
 
     return `
       <tr style="border-bottom:1px solid var(--border)">
-        <td><span class="pill" style="font-weight:700;font-size:11px">${esc(agent.agent_code)}</span></td>
+        <td><span class="pill" style="font-weight:700;font-size:11px;cursor:pointer" onclick="openAgentDetailModal('${agent.id}')" title="View details">${esc(agent.agent_code)}</span></td>
         <td>
-          <div style="font-weight:700;color:var(--ink)">${esc(agent.full_name)}</div>
+          <div style="font-weight:700;color:var(--ink);cursor:pointer" onclick="openAgentDetailModal('${agent.id}')" title="View details">${esc(agent.full_name)}</div>
           ${agent.national_id ? `<div style="font-size:11px;color:var(--muted)">ID: ${esc(agent.national_id)}</div>` : ''}
         </td>
         <td>
@@ -3729,22 +3729,22 @@ function renderAgentsTable() {
         </td>
         <td><span style="font-size:12px;font-weight:600;color:var(--ink)">${esc(rateLabel)}</span></td>
         <td>
-          <span class="pill" style="font-size:11px;font-weight:600">${agent.total_schools || 0} schools</span>
+          <span class="pill" style="font-size:11px;font-weight:600;cursor:pointer" onclick="openAgentDetailModal('${agent.id}')" title="View assigned schools">${agent.total_schools || 0} schools</span>
         </td>
         <td style="font-weight:600;font-size:12px">${formatKsh(agent.total_earned_ksh || 0)}</td>
         <td style="font-weight:700;font-size:13px;color:${balanceColor}">${formatKsh(agent.balance_due_ksh || 0)}</td>
         <td>${statusBadge}</td>
         <td>
-          <div style="display:flex;gap:4px;flex-wrap:wrap">
+          <div style="display:flex;gap:6px;align-items:center;white-space:nowrap">
+            <button class="btn primary" style="padding:4px 9px;font-size:11px;font-weight:600" onclick="openAgentDetailModal('${agent.id}')" title="Open Agent Details Drawer">View Details →</button>
             ${agent.status === 'pending' ? `
-              <button class="btn" style="padding:3px 8px;font-size:11px;background:rgba(5,150,105,.12);color:#059669;border-color:rgba(5,150,105,.3)" onclick="approveAgent('${agent.id}')" title="Approve self-registered agent">✓ Approve</button>
-              <button class="btn" style="padding:3px 8px;font-size:11px;background:rgba(220,38,38,.08);color:#dc2626;border-color:rgba(220,38,38,.2)" onclick="rejectAgent('${agent.id}')" title="Reject self-registered agent">✗ Reject</button>
+              <button class="btn" style="padding:4px 8px;font-size:11px;background:rgba(5,150,105,.12);color:#059669;border-color:rgba(5,150,105,.3)" onclick="approveAgent('${agent.id}')" title="Approve self-registered agent">✓ Approve</button>
+              <button class="btn" style="padding:4px 8px;font-size:11px;background:rgba(220,38,38,.08);color:#dc2626;border-color:rgba(220,38,38,.2)" onclick="rejectAgent('${agent.id}')" title="Reject self-registered agent">✗ Reject</button>
             ` : `
-              <button class="btn primary" style="padding:3px 8px;font-size:11px" onclick="openPayoutModal('${agent.id}')" title="Record Payout">Payout</button>
+              <button class="btn" style="padding:4px 8px;font-size:11px" onclick="openPayoutModal('${agent.id}')" title="Record Payout">Payout</button>
             `}
-            <button class="btn" style="padding:3px 8px;font-size:11px" onclick="openAgentDetailModal('${agent.id}')" title="View Profile & Statement">View</button>
-            <button class="btn" style="padding:3px 8px;font-size:11px" onclick="openEditAgentModal('${agent.id}')" title="Edit Agent">Edit</button>
-            <button class="btn danger-outline" style="padding:3px 8px;font-size:11px" onclick="deleteAgent('${agent.id}')" title="Delete Agent">Delete</button>
+            <button class="btn" style="padding:4px 8px;font-size:11px" onclick="openEditAgentModal('${agent.id}')" title="Edit Agent">Edit</button>
+            <button class="btn danger-outline" style="padding:4px 8px;font-size:11px" onclick="deleteAgent('${agent.id}')" title="Delete Agent">Delete</button>
           </div>
         </td>
       </tr>
@@ -3842,7 +3842,7 @@ async function deleteAgent(agentId) {
 
     toast(`Agent ${agent?.agent_code || ''} deleted`);
 
-    if ($('agent-detail-overlay')) $('agent-detail-overlay').style.display = 'none';
+    if ($('agent-detail-overlay')) closeAgentDrawer();
     if ($('agent-modal-overlay')) $('agent-modal-overlay').style.display = 'none';
 
     CURRENT_AGENT = null;
@@ -3897,6 +3897,31 @@ async function saveAgentForm() {
   }
 }
 
+function getAgentInitials(name) {
+  if (!name) return 'AG';
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function openAgentDrawer() {
+  const el = $('agent-detail-overlay');
+  if (!el) return;
+  el.style.display = 'flex';
+  requestAnimationFrame(() => el.classList.add('open'));
+  document.body.style.overflow = 'hidden';
+}
+
+function closeAgentDrawer() {
+  const el = $('agent-detail-overlay');
+  if (!el) return;
+  el.classList.remove('open');
+  setTimeout(() => {
+    if (!el.classList.contains('open')) el.style.display = 'none';
+  }, 280);
+  document.body.style.overflow = '';
+}
+
 async function openAgentDetailModal(agentId) {
   try {
     const res = await fetch(`/api/agents/${agentId}`, { credentials: 'same-origin' });
@@ -3904,34 +3929,76 @@ async function openAgentDetailModal(agentId) {
     const { agent } = await res.json();
     CURRENT_AGENT = agent;
     renderAgentDetailModal(agent);
-    $('agent-detail-overlay').style.display = 'grid';
+    openAgentDrawer();
   } catch (err) {
-    alert('Error loading agent: ' + err.message);
+    toast('Error loading agent: ' + err.message, true);
   }
 }
 
 function renderAgentDetailModal(agent) {
+  if ($('agent-detail-avatar')) $('agent-detail-avatar').textContent = getAgentInitials(agent.full_name);
   $('agent-detail-code').textContent = agent.agent_code;
   $('agent-detail-name').textContent = agent.full_name;
-  $('agent-detail-sub').textContent = `Phone: ${agent.phone} · County: ${agent.county || 'N/A'} · Rate: ${agent.commission_rate}${agent.commission_type === 'percentage' ? '%' : ' KES'}`;
+  
+  const rateLabel = agent.commission_type === 'percentage'
+    ? `${agent.commission_rate}% of subscription`
+    : agent.commission_type === 'fixed_per_student'
+    ? `${formatKsh(agent.commission_rate)} / student`
+    : `${formatKsh(agent.commission_rate)} / school`;
+
+  $('agent-detail-sub').textContent = `Rate: ${rateLabel} · Registered: ${agent.created_at ? agent.created_at.slice(0, 10) : '—'}`;
 
   const statusBadge = $('agent-detail-status-badge');
   if (statusBadge) {
     statusBadge.innerHTML = agent.status === 'active'
-      ? '<span style="background:rgba(5,150,105,.12);color:#059669;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700">Active</span>'
-      : '<span style="background:rgba(217,119,6,.12);color:#d97706;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700">' + esc(agent.status) + '</span>';
+      ? '<span style="background:rgba(5,150,105,.12);color:#059669;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700">● Active</span>'
+      : agent.status === 'pending'
+      ? '<span style="background:rgba(217,119,6,.12);color:#d97706;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700">● Pending Approval</span>'
+      : '<span style="background:rgba(220,38,38,.12);color:#dc2626;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700">● Inactive</span>';
   }
 
   $('agent-stat-earned').textContent = formatKsh(agent.financials?.totalEarnedKsh || 0);
   $('agent-stat-paid').textContent = formatKsh(agent.financials?.totalPaidKsh || 0);
   $('agent-stat-balance').textContent = formatKsh(agent.financials?.balanceDueKsh || 0);
 
+  // Meta Grid Details
+  if ($('agent-detail-phone')) {
+    $('agent-detail-phone').innerHTML = agent.phone ? `<a href="tel:${esc(agent.phone)}" style="color:var(--brand);font-weight:700">${esc(agent.phone)}</a>` : '—';
+  }
+  if ($('agent-detail-email')) {
+    $('agent-detail-email').innerHTML = agent.email ? `<a href="mailto:${esc(agent.email)}" style="color:var(--brand)">${esc(agent.email)}</a>` : '<span style="color:var(--muted)">None</span>';
+  }
+  if ($('agent-detail-national-id')) {
+    $('agent-detail-national-id').textContent = agent.national_id || 'Not provided';
+  }
+  if ($('agent-detail-location')) {
+    const loc = [agent.county, agent.base_location].filter(Boolean).join(' · ');
+    $('agent-detail-location').textContent = loc || 'Unspecified';
+  }
+  if ($('agent-detail-plan')) {
+    $('agent-detail-plan').textContent = rateLabel;
+  }
+  if ($('agent-detail-mpesa')) {
+    $('agent-detail-mpesa').textContent = agent.mpesa_number || agent.phone || '—';
+  }
+  if ($('agent-detail-bank')) {
+    const bank = [agent.bank_name, agent.bank_account].filter(Boolean).join(' - A/C: ');
+    $('agent-detail-bank').textContent = bank || 'Not configured (Default: M-Pesa)';
+  }
+
+  // Tab count badges
+  const schools = agent.schools || [];
+  const earnings = agent.earnings || [];
+  const payouts = agent.payouts || [];
+  if ($('tab-count-schools')) $('tab-count-schools').textContent = schools.length;
+  if ($('tab-count-earnings')) $('tab-count-earnings').textContent = earnings.length;
+  if ($('tab-count-payouts')) $('tab-count-payouts').textContent = payouts.length;
+
   // Render Schools Table
   const schoolsBody = $('agent-schools-body');
   if (schoolsBody) {
-    const schools = agent.schools || [];
     if (schools.length === 0) {
-      schoolsBody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:18px">No schools assigned to this agent yet.</td></tr>';
+      schoolsBody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">No schools assigned to this agent yet. Click "+ Assign School" above to assign one.</td></tr>';
     } else {
       schoolsBody.innerHTML = schools.map(s => `
         <tr>
@@ -3949,9 +4016,8 @@ function renderAgentDetailModal(agent) {
   // Render Earnings Table
   const earningsBody = $('agent-earnings-body');
   if (earningsBody) {
-    const earnings = agent.earnings || [];
     if (earnings.length === 0) {
-      earningsBody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:18px">No commissions recorded yet.</td></tr>';
+      earningsBody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">No commissions recorded yet. Commissions are auto-attributed on invoice payment or manually via "+ Record Commission".</td></tr>';
     } else {
       earningsBody.innerHTML = earnings.map(e => `
         <tr>
@@ -3969,9 +4035,8 @@ function renderAgentDetailModal(agent) {
   // Render Payouts Table
   const payoutsBody = $('agent-payouts-body');
   if (payoutsBody) {
-    const payouts = agent.payouts || [];
     if (payouts.length === 0) {
-      payoutsBody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:18px">No payouts disbursed to this agent yet.</td></tr>';
+      payoutsBody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">No payouts disbursed to this agent yet. Click "💸 Record Payout" above to record a disbursement.</td></tr>';
     } else {
       payoutsBody.innerHTML = payouts.map(p => `
         <tr>
@@ -4049,7 +4114,7 @@ async function submitPayout() {
     if (!res.ok) throw new Error(result.error || 'Failed to record payout');
     toast(`Payout of KES ${amount_ksh.toLocaleString()} recorded`);
     $('agent-payout-overlay').style.display = 'none';
-    if ($('agent-detail-overlay').style.display !== 'none') {
+    if ($('agent-detail-overlay') && ($('agent-detail-overlay').classList.contains('open') || $('agent-detail-overlay').style.display !== 'none')) {
       openAgentDetailModal(CURRENT_AGENT.id);
     }
     loadAgentsData();
@@ -4096,7 +4161,7 @@ async function submitEarning() {
     if (!res.ok) throw new Error(result.error || 'Failed to record commission');
     toast(`Commission of KES ${earned_amount_ksh.toLocaleString()} recorded`);
     $('agent-earning-overlay').style.display = 'none';
-    if ($('agent-detail-overlay').style.display !== 'none') {
+    if ($('agent-detail-overlay') && ($('agent-detail-overlay').classList.contains('open') || $('agent-detail-overlay').style.display !== 'none')) {
       openAgentDetailModal(CURRENT_AGENT.id);
     }
     loadAgentsData();
@@ -4137,7 +4202,7 @@ async function submitAssignSchool() {
     if (!res.ok) throw new Error(result.error || 'Failed to assign school');
     toast(`School ${school_name} assigned to agent`);
     $('agent-school-overlay').style.display = 'none';
-    if ($('agent-detail-overlay').style.display !== 'none') {
+    if ($('agent-detail-overlay') && ($('agent-detail-overlay').classList.contains('open') || $('agent-detail-overlay').style.display !== 'none')) {
       openAgentDetailModal(CURRENT_AGENT.id);
     }
     loadAgentsData();
@@ -4180,9 +4245,18 @@ function bindAgentEvents() {
     if (id) deleteAgent(id);
   });
 
-  // Detail modal
-  $('agent-detail-close')?.addEventListener('click', () => { $('agent-detail-overlay').style.display = 'none'; });
-  $('agent-detail-dismiss')?.addEventListener('click', () => { $('agent-detail-overlay').style.display = 'none'; });
+  // Detail drawer
+  $('agent-detail-close')?.addEventListener('click', closeAgentDrawer);
+  $('agent-detail-dismiss')?.addEventListener('click', closeAgentDrawer);
+  $('agent-detail-overlay')?.addEventListener('click', (e) => {
+    if (e.target === $('agent-detail-overlay')) closeAgentDrawer();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && $('agent-detail-overlay')?.classList.contains('open')) {
+      closeAgentDrawer();
+    }
+  });
+
   $('tab-btn-schools')?.addEventListener('click', () => switchAgentDetailTab('schools'));
   $('tab-btn-earnings')?.addEventListener('click', () => switchAgentDetailTab('earnings'));
   $('tab-btn-payouts')?.addEventListener('click', () => switchAgentDetailTab('payouts'));
@@ -4192,7 +4266,7 @@ function bindAgentEvents() {
   $('btn-agent-add-school')?.addEventListener('click', () => { if (CURRENT_AGENT) openAssignSchoolModal(CURRENT_AGENT.id); });
   $('btn-agent-edit-profile')?.addEventListener('click', () => {
     if (CURRENT_AGENT) {
-      $('agent-detail-overlay').style.display = 'none';
+      closeAgentDrawer();
       openEditAgentModal(CURRENT_AGENT.id);
     }
   });
@@ -4218,6 +4292,7 @@ function bindAgentEvents() {
 
 // Make functions globally available for inline onclick handlers
 window.openAgentDetailModal = openAgentDetailModal;
+window.closeAgentDrawer = closeAgentDrawer;
 window.openPayoutModal = openPayoutModal;
 window.openEditAgentModal = openEditAgentModal;
 window.deleteSchoolAssignment = deleteSchoolAssignment;
