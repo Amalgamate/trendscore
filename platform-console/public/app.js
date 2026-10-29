@@ -1623,7 +1623,8 @@ function renderPipeline() {
             <div class="k-card-color"></div>
             <div class="k-card-top">
               <span class="k-priority p${lead.priority}">${prioStars}</span>
-              ${lead.tags.map(t => `<span class="k-tag">${esc(t)}</span>`).join('')}
+              ${lead.agentCode ? `<span class="k-tag" style="background:var(--accent-light,#e8f0fe);color:var(--accent,#1a73e8)">🧑‍💼 ${esc(lead.agentCode)}</span>` : ''}
+              ${(lead.tags||[]).filter(t => t !== lead.agentCode).map(t => `<span class="k-tag">${esc(t)}</span>`).join('')}
             </div>
             <div class="k-card-title">${esc(lead.school)}</div>
             <div class="k-card-sub">${esc(lead.name)} • ${esc(lead.phone)}</div>
@@ -1657,7 +1658,7 @@ function renderPipeline() {
             const lead = LEADS.find(l => l.id === leadId);
             if (lead && lead.stage !== newStage) {
               lead.stage = newStage;
-              addAudit({ action: 'Lead Stage Changed', instance: lead.school, details: `Moved to ${newStage}` });
+              updateLeadApi(leadId, { stage: newStage }).catch(() => toast('Stage save failed — refresh to restore'));
               renderEverything();
               toast(`Moved ${lead.school} to ${newStage}`);
             }
@@ -1669,13 +1670,46 @@ function renderPipeline() {
 }
 
 let activeLeadFilter = null;
+let activeAgentFilter = null;
+let activeLeadSearch = '';
+
+function updateLeadAgentDropdown() {
+  const sel = $('lead-agent-filter');
+  if (!sel) return;
+  const currentVal = sel.value;
+  const map = new Map();
+  (LEADS || []).forEach(l => {
+    if (l.agentCode) {
+      map.set(l.agentCode, l.agentName ? `${l.agentName} (${l.agentCode})` : l.agentCode);
+    }
+  });
+  let html = '<option value="">All agents</option>';
+  for (const [code, label] of map.entries()) {
+    html += `<option value="${esc(code)}" ${currentVal === code ? 'selected' : ''}>${esc(label)}</option>`;
+  }
+  sel.innerHTML = html;
+}
+
 function renderLeadsList() {
   const table = $('leads-table');
   if (!table) return;
 
-  const filteredLeads = activeLeadFilter ? LEADS.filter(l => l.stage === activeLeadFilter) : LEADS;
+  updateLeadAgentDropdown();
+  let filteredLeads = activeLeadFilter ? LEADS.filter(l => l.stage === activeLeadFilter) : LEADS;
+  if (activeAgentFilter) filteredLeads = filteredLeads.filter(l => l.agentId === activeAgentFilter || l.agentCode === activeAgentFilter);
+  if (activeLeadSearch) {
+    const q = activeLeadSearch.toLowerCase();
+    filteredLeads = filteredLeads.filter(l =>
+      (l.name && l.name.toLowerCase().includes(q)) ||
+      (l.school && l.school.toLowerCase().includes(q)) ||
+      (l.phone && l.phone.toLowerCase().includes(q)) ||
+      (l.agentCode && l.agentCode.toLowerCase().includes(q)) ||
+      (l.agentName && l.agentName.toLowerCase().includes(q)) ||
+      (l.notes && l.notes.toLowerCase().includes(q))
+    );
+  }
   if (!filteredLeads.length) {
-    table.innerHTML = '<tr><td colspan="8">No lead records are available.</td></tr>';
+    table.innerHTML = '<tr><td colspan="9">No lead records are available.</td></tr>';
     return;
   }
 
@@ -1694,6 +1728,9 @@ function renderLeadsList() {
       </td>
       <td>${esc(lead.nextActivity)}</td>
       <td style="max-width:200px;font-size:12px;color:var(--muted);white-space:normal">${esc(lead.notes)}</td>
+      <td>${lead.agentCode
+        ? `<span class=\"pill\" style=\"font-size:10px;background:var(--accent-light,#e8f0fe);color:var(--accent,#1a73e8)\">${esc(lead.agentCode)}</span><div style=\"font-size:11px;color:var(--muted)\">${esc(lead.agentName||'')}</div>`
+        : '<span style="color:var(--muted);font-size:11px">—</span>'}</td>
       <td>
         <div class="action-row">
           <button class="tbl-btn" onclick="openLeadModal(null, '${lead.id}')">Edit</button>
@@ -3460,6 +3497,32 @@ $('lead-modal-close')?.addEventListener('click', () => $('lead-modal-overlay')?.
 $('lead-modal-cancel')?.addEventListener('click', () => $('lead-modal-overlay')?.classList.remove('open'));
 $('btn-new-lead')?.addEventListener('click', () => openLeadModal('new', null));
 $('btn-toggle-crm-metrics')?.addEventListener('click', toggleCrmMetrics);
+
+$('lead-search')?.addEventListener('input', (e) => {
+  activeLeadSearch = e.target.value?.trim() || '';
+  renderLeadsList();
+});
+
+$('lead-agent-filter')?.addEventListener('change', (e) => {
+  activeAgentFilter = e.target.value?.trim() || null;
+  renderLeadsList();
+});
+
+$('btn-export-leads')?.addEventListener('click', () => {
+  if (!LEADS.length) return toast('No leads to export');
+  const headers = ['ID', 'Name', 'School', 'Phone', 'Stage', 'Priority', 'Students', 'Agent Code', 'Agent Name', 'Notes', 'Created'];
+  const rows = LEADS.map(l => [
+    l.id, l.name, l.school, l.phone, l.stage, l.priority, l.students, l.agentCode || '', l.agentName || '', (l.notes || '').replace(/[\r\n]+/g, ' '), l.created || ''
+  ]);
+  const csv = [headers.join(','), ...rows.map(r => r.map(f => `"${String(f ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `leads-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
 
 $('lead-modal-submit')?.addEventListener('click', async () => {
   const name = $('l-name').value?.trim();

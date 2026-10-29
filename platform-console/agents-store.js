@@ -641,6 +641,15 @@ function createAgentsStore(dataDir) {
         agent_name: agent.full_name,
       };
     },
+
+    getSchool(schoolId) {
+      if (!schoolId) return null;
+      return db.prepare(`SELECT * FROM agent_schools WHERE id = ?`).get(schoolId) || null;
+    },
+
+    close() {
+      try { db.close(); } catch (_) {}
+    },
   };
 }
 
