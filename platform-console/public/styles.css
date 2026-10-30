@@ -90,7 +90,8 @@ button,input,select,textarea{font:inherit}
 .nav-item.active{
   color:#fff;background:rgba(3,11,130,.35);border-left-color:var(--brand-bright)
 }
-.nav-icon{width:26px;height:26px;display:grid;place-items:center;font-size:14px}
+.nav-icon{width:26px;height:26px;display:grid;place-items:center;font-size:14px;flex-shrink:0}
+.nav-icon svg{width:16px;height:16px;stroke:currentColor;display:block}
 
 .sb-footer{
   margin-top:auto;padding:16px 20px;
