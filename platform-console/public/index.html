@@ -99,22 +99,13 @@
     <a class="nav-item" data-section="instances" href="#">
       <span class="nav-icon">🏫</span> Instances
     </a>
-    <a class="nav-item" data-section="storage" href="#">
-      <span class="nav-icon">💾</span> Storage
-    </a>
-    <a class="nav-item" data-section="deployments" href="#">
-      <span class="nav-icon">🚀</span> Promote Release
-    </a>
 
     <div class="nav-section-label">Platform</div>
-    <a class="nav-item" data-section="controls" href="#">
-      <span class="nav-icon">⚙️</span> Controls
+    <a class="nav-item" data-section="settings" href="#">
+      <span class="nav-icon">⚙️</span> Settings
     </a>
     <a class="nav-item" data-section="billing" href="#">
       <span class="nav-icon">💳</span> Billing &amp; Invoices
-    </a>
-    <a class="nav-item" data-section="communications" href="#">
-      <span class="nav-icon">✉️</span> Communications
     </a>
     <a class="nav-item" data-section="logs" href="#">
       <span class="nav-icon">📋</span> Audit Log
@@ -289,262 +280,289 @@
         </div>
       </div>
 
-      <!-- ── STORAGE section ── -->
-      <div id="section-storage" class="section-hidden">
+      <!-- ── SETTINGS section ── -->
+      <div id="section-settings" class="section-hidden">
         <div class="page-header">
           <div>
-            <div class="page-title">Storage</div>
-            <div class="page-sub">Per-instance and total server storage breakdown</div>
-          </div>
-        </div>
-        <div class="metric-row storage-summary-row">
-          <div class="metric-card">
-            <div class="m-label">Host Disk Total</div>
-            <div class="m-value" id="s-host-total">—</div>
-            <div class="m-sub">Detected root filesystem capacity</div>
-          </div>
-          <div class="metric-card teal">
-            <div class="m-label">Docker Storage</div>
-            <div class="m-value" id="s-docker-total">—</div>
-            <div class="m-sub">Images + volumes + containers + build cache</div>
-          </div>
-          <div class="metric-card green">
-            <div class="m-label">Managed Instance Volumes</div>
-            <div class="m-value" id="s-instance-volumes">—</div>
-            <div class="m-sub">Subset of Docker volume storage</div>
-          </div>
-        </div>
-        <div class="two-col">
-          <div class="panel">
-            <div class="panel-header">
-              <div>
-                <div class="panel-title">Host &amp; Docker Storage</div>
-                <div class="panel-sub">Host disk usage includes Docker data; Docker rows below are components of host usage.</div>
-              </div>
-            </div>
-            <div id="disk-breakdown"></div>
-          </div>
-          <div class="panel">
-            <div class="panel-header">
-              <div>
-                <div class="panel-title">Per-Instance Storage</div>
-                <div class="panel-sub">Attributed Docker volumes or writable container layers where available</div>
-              </div>
-            </div>
-            <div class="panel-body" id="per-instance-storage"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ── DEPLOYMENTS section ── -->
-      <div id="section-deployments" class="section-hidden">
-        <div class="page-header">
-          <div>
-            <div class="page-eyebrow">Release operations</div>
-            <div class="page-title">Promote release</div>
-            <div class="page-sub">School apps (frontend + backend) and the admin console deploy separately — same tag family, different targets</div>
+            <div class="page-title">Settings &amp; Platform Controls</div>
+            <div class="page-sub">Manage instance operations, release promotions, storage usage, and communications</div>
           </div>
         </div>
 
-        <div class="deploy-segments">
-          <section class="deploy-segment panel">
+        <nav class="settings-tabs" role="tablist" aria-label="Settings workspace">
+          <button class="settings-tab active" id="settings-tab-controls" type="button" role="tab" aria-selected="true" aria-controls="settings-panel-controls" tabindex="0" data-settings-tab="controls">Instance Controls</button>
+          <button class="settings-tab" id="settings-tab-deployments" type="button" role="tab" aria-selected="false" aria-controls="settings-panel-deployments" tabindex="-1" data-settings-tab="deployments">Promote Release</button>
+          <button class="settings-tab" id="settings-tab-storage" type="button" role="tab" aria-selected="false" aria-controls="settings-panel-storage" tabindex="-1" data-settings-tab="storage">Storage</button>
+          <button class="settings-tab" id="settings-tab-communications" type="button" role="tab" aria-selected="false" aria-controls="settings-panel-communications" tabindex="-1" data-settings-tab="communications">Communications</button>
+        </nav>
+
+        <!-- ── TAB 1: CONTROLS ── -->
+        <section class="settings-tab-panel" id="settings-panel-controls" role="tabpanel" aria-labelledby="settings-tab-controls" tabindex="0">
+          <div class="panel" style="margin-bottom:14px">
+            <div class="panel-header">
+              <div class="panel-title">Select Instance</div>
+              <div class="ctrl-instance-tabs" id="ctrl-instance-tabs"></div>
+            </div>
+            <div class="ctrl-instance-info" id="ctrl-instance-info"></div>
+          </div>
+
+          <div class="controls-layout">
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <div class="panel-title">Quick Actions</div>
+                  <div class="panel-sub">Targeted at selected instance</div>
+                </div>
+              </div>
+              <div class="ctrl-grid">
+                <button class="ctrl-btn primary" type="button" data-ctrl="start" data-label="Start Instance"><span class="ctrl-icon">▶️</span>Start Instance</button>
+                <button class="ctrl-btn warn-ctrl" type="button" data-ctrl="stop" data-label="Stop Instance"><span class="ctrl-icon">⏹️</span>Stop Instance</button>
+                <button class="ctrl-btn" type="button" data-ctrl="restart" data-label="Restart Containers"><span class="ctrl-icon">🔄</span>Restart Containers</button>
+                <button class="ctrl-btn teal-ctrl" type="button" data-ctrl="redeploy" data-label="Promote Release"><span class="ctrl-icon">🚀</span>Promote Release</button>
+                <button class="ctrl-btn" type="button" data-ctrl="health" data-label="Health Check"><span class="ctrl-icon">❤️</span>Health Check</button>
+                <button class="ctrl-btn" type="button" data-ctrl="backup" data-label="Create Backup"><span class="ctrl-icon">💾</span>Create Backup</button>
+                <button class="ctrl-btn" type="button" data-ctrl="restore" data-label="Restore Backup"><span class="ctrl-icon">📦</span>Restore Backup…</button>
+                <button class="ctrl-btn danger-ctrl" type="button" data-ctrl="reset" data-label="Factory Reset"><span class="ctrl-icon">⚠️</span>Factory Reset…</button>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <div class="panel-title">Global Actions</div>
+                  <div class="panel-sub">Applied to all instances</div>
+                </div>
+              </div>
+              <div class="ctrl-grid" style="grid-template-columns:1fr">
+                <button class="ctrl-btn primary" type="button" data-ctrl="start-all" data-label="Start All Instances"><span class="ctrl-icon">▶️</span>Start All Instances</button>
+                <button class="ctrl-btn warn-ctrl" type="button" data-ctrl="stop-all" data-label="Stop All Instances"><span class="ctrl-icon">⏹️</span>Stop All Instances</button>
+                <button class="ctrl-btn teal-ctrl" type="button" data-ctrl="redeploy-all" data-label="Promote All Schools"><span class="ctrl-icon">🚀</span>Promote All Schools</button>
+                <button class="ctrl-btn" type="button" data-ctrl="backup-all" data-label="Backup All Instances"><span class="ctrl-icon">💾</span>Backup All Instances</button>
+                <button class="ctrl-btn" type="button" data-ctrl="health-all" data-label="Global Health Check"><span class="ctrl-icon">❤️</span>Global Health Check</button>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <div class="panel-title">Module Toggles</div>
+                  <div class="panel-sub">Enable / disable features per instance</div>
+                </div>
+              </div>
+              <div class="module-toggle-list" id="module-toggle-list"></div>
+            </div>
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <div class="panel-title">Live Logs</div>
+                  <div class="panel-sub">Streamed container output</div>
+                </div>
+                <div style="display:flex;gap:6px">
+                  <button class="btn" type="button" id="btn-clear-logs">Clear</button>
+                  <button class="btn teal" type="button" data-ctrl="logs" data-label="Fetch Logs">Fetch Logs</button>
+                </div>
+              </div>
+              <div class="log-viewer" id="log-viewer"><span class="log-placeholder">Select an instance and click Fetch Logs →</span></div>
+            </div>
+          </div>
+
+          <div class="panel danger-zone" style="margin-top:14px">
             <div class="panel-header">
               <div>
-                <div class="panel-title">School application</div>
-                <div class="panel-sub">ghcr.io/amalgamate/zawadi-frontend + zawadi-backend — all tenant stacks</div>
+                <div class="panel-title" style="color:var(--red)">⚠️ Danger Zone</div>
+                <div class="panel-sub">These actions are irreversible. Requires confirmation.</div>
               </div>
-              <button class="btn teal" type="button" id="btn-deploy-open-promote">Promote schools</button>
             </div>
-            <div class="deploy-layout deploy-layout--segment">
-              <div class="panel panel--nested">
-                <div class="panel-body deploy-form">
-                  <label class="form-label" for="deploy-image-tag">Image tag</label>
-                  <div class="deploy-tag-row">
-                    <select class="form-input" id="deploy-image-tag"></select>
-                    <input class="form-input" id="deploy-image-tag-custom" placeholder="Override tag (optional)" />
-                  </div>
-                  <label class="form-label" style="margin-top:16px">Scope — selected schools (default)</label>
-                  <div class="deploy-target-toolbar">
-                    <span class="form-label" style="margin:0">Select schools to promote</span>
-                    <div class="deploy-target-actions">
-                      <button class="btn" type="button" id="deploy-select-all">All production</button>
-                      <button class="btn" type="button" id="deploy-select-none">Clear</button>
+            <div class="danger-grid">
+              <div class="danger-item">
+                <div>
+                  <div class="danger-item-title">Purge Instance Data</div>
+                  <div class="danger-item-sub">Delete all database records and uploaded files for the selected instance. Containers remain.</div>
+                </div>
+                <button class="btn danger-btn" type="button" data-ctrl="purge" data-label="Purge Instance Data">Purge Data…</button>
+              </div>
+              <div class="danger-item">
+                <div>
+                  <div class="danger-item-title">Remove Instance</div>
+                  <div class="danger-item-sub">Stop containers, delete volumes, and remove the instance from the platform entirely.</div>
+                </div>
+                <button class="btn danger-btn" type="button" data-ctrl="remove" data-label="Remove Instance">Remove…</button>
+              </div>
+              <div class="danger-item">
+                <div>
+                  <div class="danger-item-title">Factory Reset Instance</div>
+                  <div class="danger-item-sub">Wipe data and reconfigure from scratch. Super admin credentials are reset.</div>
+                </div>
+                <button class="btn danger-btn" type="button" data-ctrl="reset" data-label="Factory Reset Instance">Reset…</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── TAB 2: PROMOTE RELEASE ── -->
+        <section class="settings-tab-panel" id="settings-panel-deployments" role="tabpanel" aria-labelledby="settings-tab-deployments" tabindex="0" hidden>
+          <div class="deploy-segments">
+            <section class="deploy-segment panel">
+              <div class="panel-header">
+                <div>
+                  <div class="panel-title">School application</div>
+                  <div class="panel-sub">ghcr.io/amalgamate/zawadi-frontend + zawadi-backend — all tenant stacks</div>
+                </div>
+                <button class="btn teal" type="button" id="btn-deploy-open-promote">Promote schools</button>
+              </div>
+              <div class="deploy-layout deploy-layout--segment">
+                <div class="panel panel--nested">
+                  <div class="panel-body deploy-form">
+                    <label class="form-label" for="deploy-image-tag">Image tag</label>
+                    <div class="deploy-tag-row">
+                      <select class="form-input" id="deploy-image-tag"></select>
+                      <input class="form-input" id="deploy-image-tag-custom" placeholder="Override tag (optional)" />
                     </div>
+                    <label class="form-label" style="margin-top:16px">Scope — selected schools (default)</label>
+                    <div class="deploy-target-toolbar">
+                      <span class="form-label" style="margin:0">Select schools to promote</span>
+                      <div class="deploy-target-actions">
+                        <button class="btn" type="button" id="deploy-select-all">All production</button>
+                        <button class="btn" type="button" id="deploy-select-none">Clear</button>
+                      </div>
+                    </div>
+                    <div class="deploy-target-list" id="deploy-target-list">
+                      <div class="deploy-target-empty">Loading schools…</div>
+                    </div>
+                    <label class="deploy-check-row" style="margin-top:12px">
+                      <input type="checkbox" id="deploy-include-demo" />
+                      <span><strong>Include canary</strong> — demoschool.trendscore.co.ke</span>
+                    </label>
+                    <label class="deploy-check-row">
+                      <input type="checkbox" id="deploy-all-schools" />
+                      <span><strong>All production schools</strong> — every manifest + discovered stack (not selected list)</span>
+                    </label>
+                    <button class="btn teal deploy-promote-btn" type="button" id="deploy-promote-btn">Promote school release</button>
                   </div>
-                  <div class="deploy-target-list" id="deploy-target-list">
-                    <div class="deploy-target-empty">Loading schools…</div>
+                </div>
+                <div class="panel panel--nested">
+                  <div class="panel-header">
+                    <div>
+                      <div class="panel-title">Deploy output</div>
+                      <div class="panel-sub">Per school: backup → pull → migrate → restart → health</div>
+                    </div>
+                    <button class="btn" type="button" id="btn-deploy-clear-log">Clear</button>
                   </div>
-                  <label class="deploy-check-row" style="margin-top:12px">
-                    <input type="checkbox" id="deploy-include-demo" />
-                    <span><strong>Include canary</strong> — demoschool.trendscore.co.ke</span>
-                  </label>
-                  <label class="deploy-check-row">
-                    <input type="checkbox" id="deploy-all-schools" />
-                    <span><strong>All production schools</strong> — every manifest + discovered stack (not selected list)</span>
-                  </label>
-                  <button class="btn teal deploy-promote-btn" type="button" id="deploy-promote-btn">Promote school release</button>
+                  <div class="log-viewer deploy-log-viewer" id="deploy-progress-log">
+                    <span class="log-placeholder">Choose scope and promote the school application.</span>
+                  </div>
                 </div>
               </div>
-              <div class="panel panel--nested">
-                <div class="panel-header">
-                  <div>
-                    <div class="panel-title">Deploy output</div>
-                    <div class="panel-sub">Per school: backup → pull → migrate → restart → health</div>
-                  </div>
-                  <button class="btn" type="button" id="btn-deploy-clear-log">Clear</button>
-                </div>
-                <div class="log-viewer deploy-log-viewer" id="deploy-progress-log">
-                  <span class="log-placeholder">Choose scope and promote the school application.</span>
-                </div>
-              </div>
-            </div>
-          </section>
+            </section>
 
-          <section class="deploy-segment panel deploy-segment--console">
-            <div class="panel-header">
-              <div>
-                <div class="panel-title">Platform console</div>
-                <div class="panel-sub">ghcr.io/amalgamate/zawadi-console — admin panel only (this UI)</div>
+            <section class="deploy-segment panel deploy-segment--console">
+              <div class="panel-header">
+                <div>
+                  <div class="panel-title">Platform console</div>
+                  <div class="panel-sub">ghcr.io/amalgamate/zawadi-console — admin panel only (this UI)</div>
+                </div>
               </div>
-            </div>
-            <div class="panel-body deploy-console-only">
-              <label class="form-label" for="deploy-console-image-tag">Console image tag</label>
-              <div class="deploy-tag-row">
-                <select class="form-input" id="deploy-console-image-tag"></select>
-                <input class="form-input" id="deploy-console-image-tag-custom" placeholder="Override tag (optional)" />
+              <div class="panel-body deploy-console-only">
+                <label class="form-label" for="deploy-console-image-tag">Console image tag</label>
+                <div class="deploy-tag-row">
+                  <select class="form-input" id="deploy-console-image-tag"></select>
+                  <input class="form-input" id="deploy-console-image-tag-custom" placeholder="Override tag (optional)" />
+                </div>
+                <p class="deploy-hint">Does not change school sites. Use after UI or console API changes, or when main deploy already updated the canary.</p>
+                <button class="btn" type="button" id="deploy-console-btn">Update admin console</button>
               </div>
-              <p class="deploy-hint">Does not change school sites. Use after UI or console API changes, or when main deploy already updated the canary.</p>
-              <button class="btn" type="button" id="deploy-console-btn">Update admin console</button>
-            </div>
-          </section>
-        </div>
+            </section>
+          </div>
 
-        <div class="two-col-lower" style="margin-top:14px">
+          <div class="two-col-lower" style="margin-top:14px">
+            <div class="panel">
+              <div class="panel-header"><div class="panel-title">Release history</div></div>
+              <div class="timeline timeline-compact" id="timeline-full"></div>
+            </div>
+            <div class="panel" style="align-self:start">
+              <div class="panel-header"><div class="panel-title">Workflow</div></div>
+              <div class="panel-body deploy-workflow-steps">
+                <div class="deploy-step"><span class="deploy-step-num">1</span><span><b>Push main</b> builds all images</span></div>
+                <div class="deploy-step"><span class="deploy-step-num">2</span><span><b>Canary</b> auto-deploys demoschool + console</span></div>
+                <div class="deploy-step"><span class="deploy-step-num">3</span><span><b>QA</b> on demoschool.trendscore.co.ke</span></div>
+                <div class="deploy-step"><span class="deploy-step-num">4</span><span><b>Promote</b> same <code>sha-…</code> to production schools</span></div>
+                <p class="deploy-hint" style="margin-top:12px">Full guide: <code>deploy/WORKFLOW.md</code></p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── TAB 3: STORAGE ── -->
+        <section class="settings-tab-panel" id="settings-panel-storage" role="tabpanel" aria-labelledby="settings-tab-storage" tabindex="0" hidden>
+          <div class="metric-row storage-summary-row">
+            <div class="metric-card">
+              <div class="m-label">Host Disk Total</div>
+              <div class="m-value" id="s-host-total">—</div>
+              <div class="m-sub">Detected root filesystem capacity</div>
+            </div>
+            <div class="metric-card teal">
+              <div class="m-label">Docker Storage</div>
+              <div class="m-value" id="s-docker-total">—</div>
+              <div class="m-sub">Images + volumes + containers + build cache</div>
+            </div>
+            <div class="metric-card green">
+              <div class="m-label">Managed Instance Volumes</div>
+              <div class="m-value" id="s-instance-volumes">—</div>
+              <div class="m-sub">Subset of Docker volume storage</div>
+            </div>
+          </div>
+          <div class="two-col">
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <div class="panel-title">Host &amp; Docker Storage</div>
+                  <div class="panel-sub">Host disk usage includes Docker data; Docker rows below are components of host usage.</div>
+                </div>
+              </div>
+              <div id="disk-breakdown"></div>
+            </div>
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <div class="panel-title">Per-Instance Storage</div>
+                  <div class="panel-sub">Attributed Docker volumes or writable container layers where available</div>
+                </div>
+              </div>
+              <div class="panel-body" id="per-instance-storage"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── TAB 4: COMMUNICATIONS ── -->
+        <section class="settings-tab-panel" id="settings-panel-communications" role="tabpanel" aria-labelledby="settings-tab-communications" tabindex="0" hidden>
           <div class="panel">
-            <div class="panel-header"><div class="panel-title">Release history</div></div>
-            <div class="timeline timeline-compact" id="timeline-full"></div>
-          </div>
-          <div class="panel" style="align-self:start">
-            <div class="panel-header"><div class="panel-title">Workflow</div></div>
-            <div class="panel-body deploy-workflow-steps">
-              <div class="deploy-step"><span class="deploy-step-num">1</span><span><b>Push main</b> builds all images</span></div>
-              <div class="deploy-step"><span class="deploy-step-num">2</span><span><b>Canary</b> auto-deploys demoschool + console</span></div>
-              <div class="deploy-step"><span class="deploy-step-num">3</span><span><b>QA</b> on demoschool.trendscore.co.ke</span></div>
-              <div class="deploy-step"><span class="deploy-step-num">4</span><span><b>Promote</b> same <code>sha-…</code> to production schools</span></div>
-              <p class="deploy-hint" style="margin-top:12px">Full guide: <code>deploy/WORKFLOW.md</code></p>
+            <div class="panel-header"><div><div class="panel-title">Email delivery · Resend</div><div class="panel-sub">The API key is stored on the production server, never returned to the browser, and never written to the Git repository.</div></div></div>
+            <div class="panel-body">
+              <div id="communications-email-status" class="billing-email-status" role="status" aria-live="polite">Checking email configuration…</div>
+              <form id="communications-email-form" class="communications-settings-form" autocomplete="off">
+                <div class="form-group">
+                  <label class="form-label" for="communications-resend-key">Resend API key</label>
+                  <input class="form-input" id="communications-resend-key" name="resendApiKey" type="password" autocomplete="new-password" placeholder="Paste a new Resend API key to replace the stored key" />
+                  <div class="form-hint" id="communications-key-hint">The current key is hidden. Leave this blank to keep the saved key.</div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="communications-from-email">Sender email address</label>
+                  <input class="form-input" id="communications-from-email" name="fromEmail" type="email" autocomplete="email" placeholder="billing@your-verified-domain" required />
+                  <div class="form-hint">Use an address on a domain that Resend reports as verified with sending enabled.</div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="communications-from-name">Sender display name</label>
+                  <input class="form-input" id="communications-from-name" name="fromName" type="text" maxlength="120" autocomplete="organization" placeholder="TrendSCORE" />
+                </div>
+                <div class="communications-settings-actions">
+                  <button class="btn" id="communications-email-save" type="submit">Save email settings</button>
+                  <button class="btn secondary" id="communications-email-test" type="button">Validate Resend connection</button>
+                </div>
+              </form>
+              <div class="billing-register-note">Validation checks the API key and sender-domain status without sending an email. After validation, test delivery using a quote or the draft invoice review-copy action.</div>
             </div>
           </div>
-        </div>
+        </section>
       </div>
-
-      <!-- ── CONTROLS section ── -->
-      <div id="section-controls" class="section-hidden">
-        <div class="page-header">
-          <div>
-            <div class="page-title">Instance Controls</div>
-            <div class="page-sub">Select an instance and run audited operations</div>
-          </div>
-        </div>
-
-        <div class="panel" style="margin-bottom:14px">
-          <div class="panel-header">
-            <div class="panel-title">Select Instance</div>
-            <div class="ctrl-instance-tabs" id="ctrl-instance-tabs"></div>
-          </div>
-          <div class="ctrl-instance-info" id="ctrl-instance-info"></div>
-        </div>
-
-        <div class="controls-layout">
-          <div class="panel">
-            <div class="panel-header">
-              <div>
-                <div class="panel-title">Quick Actions</div>
-                <div class="panel-sub">Targeted at selected instance</div>
-              </div>
-            </div>
-            <div class="ctrl-grid">
-              <button class="ctrl-btn primary" type="button" data-ctrl="start" data-label="Start Instance"><span class="ctrl-icon">▶️</span>Start Instance</button>
-              <button class="ctrl-btn warn-ctrl" type="button" data-ctrl="stop" data-label="Stop Instance"><span class="ctrl-icon">⏹️</span>Stop Instance</button>
-              <button class="ctrl-btn" type="button" data-ctrl="restart" data-label="Restart Containers"><span class="ctrl-icon">🔄</span>Restart Containers</button>
-              <button class="ctrl-btn teal-ctrl" type="button" data-ctrl="redeploy" data-label="Promote Release"><span class="ctrl-icon">🚀</span>Promote Release</button>
-              <button class="ctrl-btn" type="button" data-ctrl="health" data-label="Health Check"><span class="ctrl-icon">❤️</span>Health Check</button>
-              <button class="ctrl-btn" type="button" data-ctrl="backup" data-label="Create Backup"><span class="ctrl-icon">💾</span>Create Backup</button>
-              <button class="ctrl-btn" type="button" data-ctrl="restore" data-label="Restore Backup"><span class="ctrl-icon">📦</span>Restore Backup…</button>
-              <button class="ctrl-btn danger-ctrl" type="button" data-ctrl="reset" data-label="Factory Reset"><span class="ctrl-icon">⚠️</span>Factory Reset…</button>
-            </div>
-          </div>
-          <div class="panel">
-            <div class="panel-header">
-              <div>
-                <div class="panel-title">Global Actions</div>
-                <div class="panel-sub">Applied to all instances</div>
-              </div>
-            </div>
-            <div class="ctrl-grid" style="grid-template-columns:1fr">
-              <button class="ctrl-btn primary" type="button" data-ctrl="start-all" data-label="Start All Instances"><span class="ctrl-icon">▶️</span>Start All Instances</button>
-              <button class="ctrl-btn warn-ctrl" type="button" data-ctrl="stop-all" data-label="Stop All Instances"><span class="ctrl-icon">⏹️</span>Stop All Instances</button>
-              <button class="ctrl-btn teal-ctrl" type="button" data-ctrl="redeploy-all" data-label="Promote All Schools"><span class="ctrl-icon">🚀</span>Promote All Schools</button>
-              <button class="ctrl-btn" type="button" data-ctrl="backup-all" data-label="Backup All Instances"><span class="ctrl-icon">💾</span>Backup All Instances</button>
-              <button class="ctrl-btn" type="button" data-ctrl="health-all" data-label="Global Health Check"><span class="ctrl-icon">❤️</span>Global Health Check</button>
-            </div>
-          </div>
-          <div class="panel">
-            <div class="panel-header">
-              <div>
-                <div class="panel-title">Module Toggles</div>
-                <div class="panel-sub">Enable / disable features per instance</div>
-              </div>
-            </div>
-            <div class="module-toggle-list" id="module-toggle-list"></div>
-          </div>
-          <div class="panel">
-            <div class="panel-header">
-              <div>
-                <div class="panel-title">Live Logs</div>
-                <div class="panel-sub">Streamed container output</div>
-              </div>
-              <div style="display:flex;gap:6px">
-                <button class="btn" type="button" id="btn-clear-logs">Clear</button>
-                <button class="btn teal" type="button" data-ctrl="logs" data-label="Fetch Logs">Fetch Logs</button>
-              </div>
-            </div>
-            <div class="log-viewer" id="log-viewer"><span class="log-placeholder">Select an instance and click Fetch Logs →</span></div>
-          </div>
-        </div>
-
-        <div class="panel danger-zone" style="margin-top:14px">
-          <div class="panel-header">
-            <div>
-              <div class="panel-title" style="color:var(--red)">⚠️ Danger Zone</div>
-              <div class="panel-sub">These actions are irreversible. Requires confirmation.</div>
-            </div>
-          </div>
-          <div class="danger-grid">
-            <div class="danger-item">
-              <div>
-                <div class="danger-item-title">Purge Instance Data</div>
-                <div class="danger-item-sub">Delete all database records and uploaded files for the selected instance. Containers remain.</div>
-              </div>
-              <button class="btn danger-btn" type="button" data-ctrl="purge" data-label="Purge Instance Data">Purge Data…</button>
-            </div>
-            <div class="danger-item">
-              <div>
-                <div class="danger-item-title">Remove Instance</div>
-                <div class="danger-item-sub">Stop containers, delete volumes, and remove the instance from the platform entirely.</div>
-              </div>
-              <button class="btn danger-btn" type="button" data-ctrl="remove" data-label="Remove Instance">Remove…</button>
-            </div>
-            <div class="danger-item">
-              <div>
-                <div class="danger-item-title">Factory Reset Instance</div>
-                <div class="danger-item-sub">Wipe data and reconfigure from scratch. Super admin credentials are reset.</div>
-              </div>
-              <button class="btn danger-btn" type="button" data-ctrl="reset" data-label="Factory Reset Instance">Reset…</button>
-            </div>
-          </div>
-        </div>
-      </div>
-      <!-- ── END CONTROLS ── -->
+      <!-- ── END SETTINGS ── -->
 
       <!-- ── BILLING section ── -->
       <div id="section-billing" class="section-hidden">
@@ -644,44 +662,6 @@
         </section>
       </div>
       <!-- ── END BILLING ── -->
-
-      <!-- ── COMMUNICATIONS SETTINGS ── -->
-      <div id="section-communications" class="section-hidden">
-        <div class="page-header">
-          <div>
-            <div class="page-title">Communications Settings</div>
-            <div class="page-sub">Configure the email provider used for customer quotes and draft invoice review copies.</div>
-          </div>
-        </div>
-        <div class="panel">
-          <div class="panel-header"><div><div class="panel-title">Email delivery · Resend</div><div class="panel-sub">The API key is stored on the production server, never returned to the browser, and never written to the Git repository.</div></div></div>
-          <div class="panel-body">
-            <div id="communications-email-status" class="billing-email-status" role="status" aria-live="polite">Checking email configuration…</div>
-            <form id="communications-email-form" class="communications-settings-form" autocomplete="off">
-              <div class="form-group">
-                <label class="form-label" for="communications-resend-key">Resend API key</label>
-                <input class="form-input" id="communications-resend-key" name="resendApiKey" type="password" autocomplete="new-password" placeholder="Paste a new Resend API key to replace the stored key" />
-                <div class="form-hint" id="communications-key-hint">The current key is hidden. Leave this blank to keep the saved key.</div>
-              </div>
-              <div class="form-group">
-                <label class="form-label" for="communications-from-email">Sender email address</label>
-                <input class="form-input" id="communications-from-email" name="fromEmail" type="email" autocomplete="email" placeholder="billing@your-verified-domain" required />
-                <div class="form-hint">Use an address on a domain that Resend reports as verified with sending enabled.</div>
-              </div>
-              <div class="form-group">
-                <label class="form-label" for="communications-from-name">Sender display name</label>
-                <input class="form-input" id="communications-from-name" name="fromName" type="text" maxlength="120" autocomplete="organization" placeholder="TrendSCORE" />
-              </div>
-              <div class="communications-settings-actions">
-                <button class="btn" id="communications-email-save" type="submit">Save email settings</button>
-                <button class="btn secondary" id="communications-email-test" type="button">Validate Resend connection</button>
-              </div>
-            </form>
-            <div class="billing-register-note">Validation checks the API key and sender-domain status without sending an email. After validation, test delivery using a quote or the draft invoice review-copy action.</div>
-          </div>
-        </div>
-      </div>
-      <!-- ── END COMMUNICATIONS SETTINGS ── -->
 
       <!-- ── LOGS section ── -->
       <div id="section-logs" class="section-hidden">

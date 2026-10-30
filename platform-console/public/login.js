@@ -168,12 +168,14 @@
 
   // ── Role-based UI restrictions ───────────────────────────────────────────
   function applyRoleRestrictions(role, access) {
-    const allSections = ['overview', 'instances', 'storage', 'deployments', 'controls', 'billing', 'communications', 'logs'];
+    const allSections = ['overview', 'instances', 'storage', 'deployments', 'controls', 'billing', 'communications', 'logs', 'leads', 'agents', 'settings'];
 
     allSections.forEach(section => {
       const navItem = document.querySelector(`.nav-item[data-section="${section}"]`);
       const panel   = document.getElementById(`section-${section}`);
-      const allowed = !access || access.includes(section) || (section === 'communications' && role === 'super_admin');
+      const allowed = !access || access.includes(section) ||
+        (section === 'settings' && (!access || access.includes('controls') || access.includes('deployments') || access.includes('storage') || role === 'super_admin')) ||
+        (section === 'communications' && role === 'super_admin');
 
       if (navItem) {
         if (!allowed) {
@@ -193,6 +195,16 @@
         }
       }
     });
+
+    // Also toggle settings tabs based on permissions
+    const tabControls = document.getElementById('settings-tab-controls');
+    const tabDeployments = document.getElementById('settings-tab-deployments');
+    const tabStorage = document.getElementById('settings-tab-storage');
+    const tabComms = document.getElementById('settings-tab-communications');
+    if (tabControls) tabControls.style.display = (!access || access.includes('controls')) ? '' : 'none';
+    if (tabDeployments) tabDeployments.style.display = (!access || access.includes('deployments')) ? '' : 'none';
+    if (tabStorage) tabStorage.style.display = (!access || access.includes('storage')) ? '' : 'none';
+    if (tabComms) tabComms.style.display = (role === 'super_admin' || (access && access.includes('communications'))) ? '' : 'none';
 
     document.querySelectorAll('[data-super-admin-only]').forEach(element => {
       element.hidden = role !== 'super_admin';

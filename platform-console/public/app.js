@@ -2466,10 +2466,18 @@ function runConsoleDeploy() {
 }
 
 // Navigation
-const SECTIONS = ['overview', 'instances', 'storage', 'deployments', 'controls', 'billing', 'communications', 'logs', 'leads', 'agents'];
+const SECTIONS = ['overview', 'instances', 'settings', 'billing', 'logs', 'leads', 'agents'];
+const SETTINGS_TABS = ['controls', 'deployments', 'storage', 'communications'];
+const SETTINGS_TAB_LABELS = {
+  controls: 'Instance Controls',
+  deployments: 'Promote Release',
+  storage: 'Storage',
+  communications: 'Communications',
+};
 const SECTION_LABELS = {
   overview: 'Overview',
   instances: 'Instances',
+  settings: 'Settings',
   storage: 'Storage',
   deployments: 'Promote Release',
   controls: 'Controls',
@@ -2480,31 +2488,92 @@ const SECTION_LABELS = {
   agents: 'Field Agents & Commissions',
 };
 
+let currentSettingsTab = 'controls';
+
+function selectSettingsTab(tab, focus = false) {
+  const selected = SETTINGS_TABS.includes(tab) ? tab : 'controls';
+  currentSettingsTab = selected;
+  SETTINGS_TABS.forEach(name => {
+    const button = $(`settings-tab-${name}`);
+    const panel = $(`settings-panel-${name}`);
+    const active = name === selected;
+    if (button) {
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-selected', active ? 'true' : 'false');
+      button.tabIndex = active ? 0 : -1;
+      if (active && focus) button.focus();
+    }
+    if (panel) panel.hidden = !active;
+  });
+
+  if ($('breadcrumb-active')) {
+    $('breadcrumb-active').textContent = `Settings · ${SETTINGS_TAB_LABELS[selected] || selected}`;
+  }
+
+  if (selected === 'deployments') {
+    refreshDeployPanel();
+  } else if (selected === 'storage') {
+    renderStorageSection();
+  } else if (selected === 'communications') {
+    loadCommunicationsSettings();
+  } else if (selected === 'controls') {
+    renderControlInstances();
+    renderModuleToggles();
+  }
+}
+
 function sectionFromHash() {
   const raw = decodeURIComponent(window.location.hash || '').replace(/^#\/?/, '');
+  if (raw.startsWith('settings/')) {
+    const sub = raw.replace('settings/', '');
+    if (SETTINGS_TABS.includes(sub)) return sub;
+    return 'settings';
+  }
+  if (SETTINGS_TABS.includes(raw)) return raw;
+  if (raw === 'settings') return 'settings';
   return SECTIONS.includes(raw) ? raw : 'overview';
 }
 
 function showSection(id, options = {}) {
-  const targetSection = SECTIONS.includes(id) ? id : 'overview';
+  let targetSection = id;
+  let targetSubTab = null;
+
+  if (SETTINGS_TABS.includes(id)) {
+    targetSection = 'settings';
+    targetSubTab = id;
+  } else if (id === 'settings') {
+    targetSection = 'settings';
+  } else if (!SECTIONS.includes(id)) {
+    targetSection = 'overview';
+  }
+
   SECTIONS.forEach(section => {
     const el = $(`section-${section}`);
     if (el) el.className = section === targetSection ? 'section-visible' : 'section-hidden';
   });
+
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.section === targetSection);
   });
-  if ($('breadcrumb-active')) $('breadcrumb-active').textContent = SECTION_LABELS[targetSection] || targetSection;
 
-  if (targetSection === 'deployments' && !options.skipDeployLoad) {
-    refreshDeployPanel(options.deployPrefill || null);
+  if (targetSection === 'settings') {
+    const activeTab = targetSubTab || currentSettingsTab || 'controls';
+    selectSettingsTab(activeTab);
+  } else {
+    if ($('breadcrumb-active')) $('breadcrumb-active').textContent = SECTION_LABELS[targetSection] || targetSection;
+  }
+
+  if (targetSection === 'deployments' || targetSubTab === 'deployments') {
+    if (!options.skipDeployLoad) refreshDeployPanel(options.deployPrefill || null);
   }
   if (targetSection === 'billing') loadBillingData();
-  if (targetSection === 'communications') loadCommunicationsSettings();
+  if (targetSection === 'communications' || targetSubTab === 'communications') loadCommunicationsSettings();
   if (targetSection === 'agents') loadAgentsData();
 
   if (!options.skipHashUpdate) {
-    const nextHash = `#${targetSection}`;
+    const nextHash = targetSection === 'settings' && targetSubTab
+      ? `#settings/${targetSubTab}`
+      : `#${targetSection}`;
     if (window.location.hash !== nextHash) {
       history.pushState(null, '', nextHash);
     }
@@ -2515,6 +2584,27 @@ document.querySelectorAll('.nav-item').forEach(el => {
   el.addEventListener('click', event => {
     event.preventDefault();
     showSection(el.dataset.section);
+  });
+});
+
+document.querySelectorAll('[data-settings-tab]').forEach(button => {
+  button.addEventListener('click', () => {
+    selectSettingsTab(button.dataset.settingsTab);
+    const nextHash = `#settings/${button.dataset.settingsTab}`;
+    if (window.location.hash !== nextHash) {
+      history.pushState(null, '', nextHash);
+    }
+  });
+  button.addEventListener('keydown', event => {
+    const currentIndex = SETTINGS_TABS.indexOf(button.dataset.settingsTab);
+    let nextIndex = currentIndex;
+    if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % SETTINGS_TABS.length;
+    else if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + SETTINGS_TABS.length) % SETTINGS_TABS.length;
+    else if (event.key === 'Home') nextIndex = 0;
+    else if (event.key === 'End') nextIndex = SETTINGS_TABS.length - 1;
+    else return;
+    event.preventDefault();
+    selectSettingsTab(SETTINGS_TABS[nextIndex], true);
   });
 });
 
@@ -3712,27 +3802,51 @@ function renderAgentsTable() {
     const balanceColor = Number(agent.balance_due_ksh || 0) > 0 ? 'var(--brand)' : 'var(--muted)';
 
     return `
+      <tr style="border-bottom:1px solid var(--border)">
+        <td><span class="pill" style="font-weight:700;font-size:11px;cursor:pointer" onclick="openAgentDetailModal('${agent.id}')" title="View details">${esc(agent.agent_code)}</span></td>
       <tr class="agent-dir-row" onclick="openAgentDetailModal('${agent.id}')" title="Click to open agent details & actions drawer">
         <td><span class="pill" style="font-weight:700;font-size:11px">${esc(agent.agent_code)}</span></td>
         <td>
+          <div style="font-weight:700;color:var(--ink);cursor:pointer" onclick="openAgentDetailModal('${agent.id}')" title="View details">${esc(agent.full_name)}</div>
+          ${agent.national_id ? `<div style="font-size:11px;color:var(--muted)">ID: ${esc(agent.national_id)}</div>` : ''}
           <div style="font-weight:700;color:var(--ink);font-size:13px">${esc(agent.full_name)}</div>
           ${agent.national_id ? `<div style="font-size:10px;color:var(--muted)">ID: ${esc(agent.national_id)}</div>` : ''}
         </td>
         <td>
+          <div style="font-size:12px;font-weight:600"><a href="tel:${esc(agent.phone)}" style="color:var(--brand)">${esc(agent.phone)}</a></div>
+          ${agent.email ? `<div style="font-size:11px;color:var(--muted)">${esc(agent.email)}</div>` : ''}
+          ${agent.mpesa_number && agent.mpesa_number !== agent.phone ? `<div style="font-size:11px;color:#059669">M-Pesa: ${esc(agent.mpesa_number)}</div>` : ''}
           <div style="font-size:12px;font-weight:600"><a href="tel:${esc(agent.phone)}" onclick="event.stopPropagation()" style="color:var(--brand)">${esc(agent.phone)}</a></div>
           ${agent.email ? `<div style="font-size:10px;color:var(--muted)">${esc(agent.email)}</div>` : ''}
         </td>
         <td>
           <div style="font-weight:600;font-size:12px">${esc(agent.county || 'Unspecified')}</div>
+          ${agent.base_location ? `<div style="font-size:11px;color:var(--muted)">${esc(agent.base_location)}</div>` : ''}
           ${agent.base_location ? `<div style="font-size:10px;color:var(--muted)">${esc(agent.base_location)}</div>` : ''}
         </td>
+        <td><span style="font-size:12px;font-weight:600;color:var(--ink)">${esc(rateLabel)}</span></td>
+        <td>
+          <span class="pill" style="font-size:11px;font-weight:600;cursor:pointer" onclick="openAgentDetailModal('${agent.id}')" title="View assigned schools">${agent.total_schools || 0} schools</span>
         <td><span style="font-size:11px;font-weight:600;color:var(--ink)">${esc(rateLabel)}</span></td>
         <td style="text-align:center">
           <span class="pill" style="font-size:11px;font-weight:600">${agent.total_schools || 0}</span>
         </td>
         <td style="font-weight:600;font-size:12px">${formatKsh(agent.total_earned_ksh || 0)}</td>
+        <td style="font-weight:700;font-size:13px;color:${balanceColor}">${formatKsh(agent.balance_due_ksh || 0)}</td>
         <td style="font-weight:700;font-size:12px;color:${balanceColor}">${formatKsh(agent.balance_due_ksh || 0)}</td>
         <td>${statusBadge}</td>
+        <td>
+          <div style="display:flex;gap:6px;align-items:center;white-space:nowrap">
+            <button class="btn primary" style="padding:4px 9px;font-size:11px;font-weight:600" onclick="openAgentDetailModal('${agent.id}')" title="Open Agent Details Drawer">View Details →</button>
+            ${agent.status === 'pending' ? `
+              <button class="btn" style="padding:4px 8px;font-size:11px;background:rgba(5,150,105,.12);color:#059669;border-color:rgba(5,150,105,.3)" onclick="approveAgent('${agent.id}')" title="Approve self-registered agent">✓ Approve</button>
+              <button class="btn" style="padding:4px 8px;font-size:11px;background:rgba(220,38,38,.08);color:#dc2626;border-color:rgba(220,38,38,.2)" onclick="rejectAgent('${agent.id}')" title="Reject self-registered agent">✗ Reject</button>
+            ` : `
+              <button class="btn" style="padding:4px 8px;font-size:11px" onclick="openPayoutModal('${agent.id}')" title="Record Payout">Payout</button>
+            `}
+            <button class="btn" style="padding:4px 8px;font-size:11px" onclick="openEditAgentModal('${agent.id}')" title="Edit Agent">Edit</button>
+            <button class="btn danger-outline" style="padding:4px 8px;font-size:11px" onclick="deleteAgent('${agent.id}')" title="Delete Agent">Delete</button>
+          </div>
         <td style="text-align:center;padding:4px 6px" onclick="event.stopPropagation()">
           <button class="btn-agent-more" onclick="openAgentDetailModal('${agent.id}')" title="Actions & Details" aria-label="Open Actions">
             <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor">

@@ -727,23 +727,23 @@ tbody tr:hover td{background:#f8fbff}
   .billing-mail-footer>div{grid-template-columns:1fr}
 }
 
-/* ── Billing workspace ─────────────────────────────────────────────── */
-.billing-tabs{
+/* ── Billing & Settings workspaces ─────────────────────────────────────── */
+.billing-tabs, .settings-tabs{
   display:flex;gap:2px;overflow-x:auto;scrollbar-width:thin;
   margin-top:18px;background:var(--surface);border:1px solid var(--border);
   border-bottom:1px solid var(--table-border);padding:0 8px
 }
-.billing-tab{
+.billing-tab, .settings-tab{
   appearance:none;flex:0 0 auto;border:0;border-bottom:3px solid transparent;
   background:transparent;color:var(--muted);padding:13px 15px 11px;
   font-size:12px;font-weight:700;white-space:nowrap;cursor:pointer
 }
-.billing-tab:hover{background:#f8faff;color:var(--brand)}
-.billing-tab.active{border-bottom-color:var(--brand);color:var(--brand-dark)}
-.billing-tab:focus-visible{outline:2px solid var(--teal);outline-offset:-3px}
-.billing-tab-panel{padding-top:14px}
-.billing-tab-panel[hidden]{display:none!important}
-.billing-tab-panel .panel-header{flex-wrap:wrap}
+.billing-tab:hover, .settings-tab:hover{background:#f8faff;color:var(--brand)}
+.billing-tab.active, .settings-tab.active{border-bottom-color:var(--brand);color:var(--brand-dark)}
+.billing-tab:focus-visible, .settings-tab:focus-visible{outline:2px solid var(--teal);outline-offset:-3px}
+.billing-tab-panel, .settings-tab-panel{padding-top:14px}
+.billing-tab-panel[hidden], .settings-tab-panel[hidden]{display:none!important}
+.billing-tab-panel .panel-header, .settings-tab-panel .panel-header{flex-wrap:wrap}
 .billing-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px}
 .billing-kpi{min-width:0;width:100%;background:var(--surface);border:1px solid var(--border);padding:15px 17px;position:relative;text-align:left;color:var(--ink);font:inherit;cursor:pointer}
 .billing-kpi:hover{background:#fbfcff;border-color:#c7cfe0}
@@ -794,8 +794,8 @@ tbody tr:hover td{background:#f8fbff}
   .billing-price-extras{grid-template-columns:1fr}
 }
 @media(max-width:680px){
-  .billing-tabs{margin-left:-8px;margin-right:-8px;padding:0 4px}
-  .billing-tab{padding:12px 11px 10px}
+  .billing-tabs, .settings-tabs{margin-left:-8px;margin-right:-8px;padding:0 4px}
+  .billing-tab, .settings-tab{padding:12px 11px 10px}
   .billing-kpi{padding:13px}
   .billing-kpi strong{font-size:22px}
   .billing-register-filters{min-width:0;width:100%;flex-wrap:wrap;justify-content:stretch}
