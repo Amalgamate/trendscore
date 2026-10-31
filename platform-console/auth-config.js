@@ -36,6 +36,8 @@ const JWT_EXPIRES_IN = process.env.CONSOLE_JWT_EXPIRES_IN || '8h';
 const ROLE_ACCESS = {
   super_admin: ['overview', 'instances', 'storage', 'deployments', 'controls', 'billing', 'logs', 'leads', 'agents', 'settings'],
   platform_owner: ['overview', 'instances', 'storage', 'deployments', 'billing', 'logs', 'leads', 'agents', 'settings'],
+  finance_approver: ['overview', 'billing', 'logs'],
+  billing_operator: ['overview', 'billing', 'leads', 'agents', 'logs'],
 };
 
 module.exports = { USERS, JWT_SECRET, JWT_EXPIRES_IN, ROLE_ACCESS };

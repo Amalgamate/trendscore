@@ -14,6 +14,12 @@ const { createAgentsStore } = require('./agents-store');
 const { createLeadsStore } = require('./leads-store');
 const { quotePdfBuffer, invoicePdfBuffer, paymentReceiptPdfBuffer } = require('./billing-documents');
 const { SCHOOL_TYPES, calculateCatalogueQuote, normalizeProductInput } = require('./billing-pricing');
+const { createBillingService } = require('./services/billing');
+const { createLeadsService }   = require('./services/leads');
+const { createNotifyService }  = require('./services/notify');
+const { getFlag, setFlag, listFlags } = require('./services/feature-flags');
+const { getCurrentTerm, getTermForDate, listTerms, upsertTerm } = require('./services/term-calendar');
+const { appendEvent, SYSTEM_ACTOR } = require('./services/events');
 
 const execFileAsync = promisify(execFile);
 
@@ -59,6 +65,11 @@ const billingStore = createBillingStore(CONSOLE_DATA_DIR);
 const agentsStore = createAgentsStore(CONSOLE_DATA_DIR);
 const leadsStore = createLeadsStore(CONSOLE_DATA_DIR);
 const MAX_AUDIT_ENTRIES = 2000;
+
+// ── Service layer (L2C-1-19) ──────────────────────────────────────────────
+const billingSvc = createBillingService(billingStore);
+const leadsSvc   = createLeadsService(leadsStore, agentsStore);
+const notifySvc  = createNotifyService(billingStore._getDb(), { mode: process.env.NOTIFY_MODE || 'live' });
 
 // In-memory deployment log (ephemeral — only tracks this process session)
 const deploymentLog = [];
@@ -1635,7 +1646,7 @@ app.get('/api/deployments', requireAuth, (_req, res) => {
 // ── Leads endpoints ───────────────────────────────────────────────────────
 app.get('/api/leads', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
   try {
-    const leads = leadsStore.listLeads({
+    const leads = leadsSvc.listLeads({
       search: String(req.query.search || '').trim(),
       stage: String(req.query.stage || '').trim(),
       agentId: String(req.query.agentId || '').trim(),
@@ -1654,7 +1665,8 @@ app.post('/api/leads', requireAuth, requireRole('super_admin', 'platform_owner')
     return res.status(400).json({ error: 'name and school are required' });
   }
   try {
-    const lead = leadsStore.createLead(body);
+    const lead = leadsSvc.createLead(body);
+    notifySvc.emit('lead.created', { id: lead.id, school: lead.school });
     pushAudit('LEAD_CREATE', lead.school, req.user.email, `Created lead ${lead.name}`, 'Success');
     return res.json({ ok: true, lead });
   } catch (err) {
@@ -1692,7 +1704,7 @@ app.delete('/api/leads/:id', requireAuth, requireRole('super_admin', 'platform_o
 // ── Field Agents & Commission API ──────────────────────────────────────────
 app.get('/api/agents/overview', requireAuth, requireRole('super_admin', 'platform_owner'), (_req, res) => {
   try {
-    const overview = agentsStore.getOverview();
+    const overview = leadsSvc.getAgentsOverview();
     return res.json({ ok: true, overview });
   } catch (err) {
     return res.status(500).json({ error: err.message || 'Failed to fetch agents overview' });
@@ -2464,8 +2476,8 @@ async function notifyNewAgentLead({ school, lead, agent }) {
   } catch (_) { /* Non-critical — never block registration */ }
 }
 
-app.get('/api/billing/customers', requireAuth, requireRole('super_admin', 'platform_owner'), (_req, res) => {
-  res.json({ ok: true, customers: billingStore.listCustomers() });
+app.get('/api/billing/customers', requireAuth, requireRole('super_admin', 'platform_owner', 'finance_approver'), (_req, res) => {
+  res.json({ ok: true, customers: billingSvc.listCustomers() });
 });
 
 app.get('/api/billing/schools', requireAuth, requireRole('super_admin', 'platform_owner'), async (_req, res) => {
@@ -2569,7 +2581,7 @@ app.post('/api/billing/customers', requireAuth, requireRole('super_admin'), (req
     const customer = normalizeBillingCustomer(req.body);
     if (!customer.name) return res.status(400).json({ error: 'Customer name is required' });
     customer.id = crypto.randomUUID();
-    const created = billingStore.createCustomer(customer);
+    const created = billingSvc.createCustomer(customer);
     pushAudit('BILLING_CUSTOMER_CREATE', created.name, req.user.email, `Created billing customer ${created.name}`);
     return res.status(201).json({ ok: true, customer: created });
   } catch (error) {
@@ -2592,7 +2604,7 @@ app.put('/api/billing/customers/:id', requireAuth, requireRole('super_admin'), (
   }
 });
 
-app.get('/api/billing/contracts', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+app.get('/api/billing/contracts', requireAuth, requireRole('super_admin', 'platform_owner', 'finance_approver'), (req, res) => {
   const customerId = billingText(req.query.customerId, 80);
   res.json({ ok: true, contracts: billingStore.listContracts(customerId) });
 });
@@ -2724,7 +2736,7 @@ app.put('/api/billing/products/:code', requireAuth, requireRole('super_admin'), 
   }
 });
 
-app.get('/api/billing/quotes', requireAuth, requireRole('super_admin', 'platform_owner'), (_req, res) => {
+app.get('/api/billing/quotes', requireAuth, requireRole('super_admin', 'platform_owner', 'finance_approver'), (_req, res) => {
   res.json({ ok: true, quotes: billingStore.listQuotes(), deliveries: billingStore.listQuotes().map(quote => ({ quoteId: quote.id, attempts: billingStore.listQuoteDeliveries(quote.id) })) });
 });
 
@@ -2887,12 +2899,12 @@ app.post('/api/billing/quotes/:id/convert', requireAuth, requireRole('super_admi
   }
 });
 
-app.get('/api/billing/invoices', requireAuth, requireRole('super_admin', 'platform_owner'), (_req, res) => {
+app.get('/api/billing/invoices', requireAuth, requireRole('super_admin', 'platform_owner', 'finance_approver'), (_req, res) => {
   const invoices = billingStore.listInvoices();
   res.json({ ok: true, invoices, deliveries: invoices.map(invoice => ({ invoiceId: invoice.id, attempts: billingStore.listInvoiceDeliveries(invoice.id) })) });
 });
 
-app.get('/api/billing/payments', requireAuth, requireRole('super_admin', 'platform_owner'), (_req, res) => {
+app.get('/api/billing/payments', requireAuth, requireRole('super_admin', 'platform_owner', 'finance_approver'), (_req, res) => {
   return res.json({ ok: true, payments: billingStore.listPayments() });
 });
 
@@ -3055,10 +3067,70 @@ app.get('/health/jobs', (_req, res) => {
   }
 });
 
+// ── Feature flag endpoints (L2C-1-17) ─────────────────────────────────────
+app.get('/api/feature-flags', requireAuth, requireRole('super_admin'), (_req, res) => {
+  try {
+    res.json({ ok: true, flags: listFlags(billingStore._getDb()) });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.put('/api/feature-flags/:name', requireAuth, requireRole('super_admin'), (req, res) => {
+  const name = String(req.params.name || '').trim().toUpperCase();
+  const enabled = req.body?.enabled;
+  if (!name) return res.status(400).json({ ok: false, error: 'name is required' });
+  if (typeof enabled !== 'boolean') return res.status(400).json({ ok: false, error: 'enabled must be a boolean' });
+  try {
+    setFlag(billingStore._getDb(), name, enabled, req.user.email);
+    appendEvent(billingStore._getDb(), {
+      type: 'feature_flag.changed',
+      aggregateType: 'FeatureFlag',
+      aggregateId: name,
+      payload: { enabled },
+      actor: req.user.email,
+    });
+    pushAudit('FEATURE_FLAG_SET', name, req.user.email, `Set ${name} = ${enabled}`);
+    res.json({ ok: true, flag: { name, enabled } });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ── Term calendar endpoints (L2C-1-12) ────────────────────────────────────
+app.get('/api/term-calendar', requireAuth, (_req, res) => {
+  try {
+    res.json({ ok: true, terms: listTerms(billingStore._getDb()) });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post('/api/term-calendar', requireAuth, requireRole('super_admin'), (req, res) => {
+  const body = req.body || {};
+  const year        = Number(body.year);
+  const term        = Number(body.term);
+  const startDate   = String(body.startDate   || '').trim();
+  const endDate     = String(body.endDate     || '').trim();
+  const billingDate = String(body.billingDate || '').trim();
+  const dueDate     = String(body.dueDate     || '').trim();
+  if (!Number.isInteger(year) || year < 2020 || year > 2100) return res.status(400).json({ ok: false, error: 'year must be an integer 2020-2100' });
+  if (![1, 2, 3].includes(term)) return res.status(400).json({ ok: false, error: 'term must be 1, 2, or 3' });
+  const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+  for (const [field, val] of [['startDate', startDate], ['endDate', endDate], ['billingDate', billingDate], ['dueDate', dueDate]]) {
+    if (!dateRe.test(val)) return res.status(400).json({ ok: false, error: `${field} must be YYYY-MM-DD` });
+  }
+  try {
+    upsertTerm(billingStore._getDb(), { year, term, startDate, endDate, billingDate, dueDate });
+    res.json({ ok: true, terms: listTerms(billingStore._getDb()) });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // Only the public/ dir is served statically — server.js, auth-config.js, .env,
 // data/*.store.json and everything else in __dirname stay unreachable over HTTP.
 app.use(express.static(path.join(__dirname, 'public')));
-
 app.listen(PORT, () => {
   console.log(`Trends CORE Control Panel  →  http://localhost:${PORT}`);
   console.log(`Users configured: ${USERS.map(u => `${u.email} (${u.role})`).join(', ') || 'none'}`);
