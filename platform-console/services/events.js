@@ -30,4 +30,6 @@ function appendEvent(db, { type, aggregateType = '', aggregateId = '', payload =
   return { id, type, aggregateType, aggregateId, payload: payloadJson, actor, createdAt, idempotencyKey: ikey };
 }
 
-module.exports = { appendEvent };
+const SYSTEM_ACTOR = 'system';
+
+module.exports = { appendEvent, SYSTEM_ACTOR };
