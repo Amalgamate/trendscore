@@ -11,3 +11,6 @@
 *.ico binary
 *.pdf binary
 *.zip binary
+
+# Shell scripts must always use LF — CRLF breaks bash even on Windows hosts
+*.sh text eol=lf
