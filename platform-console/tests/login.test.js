@@ -96,13 +96,16 @@ before(async () => {
   await waitForHealth();
 });
 
-after(() => {
-  if (serverProcess && !serverProcess.killed) {
+after(async () => {
+  if (serverProcess && serverProcess.exitCode === null) {
     serverProcess.__expectedExit = true;
+    const exited = new Promise(resolve => serverProcess.once('exit', resolve));
     serverProcess.kill();
+    await exited; // Windows keeps SQLite files locked until the process has really exited
   }
   if (tmpDataDir && fs.existsSync(tmpDataDir)) {
-    fs.rmSync(tmpDataDir, { recursive: true, force: true });
+    try { fs.rmSync(tmpDataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); }
+    catch (err) { console.warn(`Could not remove temp dir ${tmpDataDir}: ${err.code}`); }
   }
 });
 

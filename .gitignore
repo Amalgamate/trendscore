@@ -45,6 +45,12 @@ pnpm-debug.log*
 platform-console/*.log
 platform-console/*.err
 
+# Platform console live data (customers, invoices, leads, audit) - never commit
+platform-console/*.sqlite
+platform-console/*.sqlite-shm
+platform-console/*.sqlite-wal
+platform-console/*.store.json
+
 # Runtime data / PIDs
 pids/
 *.pid
@@ -119,3 +125,6 @@ server/backups/
 
 # WhatsApp session data (auth credentials, never commit)
 server/.wwebjs_auth/
+
+# Lead-to-cash plan docs — kept out of the public repo (contains security findings)
+docs/lead-to-cash/

@@ -44,11 +44,11 @@ test('private add-on modules are 5,000 each per term', () => {
   assert.throws(() => quote({ schoolType: 'private', extraModules: ['Library', 'library'] }), /duplicate/i);
 });
 
-test('public primary add-on modules are rejected while that price is inactive', () => {
-  assert.throws(() => quote({ schoolType: 'public_primary', extraModules: ['Library'] }), /not offered/);
-  const activated = DEFAULT_PRODUCTS.map(p => (p.code === 'module_public_primary' ? { ...p, active: true } : p));
-  const q = calculateCatalogueQuote({ schoolType: 'public_primary', extraModules: ['Library'] }, activated);
+test('public primary add-on modules cost the same as private ones (confirmed October 2026) and are rejected while that price is inactive', () => {
+  const q = quote({ schoolType: 'public_primary', extraModules: ['Library'] });
   assert.equal(q.subtotalKsh, 20000);
+  const deactivated = DEFAULT_PRODUCTS.map(p => (p.code === 'module_public_primary' ? { ...p, active: false } : p));
+  assert.throws(() => calculateCatalogueQuote({ schoolType: 'public_primary', extraModules: ['Library'] }, deactivated), /not offered/);
 });
 
 test('Communication adds 10,000 per term, or is free with the school\'s own SMS provider', () => {

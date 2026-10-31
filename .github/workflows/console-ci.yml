@@ -1,0 +1,56 @@
+name: Console CI
+
+# Runs the platform-console tests and the lead-to-cash plan checker on every pull request
+# and on every push to main. Deliberately has NO `paths:` filter: a required status check
+# that is skipped by a path filter stays "pending" forever and blocks the merge.
+# It does not build or deploy anything; deploy-console.yml stays manual.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: console-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  console-tests:
+    name: console-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: platform-console
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: platform-console/package-lock.json
+      - name: Install
+        run: npm ci
+      - name: Test
+        run: npm test
+
+  plan-status:
+    name: plan-status
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check the lead-to-cash plan (only when the plan is in this repo)
+        run: |
+          if [ -f docs/lead-to-cash/README.md ]; then
+            node scripts/plan-status.mjs
+          else
+            echo "docs/lead-to-cash is not in this repo; skipping plan check."
+          fi

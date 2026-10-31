@@ -86,9 +86,17 @@ before(async () => {
   cookie = login.headers.getSetCookie().map(value => value.split(';')[0]).join('; ');
 });
 
-after(() => {
-  if (serverProcess && !serverProcess.killed) { serverProcess.__expectedExit = true; serverProcess.kill(); }
-  if (tmpDataDir && fs.existsSync(tmpDataDir)) fs.rmSync(tmpDataDir, { recursive: true, force: true });
+after(async () => {
+  if (serverProcess && serverProcess.exitCode === null) {
+    serverProcess.__expectedExit = true;
+    const exited = new Promise(resolve => serverProcess.once('exit', resolve));
+    serverProcess.kill();
+    await exited; // Windows keeps SQLite files locked until the process has really exited
+  }
+  if (tmpDataDir && fs.existsSync(tmpDataDir)) {
+    try { fs.rmSync(tmpDataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); }
+    catch (err) { console.warn(`Could not remove temp dir ${tmpDataDir}: ${err.code}`); }
+  }
 });
 
 test('billing endpoints refuse unauthenticated requests', async () => {
@@ -111,7 +119,7 @@ test('the price list is seeded with the roadmap prices', async () => {
   assert.equal(byCode.comms_private.priceKsh, 10000);
   assert.equal(byCode.setup_public_primary.priceKsh, 10000);
   assert.equal(byCode.core_public_primary.priceKsh, 5000);
-  assert.equal(byCode.module_public_primary.active, false);
+  assert.equal(byCode.module_public_primary.active, true, 'public primary add-ons were confirmed in October 2026');
   assert.equal(res.body.schoolTypes.private, 'Private school');
 });
 
@@ -141,10 +149,21 @@ test('quote preview prices a private school from the price list', async () => {
   assert.equal(badType.status, 400);
 });
 
-test('public primary add-on modules are rejected until the price is switched on', async () => {
-  const res = await api('POST', '/api/billing/quotes/preview', { schoolType: 'public_primary', extraModules: ['Library'] });
-  assert.equal(res.status, 400);
-  assert.match(res.body.error, /not offered/);
+test('public primary add-on modules are priced like private ones, and rejected while that price is switched off', async () => {
+  const ok = await api('POST', '/api/billing/quotes/preview', { schoolType: 'public_primary', extraModules: ['Library'] });
+  assert.equal(ok.status, 200, JSON.stringify(ok.body));
+  assert.equal(ok.body.subtotalKsh, 20000); // setup 10,000 + CORE 5,000 + one module 5,000
+
+  const off = await api('PUT', '/api/billing/products/module_public_primary', { name: 'Add-on module (per term)', priceKsh: 5000, active: false });
+  assert.equal(off.status, 200, JSON.stringify(off.body));
+  try {
+    const res = await api('POST', '/api/billing/quotes/preview', { schoolType: 'public_primary', extraModules: ['Library'] });
+    assert.equal(res.status, 400);
+    assert.match(res.body.error, /not offered/);
+  } finally {
+    const on = await api('PUT', '/api/billing/products/module_public_primary', { name: 'Add-on module (per term)', priceKsh: 5000, active: true });
+    assert.equal(on.status, 200, JSON.stringify(on.body));
+  }
 });
 
 test('a discount needs a reason and is carried on the quote', async () => {
