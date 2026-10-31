@@ -941,7 +941,7 @@ deploy_console() {
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v "${APPS_DIR}:${APPS_DIR}" \
     -v "${console_data}:/app/data" \
-    -p "${console_port}:3100" \
+    -p "127.0.0.1:${console_port}:3100" \
     "${CONSOLE_IMAGE}"
 
   for attempt in $(seq 1 30); do
