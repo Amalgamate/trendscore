@@ -4,6 +4,8 @@ const path = require('path');
 const fs = require('fs');
 const { DatabaseSync } = require('node:sqlite');
 const { DEFAULT_PRODUCTS } = require('./billing-pricing');
+const { runMigrations } = require('./billing-migrate');
+const { MIGRATIONS } = require('./billing-migrations');
 
 function createBillingStore(dataDir) {
   fs.mkdirSync(dataDir, { recursive: true });
@@ -134,6 +136,8 @@ function createBillingStore(dataDir) {
     // One-off: public primary add-on modules were seeded off before the business confirmed them. Only rows nobody has edited change.
     db.prepare("UPDATE billing_products SET active=1, updated_at=? WHERE code='module_public_primary' AND updated_by='system' AND active=0").run(seedAt);
   }
+
+  runMigrations(db, { migrations: MIGRATIONS, dataDir, log: msg => console.log('[migrate]', msg) });
 
   const ensureColumn = (table, column, definition) => {
     const columns = db.prepare(`PRAGMA table_info(${table})`).all();
@@ -423,6 +427,8 @@ function createBillingStore(dataDir) {
       return { backupPath, before };
     },
     close() { db.close(); },
+    // Exposed for the job runner — no other caller should use raw db access.
+    _getDb() { return db; },
   };
 }
 

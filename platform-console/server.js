@@ -3045,6 +3045,16 @@ app.get('/health', (_req, res) => {
   res.json({ ok: true, status: 'healthy', version: APP_VERSION });
 });
 
+app.get('/health/jobs', (_req, res) => {
+  try {
+    const { JobRunner } = require('./services/job-runner');
+    const counts = new JobRunner().counts(billingStore._getDb());
+    res.json({ ok: true, jobs: counts });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // Only the public/ dir is served statically — server.js, auth-config.js, .env,
 // data/*.store.json and everything else in __dirname stay unreachable over HTTP.
 app.use(express.static(path.join(__dirname, 'public')));
