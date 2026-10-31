@@ -427,6 +427,8 @@ function createBillingStore(dataDir) {
       return { backupPath, before };
     },
     close() { db.close(); },
+    // Exposed for the job runner — no other caller should use raw db access.
+    _getDb() { return db; },
   };
 }
 
