@@ -198,6 +198,114 @@ const MIGRATIONS = [
       `);
     },
   },
+  {
+    version: 9,
+    name: 'invoice-lines',
+    notes: 'DROP TABLE billing_invoice_lines to undo.',
+    up(db) {
+      db.exec(`
+        CREATE TABLE billing_invoice_lines (
+          id           TEXT PRIMARY KEY,
+          invoice_id   TEXT NOT NULL REFERENCES billing_invoices(id) ON DELETE RESTRICT,
+          description  TEXT NOT NULL,
+          quantity     INTEGER NOT NULL DEFAULT 1,
+          unit_price_ksh INTEGER NOT NULL,
+          amount_ksh   INTEGER NOT NULL,
+          tax_code     TEXT NOT NULL DEFAULT '',
+          product_code TEXT NOT NULL DEFAULT '',
+          cadence      TEXT NOT NULL DEFAULT '',
+          sort_order   INTEGER NOT NULL DEFAULT 0,
+          created_at   TEXT NOT NULL
+        );
+        CREATE INDEX idx_invoice_lines_invoice ON billing_invoice_lines (invoice_id);
+      `);
+    },
+  },
+  {
+    version: 10,
+    name: 'billing-invoices-rebuild',
+    notes: 'Rollback: ALTER TABLE billing_invoices RENAME TO billing_invoices_v10; recreate original (quote_id TEXT NOT NULL UNIQUE, no new columns); INSERT id/invoice_number/quote_id/customer_id/invoice_snapshot/amount_ksh/status/created_by/created_at/updated_at/cancel_reason/cancelled_by SELECT from _v10; DROP billing_invoices_v10.',
+    foreignKeys: false,
+    up(db) {
+      const cols = db.prepare('PRAGMA table_info(billing_invoices)').all().map(r => r.name);
+      // Check whether billing_customers exists — test dbs may not have it.
+      const hasCustomersTable = !!db.prepare(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='billing_customers'"
+      ).get();
+      const customerFk = hasCustomersTable
+        ? 'REFERENCES billing_customers(id) ON DELETE RESTRICT'
+        : '';
+
+      db.exec(`
+        CREATE TABLE billing_invoices_new (
+          id                TEXT PRIMARY KEY,
+          invoice_number    TEXT NOT NULL UNIQUE,
+          quote_id          TEXT,
+          contract_id       TEXT,
+          invoice_type      TEXT NOT NULL DEFAULT 'onboarding',
+          period_key        TEXT,
+          customer_id       TEXT NOT NULL ${customerFk},
+          invoice_snapshot  TEXT NOT NULL DEFAULT '{}',
+          amount_ksh        INTEGER NOT NULL DEFAULT 0,
+          status            TEXT NOT NULL DEFAULT 'draft'
+                              CHECK (status IN ('draft','issued','sent','paid','void','credited')),
+          settlement_status TEXT NOT NULL DEFAULT 'unpaid'
+                              CHECK (settlement_status IN ('unpaid','partial','paid','credited')),
+          issued_at         TEXT NOT NULL DEFAULT '',
+          due_date          TEXT NOT NULL DEFAULT '',
+          cancel_reason     TEXT NOT NULL DEFAULT '',
+          cancelled_by      TEXT NOT NULL DEFAULT '',
+          created_by        TEXT NOT NULL DEFAULT '',
+          created_at        TEXT NOT NULL,
+          updated_at        TEXT NOT NULL
+        )
+      `);
+
+      // 3. Copy all existing rows — read columns dynamically because test setups
+      //    may create a minimal billing_invoices with only a subset of columns.
+      const hasCancelReason  = cols.includes('cancel_reason');
+      const hasCancelledBy   = cols.includes('cancelled_by');
+      const hasQuoteId       = cols.includes('quote_id');
+      const hasCustomerId    = cols.includes('customer_id');
+      const hasInvSnapshot   = cols.includes('invoice_snapshot');
+      const hasAmountKsh     = cols.includes('amount_ksh');
+      const hasStatus        = cols.includes('status');
+      const hasCreatedBy     = cols.includes('created_by');
+      const hasCreatedAt     = cols.includes('created_at');
+      const hasUpdatedAt     = cols.includes('updated_at');
+
+      db.prepare(`
+        INSERT INTO billing_invoices_new
+          (id, invoice_number, quote_id, customer_id, invoice_snapshot,
+           amount_ksh, status, cancel_reason, cancelled_by,
+           created_by, created_at, updated_at)
+        SELECT
+          id,
+          ${cols.includes('invoice_number') ? 'invoice_number' : "''"},
+          ${hasQuoteId      ? 'quote_id'       : 'NULL'},
+          ${hasCustomerId   ? 'customer_id'    : "'unknown'"},
+          ${hasInvSnapshot  ? 'invoice_snapshot' : "'{}'"},
+          ${hasAmountKsh    ? 'amount_ksh'     : '0'},
+          ${hasStatus       ? 'status'         : "'draft'"},
+          ${hasCancelReason ? 'cancel_reason'  : "''"},
+          ${hasCancelledBy  ? 'cancelled_by'   : "''"},
+          ${hasCreatedBy    ? 'created_by'     : "''"},
+          ${hasCreatedAt    ? 'created_at'     : "datetime('now')"},
+          ${hasUpdatedAt    ? 'updated_at'     : "datetime('now')"}
+        FROM billing_invoices
+      `).run();
+
+      db.exec(`
+        DROP TABLE billing_invoices;
+        ALTER TABLE billing_invoices_new RENAME TO billing_invoices;
+        CREATE INDEX billing_invoices_customer_idx
+          ON billing_invoices (customer_id, created_at DESC);
+        CREATE UNIQUE INDEX idx_invoices_contract_period
+          ON billing_invoices (contract_id, period_key)
+          WHERE period_key IS NOT NULL AND contract_id IS NOT NULL;
+      `);
+    },
+  },
 ];
 
 module.exports = { MIGRATIONS };

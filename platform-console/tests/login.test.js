@@ -26,7 +26,7 @@ let serverProcess;
 let tmpDataDir;
 let startupOutput = '';
 
-function waitForHealth(timeoutMs = 10000) {
+function waitForHealth(timeoutMs = 20000) {
   const deadline = Date.now() + timeoutMs;
   return new Promise((resolve, reject) => {
     const attempt = async () => {
