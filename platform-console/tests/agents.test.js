@@ -172,3 +172,10 @@ test('Agents Store Lifecycle & Financials', async (t) => {
   });
 });
 
+
+// CI gate proof: this test always fails. Delete this block before merging.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+test('CI-GATE-PROOF: intentional failure — do not merge this branch', () => {
+  assert.fail('This test exists only to prove the CI gate blocks a merge. Delete it.');
+});
