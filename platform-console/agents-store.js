@@ -91,6 +91,15 @@ function createAgentsStore(dataDir) {
       created_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS agent_payouts_agent_idx ON agent_payouts(agent_id, payout_date DESC);
+    CREATE TABLE IF NOT EXISTS agent_payout_allocations (
+      id TEXT PRIMARY KEY,
+      payout_id TEXT NOT NULL REFERENCES agent_payouts(id) ON DELETE RESTRICT,
+      earning_id TEXT NOT NULL REFERENCES agent_earnings(id) ON DELETE RESTRICT,
+      amount_ksh REAL NOT NULL CHECK (amount_ksh > 0),
+      created_at TEXT NOT NULL,
+      UNIQUE (payout_id, earning_id)
+    );
+    CREATE INDEX IF NOT EXISTS agent_payout_allocations_earning_idx ON agent_payout_allocations(earning_id);
   `);
   db.exec(`CREATE TABLE IF NOT EXISTS agent_payout_callbacks (
     callback_key TEXT PRIMARY KEY,
@@ -149,6 +158,72 @@ function createAgentsStore(dataDir) {
   }
   ensureColumn('agent_payouts', 'provider_conversation_id', "TEXT NOT NULL DEFAULT ''");
   ensureColumn('agent_payouts', 'provider_transaction_id', "TEXT NOT NULL DEFAULT ''");
+
+  // Reconstruct legacy completed payouts once. Older versions attached a whole earning
+  // to one payout even when only part of it was paid. Replay completed payouts FIFO so
+  // the new allocation ledger preserves the actual aggregate cash movement.
+  if (Number(db.prepare('SELECT COUNT(*) AS count FROM agent_payout_allocations').get().count || 0) === 0) {
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      const payouts = db.prepare(`SELECT * FROM agent_payouts WHERE status='completed' ORDER BY created_at,payout_date,id`).all();
+      const allocatedByEarning = new Map();
+      const insertAllocation = db.prepare(`INSERT OR IGNORE INTO agent_payout_allocations
+        (id,payout_id,earning_id,amount_ksh,created_at) VALUES (?,?,?,?,?)`);
+      for (const payout of payouts) {
+        let remaining = Number(payout.amount_ksh || 0);
+        const earnings = db.prepare(`SELECT * FROM agent_earnings WHERE agent_id=? AND status<>'cancelled'
+          AND created_at<=? ORDER BY earned_date,created_at,id`).all(payout.agent_id, payout.created_at);
+        for (const earning of earnings) {
+          if (remaining <= 0) break;
+          const alreadyAllocated = Number(allocatedByEarning.get(earning.id) || 0);
+          const available = Math.max(0, Number(earning.earned_amount_ksh || 0) - alreadyAllocated);
+          if (!available) continue;
+          const allocation = Math.min(remaining, available);
+          insertAllocation.run(crypto.randomUUID(), payout.id, earning.id, allocation, payout.created_at);
+          allocatedByEarning.set(earning.id, alreadyAllocated + allocation);
+          remaining -= allocation;
+        }
+      }
+      const allEarnings = db.prepare(`SELECT id,earned_amount_ksh,status FROM agent_earnings WHERE status<>'cancelled'`).all();
+      const setStatus = db.prepare(`UPDATE agent_earnings SET status=?,updated_at=? WHERE id=?`);
+      for (const earning of allEarnings) {
+        const allocated = Number(allocatedByEarning.get(earning.id) || 0);
+        if (allocated > 0 && allocated + 0.000001 < Number(earning.earned_amount_ksh || 0) && earning.status === 'paid') {
+          setStatus.run('approved', new Date().toISOString(), earning.id);
+        } else if (allocated + 0.000001 >= Number(earning.earned_amount_ksh || 0) && allocated > 0 && earning.status !== 'paid') {
+          setStatus.run('paid', new Date().toISOString(), earning.id);
+        }
+      }
+      db.exec('COMMIT');
+    } catch (error) {
+      try { db.exec('ROLLBACK'); } catch {}
+      throw error;
+    }
+  }
+
+  function allocateCompletedPayout(payout, now = new Date().toISOString()) {
+    let remaining = Number(payout.amount_ksh || 0);
+    const earnings = db.prepare(`SELECT e.*,
+      COALESCE((SELECT SUM(pa.amount_ksh) FROM agent_payout_allocations pa WHERE pa.earning_id=e.id),0) AS allocated_ksh
+      FROM agent_earnings e WHERE e.agent_id=? AND e.status<>'cancelled'
+      ORDER BY e.earned_date,e.created_at,e.id`).all(payout.agent_id);
+    for (const earning of earnings) {
+      if (remaining <= 0) break;
+      const earned = Number(earning.earned_amount_ksh || 0);
+      const alreadyAllocated = Number(earning.allocated_ksh || 0);
+      const available = Math.max(0, earned - alreadyAllocated);
+      if (!available) continue;
+      const allocation = Math.min(remaining, available);
+      db.prepare(`INSERT INTO agent_payout_allocations (id,payout_id,earning_id,amount_ksh,created_at)
+        VALUES (?,?,?,?,?)`).run(crypto.randomUUID(), payout.id, earning.id, allocation, now);
+      const totalAllocated = alreadyAllocated + allocation;
+      const nextStatus = totalAllocated + 0.000001 >= earned ? 'paid' : earning.status === 'pending' ? 'pending' : 'approved';
+      db.prepare(`UPDATE agent_earnings SET status=?,payout_id=?,updated_at=? WHERE id=?`)
+        .run(nextStatus, payout.id, now, earning.id);
+      remaining -= allocation;
+    }
+    if (remaining > 0) throw new Error(`Could not allocate KES ${remaining.toLocaleString('en-KE')} of this payout to commission entries`);
+  }
 
   // PIN policy: exactly 6 digits, not trivially guessable, stored salted with scrypt. Five wrong attempts lock the
   // account for 15 minutes. A PIN issued by an admin is temporary (24 hours) and must be changed at first sign-in.
@@ -302,8 +377,20 @@ function createAgentsStore(dataDir) {
       if (!agent) return null;
 
       const schools = db.prepare(`SELECT * FROM agent_schools WHERE agent_id = ? ORDER BY created_at DESC`).all(id);
-      const earnings = db.prepare(`SELECT * FROM agent_earnings WHERE agent_id = ? ORDER BY earned_date DESC, created_at DESC`).all(id);
-      const payouts = db.prepare(`SELECT * FROM agent_payouts WHERE agent_id = ? ORDER BY payout_date DESC, created_at DESC`).all(id);
+      const earnings = db.prepare(`SELECT e.*,
+        COALESCE((SELECT SUM(pa.amount_ksh) FROM agent_payout_allocations pa WHERE pa.earning_id=e.id),0) AS paid_amount_ksh
+        FROM agent_earnings e WHERE e.agent_id = ? ORDER BY e.earned_date DESC, e.created_at DESC`).all(id).map(earning => {
+          const paidAmount = Number(earning.paid_amount_ksh || 0);
+          const remaining = Math.max(0, Number(earning.earned_amount_ksh || 0) - paidAmount);
+          const displayStatus = remaining <= 0 && paidAmount > 0 ? 'paid' : paidAmount > 0 ? 'partially_paid' : earning.status;
+          return { ...earning, paid_amount_ksh: paidAmount, balance_due_ksh: remaining, display_status: displayStatus };
+        });
+      const payouts = db.prepare(`SELECT * FROM agent_payouts WHERE agent_id = ? ORDER BY payout_date DESC, created_at DESC`).all(id).map(payout => ({
+        ...payout,
+        allocations: db.prepare(`SELECT pa.amount_ksh,e.id AS earning_id,e.school_name,e.invoice_ref,e.description
+          FROM agent_payout_allocations pa JOIN agent_earnings e ON e.id=pa.earning_id
+          WHERE pa.payout_id=? ORDER BY e.earned_date,e.created_at,e.id`).all(payout.id),
+      }));
 
       const totalEarned = earnings
         .filter(e => ['pending', 'approved', 'paid'].includes(e.status))
@@ -459,6 +546,7 @@ function createAgentsStore(dataDir) {
       const existing = db.prepare(`SELECT id FROM agents WHERE id = ?`).get(id);
       if (!existing) return false;
       db.prepare(`DELETE FROM agent_schools WHERE agent_id = ?`).run(id);
+      db.prepare(`DELETE FROM agent_payout_allocations WHERE payout_id IN (SELECT id FROM agent_payouts WHERE agent_id = ?)`).run(id);
       db.prepare(`DELETE FROM agent_earnings WHERE agent_id = ?`).run(id);
       db.prepare(`DELETE FROM agent_payouts WHERE agent_id = ?`).run(id);
       db.prepare(`DELETE FROM agents WHERE id = ?`).run(id);
@@ -570,7 +658,7 @@ function createAgentsStore(dataDir) {
         commission_rate: Number(data.commission_rate ?? agent.commission_rate),
         commission_type: data.commission_type || agent.commission_type,
         earned_amount_ksh: earnedAmount,
-        status: ['pending', 'approved', 'paid'].includes(data.status) ? data.status : 'approved',
+        status: ['pending', 'approved'].includes(data.status) ? data.status : 'approved',
         earned_date: earnedDate,
         created_at: now,
         updated_at: now,
@@ -582,6 +670,10 @@ function createAgentsStore(dataDir) {
     updateEarningStatus(earningId, status) {
       if (!['pending', 'approved', 'paid', 'cancelled'].includes(status)) {
         throw new Error('Invalid earning status');
+      }
+      if (status === 'paid') throw new Error('Earnings are marked paid only when an actual payout is allocated');
+      if (status === 'cancelled' && Number(db.prepare('SELECT COALESCE(SUM(amount_ksh),0) AS amount FROM agent_payout_allocations WHERE earning_id=?').get(earningId)?.amount || 0) > 0) {
+        throw new Error('An earning with a recorded payout allocation cannot be cancelled');
       }
       const now = new Date().toISOString();
       const res = db.prepare(`UPDATE agent_earnings SET status = ?, updated_at = ? WHERE id = ?`).run(status, now, earningId);
@@ -629,20 +721,10 @@ function createAgentsStore(dataDir) {
         created_at: now,
       });
 
-      // If completed payout, mark oldest approved earnings as paid up to this amount
+      const payout = db.prepare(`SELECT * FROM agent_payouts WHERE id=?`).get(id);
+      // Completed payouts allocate only the paid portion of each earning, FIFO.
       if (data.status !== 'pending' && data.status !== 'failed') {
-        const approvedEarnings = db.prepare(`
-          SELECT id, earned_amount_ksh FROM agent_earnings
-          WHERE agent_id = ? AND status IN ('pending', 'approved')
-          ORDER BY earned_date ASC, created_at ASC
-        `).all(agentId);
-
-        let remaining = amount;
-        for (const earning of approvedEarnings) {
-          if (remaining <= 0) break;
-          db.prepare(`UPDATE agent_earnings SET status = 'paid', payout_id = ?, updated_at = ? WHERE id = ?`).run(id, now, earning.id);
-          remaining -= Number(earning.earned_amount_ksh);
-        }
+        allocateCompletedPayout(payout, now);
       }
       db.exec('COMMIT');
       return db.prepare(`SELECT * FROM agent_payouts WHERE id = ?`).get(id);
@@ -701,16 +783,7 @@ function createAgentsStore(dataDir) {
           reference=CASE WHEN ? <> '' THEN ? ELSE reference END, payout_date=?, notes=notes || ? WHERE id=?`)
           .run(status, String(transactionId || ''), String(transactionId || ''), String(transactionId || ''), now.slice(0, 10),
             status === 'failed' ? ' · Daraja reported transfer failure' : ' · Daraja confirmed transfer', payoutId);
-        if (status === 'completed') {
-          const earnings = db.prepare(`SELECT id, earned_amount_ksh FROM agent_earnings
-            WHERE agent_id=? AND status IN ('pending','approved') ORDER BY earned_date,created_at`).all(payout.agent_id);
-          let remaining = Number(payout.amount_ksh);
-          for (const earning of earnings) {
-            if (remaining <= 0) break;
-            db.prepare(`UPDATE agent_earnings SET status='paid',payout_id=?,updated_at=? WHERE id=?`).run(payoutId, now, earning.id);
-            remaining -= Number(earning.earned_amount_ksh);
-          }
-        }
+        if (status === 'completed') allocateCompletedPayout({ ...payout, amount_ksh: Number(payout.amount_ksh) }, now);
         db.exec('COMMIT');
         return db.prepare('SELECT * FROM agent_payouts WHERE id=?').get(payoutId);
       } catch (error) {

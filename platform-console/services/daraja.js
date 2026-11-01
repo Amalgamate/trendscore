@@ -6,7 +6,7 @@ function configuration() {
     environment,
     consumerKey: process.env.MPESA_DARAJA_CONSUMER_KEY || '',
     consumerSecret: process.env.MPESA_DARAJA_CONSUMER_SECRET || '',
-    shortcode: process.env.MPESA_DARAJA_SHORTCODE || '508885',
+    shortcode: process.env.MPESA_DARAJA_SHORTCODE || '',
     initiatorName: process.env.MPESA_DARAJA_INITIATOR_NAME || '',
     securityCredential: process.env.MPESA_DARAJA_SECURITY_CREDENTIAL || '',
     callbackBaseUrl: String(process.env.MPESA_DARAJA_CALLBACK_BASE_URL || '').replace(/\/$/, ''),

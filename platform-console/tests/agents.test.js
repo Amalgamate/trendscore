@@ -216,5 +216,47 @@ test('Agents Store Lifecycle & Financials', async (t) => {
     assert.equal(initial.earned_amount_ksh, 3000);
     assert.equal(recurring.earned_amount_ksh, 700);
   });
+
+  await t.test('partial payouts allocate only the paid portion and leave the earning balance due', () => {
+    const agent = store.createAgent({ full_name: 'Partial Payout Agent', phone: '0700111222', commission_type: 'percentage', commission_rate: 10 });
+    const earning = store.recordEarning(agent.id, { school_name: 'Partial School', earned_amount_ksh: 3000, status: 'approved' });
+    const first = store.recordPayout(agent.id, { amount_ksh: 1000, payout_method: 'mpesa', reference: 'PARTIAL-001' }, 'super_admin');
+
+    let detail = store.getAgent(agent.id);
+    assert.equal(detail.financials.totalPaidKsh, 1000);
+    assert.equal(detail.financials.balanceDueKsh, 2000);
+    assert.equal(detail.earnings[0].id, earning.id);
+    assert.equal(detail.earnings[0].status, 'approved');
+    assert.equal(detail.earnings[0].display_status, 'partially_paid');
+    assert.equal(detail.earnings[0].paid_amount_ksh, 1000);
+    assert.equal(detail.earnings[0].balance_due_ksh, 2000);
+    assert.equal(detail.payouts[0].allocations[0].amount_ksh, 1000);
+    assert.throws(() => store.updateEarningStatus(earning.id, 'paid'), /actual payout is allocated/);
+    assert.throws(() => store.updateEarningStatus(earning.id, 'cancelled'), /cannot be cancelled/);
+
+    store.recordPayout(agent.id, { amount_ksh: 2000, payout_method: 'mpesa', reference: 'PARTIAL-002' }, 'super_admin');
+    detail = store.getAgent(agent.id);
+    assert.equal(detail.financials.balanceDueKsh, 0);
+    assert.equal(detail.earnings[0].status, 'paid');
+    assert.equal(detail.earnings[0].paid_amount_ksh, 3000);
+    assert.equal(detail.earnings[0].balance_due_ksh, 0);
+    assert.equal(detail.earnings[0].display_status, 'paid');
+  });
+
+  await t.test('a confirmed Daraja payout allocates only its amount to the commission ledger', () => {
+    const agent = store.createAgent({ full_name: 'Callback Payout Agent', phone: '0700111333', commission_type: 'percentage', commission_rate: 10 });
+    const earning = store.recordEarning(agent.id, { school_name: 'Callback School', earned_amount_ksh: 2500, status: 'approved' });
+    const payout = store.recordPayout(agent.id, { amount_ksh: 800, payout_method: 'mpesa', status: 'pending', reference: '' }, 'agent_app_self_service');
+    assert.equal(store.getAgent(agent.id).earnings[0].paid_amount_ksh, 0);
+
+    store.updateProviderPayout(payout.id, 'completed', 'MPESA-CALLBACK-001');
+    const detail = store.getAgent(agent.id);
+    assert.equal(detail.financials.totalPaidKsh, 800);
+    assert.equal(detail.financials.balanceDueKsh, 1700);
+    assert.equal(detail.earnings[0].id, earning.id);
+    assert.equal(detail.earnings[0].display_status, 'partially_paid');
+    assert.equal(detail.earnings[0].paid_amount_ksh, 800);
+    assert.equal(detail.earnings[0].balance_due_ksh, 1700);
+  });
 });
 

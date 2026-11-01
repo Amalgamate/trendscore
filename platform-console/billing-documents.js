@@ -199,9 +199,9 @@ function invoicePdfBuffer(invoice) {
       stroke(42, 755, 570, 755, rule, 1);
       text(42, 730, isDraft ? 'PREVIEW ONLY - NOT FOR PAYMENT' : isCancelled ? 'CANCELLED DOCUMENT' : `INVOICE - ${pdfStatusLabel(invoiceStatus)}`, 8, muted, 'F2'); text(42, 703, invoice.invoiceNumber || 'Invoice', 17, navy, 'F2');
       text(570, 704, `Created ${String(invoice.createdAt || '').slice(0, 10) || 'Date pending'}`, 9, muted, 'F1', 'right');
-      rect(42, 570, 326, 96, pale); rect(382, 570, 188, 96, pale); text(56, 647, 'BILL TO', 8, teal, 'F2');
+      rect(42, 570, 326, 112, pale); rect(382, 570, 188, 112, pale); text(56, 647, 'BILL TO', 8, teal, 'F2');
       text(56, 628, customer.legalName || customer.name || 'Customer', 12, navy, 'F2'); let billY = 610;
-      for (const detail of [customer.billingAddress, customer.billingEmail, customer.billingPhone, customer.taxIdentifier ? `Tax ID: ${customer.taxIdentifier}` : '']) if (detail) { text(56, billY, detail, 8.5, muted); billY -= 12; }
+      for (const detail of [customer.billingAddress, customer.billingEmail, customer.billingPhone, customer.paybillAccountName ? `Paybill account name: ${customer.paybillAccountName}` : '', customer.taxIdentifier ? `Tax ID: ${customer.taxIdentifier}` : '']) if (detail) { text(56, billY, detail, 8.5, muted); billY -= 12; }
       text(396, 647, 'INVOICE DETAILS', 8, teal, 'F2'); text(396, 628, 'Status', 8, muted); text(554, 628, pdfStatusLabel(invoice.status), 9, navy, 'F2', 'right');
       text(396, 609, 'Source quote', 8, muted); text(554, 609, snapshot.quoteNumber || '-', 8.5, navy, 'F2', 'right');
       text(396, 590, 'Due date', 8, muted); text(554, 590, snapshot.dueDate || 'Not set', 8, navy, 'F2', 'right');

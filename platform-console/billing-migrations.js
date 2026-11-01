@@ -607,6 +607,24 @@ const MIGRATIONS = [
         .run(new Date().toISOString());
     },
   },
+  {
+    version: 17,
+    name: 'canonical-paybill-school-account',
+    notes: 'Remove paybill_account_name and C2B match metadata columns to undo.',
+    up(db) {
+      const tableExists = name => Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name));
+      const ensureColumn = (table, column, definition) => {
+        if (tableExists(table) && !db.prepare(`PRAGMA table_info(${table})`).all().some(item => item.name === column)) {
+          db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+        }
+      };
+      ensureColumn('billing_customers', 'paybill_account_name', "TEXT NOT NULL DEFAULT ''");
+      if (tableExists('billing_customers')) db.exec("UPDATE billing_customers SET paybill_account_name=name WHERE TRIM(paybill_account_name)=''");
+      ensureColumn('mpesa_c2b_events', 'matched_customer_id', "TEXT NOT NULL DEFAULT ''");
+      ensureColumn('mpesa_c2b_events', 'matched_customer_name', "TEXT NOT NULL DEFAULT ''");
+      ensureColumn('mpesa_c2b_events', 'review_reason', "TEXT NOT NULL DEFAULT ''");
+    },
+  },
 ];
 
 module.exports = { MIGRATIONS };

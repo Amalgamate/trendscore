@@ -1766,7 +1766,7 @@ app.post('/api/leads/:id/convert', requireAuth, requireRole('super_admin'), (req
         quoteNumber: `Q-${new Date().getUTCFullYear()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`,
         customerId: customer.id,
         customerSnapshot: {
-          name: customer.name, legalName: customer.legalName, tenantKey: customer.tenantKey,
+          name: customer.name, paybillAccountName: customer.paybillAccountName, legalName: customer.legalName, tenantKey: customer.tenantKey,
           billingEmail: customer.billingEmail, billingPhone: customer.billingPhone,
           billingAddress: customer.billingAddress, taxIdentifier: customer.taxIdentifier, currency: customer.currency,
         },
@@ -2487,6 +2487,7 @@ function normalizeBillingCustomer(body = {}) {
   if (billingEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(billingEmail)) throw new Error('billing email is invalid');
   return {
     name: billingText(body.name, 160),
+    paybillAccountName: billingText(body.paybillAccountName || body.name, 160),
     legalName: billingText(body.legalName, 200),
     tenantKey,
     billingEmail,
@@ -2629,7 +2630,7 @@ function billingEmailDraft(kind, record) {
     ? `Hello ${customerName},\n\nPlease find quotation ${documentNumber} attached for your review. ${Number(record.enrollmentCount || 0) > 0 ? `It is based on an enrollment snapshot of ${Number(record.enrollmentCount).toLocaleString('en-KE')} students` : 'It covers the school service package'}${record.expiresOn ? ` and is valid until ${record.expiresOn}` : ''}.\n\n${record.quoteSnapshot?.taxNote || 'Tax treatment is not included in this quotation and should be reviewed before invoicing.'} This quotation is not a tax invoice.\n\nPlease reply to this email if you have any questions or would like to proceed.\n\nWarm regards,\nTrendSCORE Billing Team`
     : draftInvoice
       ? `Hello ${customerName},\n\nPlease review the attached draft invoice ${documentNumber} for KSh ${Number(amountKsh || 0).toLocaleString('en-KE')}.\n\nThis is a review copy only. It is not an issued invoice, payment request, or tax invoice. Please reply with any corrections or approval.\n\nWarm regards,\nTrendSCORE Billing Team`
-      : `Hello ${customerName},\n\nPlease find invoice ${documentNumber} attached for KSh ${Number(amountKsh || 0).toLocaleString('en-KE')}.${record.invoiceSnapshot?.dueDate ? ` Payment is due by ${record.invoiceSnapshot.dueDate}.` : ' Payment is due upon receipt.'}\n\nPlease include the invoice number as your payment reference. This commercial invoice is not an eTIMS tax invoice.\n\nWarm regards,\nTrendSCORE Billing Team`;
+      : `Hello ${customerName},\n\nPlease find invoice ${documentNumber} attached for KSh ${Number(amountKsh || 0).toLocaleString('en-KE')}.${record.invoiceSnapshot?.dueDate ? ` Payment is due by ${record.invoiceSnapshot.dueDate}.` : ' Payment is due upon receipt.'}\n\nFor a Paybill payment, enter the school account name exactly as shown on your invoice: ${customer.paybillAccountName || customer.name || customerName}. Do not enter the invoice number. If a payment cannot be matched to one outstanding invoice, our finance team will review it. This commercial invoice is not an eTIMS tax invoice.\n\nWarm regards,\nTrendSCORE Billing Team`;
   return {
     kind, customerName, documentNumber, recipient: customer.billingEmail || '',
     subject, message, amountKsh, logoUrl: BILLING_EMAIL_LOGO_URL,
@@ -2821,7 +2822,7 @@ function ensureInstanceBilling({ name, tenantKeyHint, domain, adminEmail, quoteS
       quoteNumber: `Q-${new Date().getUTCFullYear()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`,
       customerId: customer.id,
       customerSnapshot: {
-        name: customer.name, legalName: customer.legalName, tenantKey: customer.tenantKey,
+        name: customer.name, paybillAccountName: customer.paybillAccountName, legalName: customer.legalName, tenantKey: customer.tenantKey,
         billingEmail: customer.billingEmail, billingPhone: customer.billingPhone,
         billingAddress: customer.billingAddress, taxIdentifier: customer.taxIdentifier, currency: customer.currency,
       },
@@ -3063,7 +3064,7 @@ app.post('/api/billing/quotes', requireAuth, requireRole('super_admin'), (req, r
       quoteNumber: `Q-${new Date().getUTCFullYear()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`,
       customerId,
       customerSnapshot: {
-        name: customer.name, legalName: customer.legalName, tenantKey: customer.tenantKey,
+        name: customer.name, paybillAccountName: customer.paybillAccountName, legalName: customer.legalName, tenantKey: customer.tenantKey,
         billingEmail: customer.billingEmail, billingPhone: customer.billingPhone,
         billingAddress: customer.billingAddress, taxIdentifier: customer.taxIdentifier, currency: customer.currency,
       },
@@ -3095,7 +3096,7 @@ app.put('/api/billing/quotes/:id', requireAuth, requireRole('super_admin'), (req
     const quoteSnapshot = buildQuote(req.body);
     const updated = billingStore.updateQuote(existing.id, {
       customerId,
-      customerSnapshot: { name: customer.name, legalName: customer.legalName, tenantKey: customer.tenantKey,
+      customerSnapshot: { name: customer.name, paybillAccountName: customer.paybillAccountName, legalName: customer.legalName, tenantKey: customer.tenantKey,
         billingEmail: customer.billingEmail, billingPhone: customer.billingPhone, billingAddress: customer.billingAddress,
         taxIdentifier: customer.taxIdentifier, currency: customer.currency },
       quoteSnapshot, enrollmentCount: quoteSnapshot.enrollmentCount, pricingModel: quoteSnapshot.pricingModel,
@@ -3327,10 +3328,22 @@ app.post('/api/mpesa/c2b/:token/confirmation', (req, res) => {
     return darajaReply(res, true, 'Duplicate transaction already recorded');
   }
 
-  const invoice = billingStore.getInvoiceByNumber(billReference);
-  if (!invoice || !['issued', 'sent'].includes(invoice.status) || amountKsh > Number(invoice.balanceKsh || 0)) {
-    billingStore.recordMpesaC2BEvent({ transactionId, billReference, amountKsh, senderPhone, transactionDate, status: 'needs_review', payload: req.body });
-    pushAudit('MPESA_C2B_REVIEW', billReference || transactionId, 'daraja', `Received KSh ${amountKsh} with unmatched or excess invoice reference ${billReference}`, 'Warning');
+  const matchedCustomers = billingStore.findCustomersByPaybillAccountName(billReference);
+  const matchedCustomer = matchedCustomers.length === 1 ? matchedCustomers[0] : null;
+  const candidateInvoices = matchedCustomer
+    ? billingStore.listInvoices().filter(item => item.customerId === matchedCustomer.id && ['issued', 'sent'].includes(item.status) && Number(item.balanceKsh || 0) > 0)
+    : [];
+  const invoice = candidateInvoices.length === 1 ? candidateInvoices[0] : null;
+  let reviewReason = '';
+  if (!billReference) reviewReason = 'No school account name was supplied';
+  else if (!matchedCustomers.length) reviewReason = 'No billing customer matches this school account name';
+  else if (matchedCustomers.length > 1) reviewReason = 'More than one billing customer has this school account name';
+  else if (!candidateInvoices.length) reviewReason = 'This school has no outstanding issued invoice';
+  else if (candidateInvoices.length > 1) reviewReason = 'This school has multiple outstanding invoices';
+  else if (amountKsh > Number(invoice.balanceKsh || 0)) reviewReason = 'Payment is greater than the invoice balance';
+  if (reviewReason) {
+    billingStore.recordMpesaC2BEvent({ transactionId, billReference, amountKsh, senderPhone, transactionDate, status: 'needs_review', matchedCustomerId: matchedCustomer?.id, matchedCustomerName: matchedCustomer?.name, reviewReason, payload: req.body });
+    pushAudit('MPESA_C2B_REVIEW', billReference || transactionId, 'daraja', `Received KSh ${amountKsh}; manual allocation required: ${reviewReason}`, 'Warning');
     return darajaReply(res, true, 'Received and queued for billing review');
   }
 
@@ -3347,7 +3360,7 @@ app.post('/api/mpesa/c2b/:token/confirmation', (req, res) => {
     pushAudit('MPESA_C2B_PAYMENT', invoice.invoiceNumber, 'daraja', `Recorded KSh ${amountKsh} C2B payment ${transactionId}${earning ? ` and credited KSh ${earning.earned_amount_ksh} agent commission` : ''}`);
     return darajaReply(res, true, 'Payment recorded');
   } catch (error) {
-    billingStore.recordMpesaC2BEvent({ transactionId, billReference, amountKsh, senderPhone, transactionDate, status: 'needs_review', payload: req.body });
+    billingStore.recordMpesaC2BEvent({ transactionId, billReference, amountKsh, senderPhone, transactionDate, status: 'needs_review', matchedCustomerId: matchedCustomer.id, matchedCustomerName: matchedCustomer.name, reviewReason: billingText(error.message, 300), payload: req.body });
     pushAudit('MPESA_C2B_REVIEW', billReference || transactionId, 'daraja', `C2B payment ${transactionId} needs manual allocation: ${billingText(error.message, 200)}`, 'Warning');
     return darajaReply(res, true, 'Received and queued for billing review');
   }

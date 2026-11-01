@@ -163,7 +163,7 @@ function createBillingStore(dataDir) {
   ensureColumn('billing_invoices', 'cancelled_by', "TEXT NOT NULL DEFAULT ''");
   ensureColumn('billing_contract_lines', 'cadence', "TEXT NOT NULL DEFAULT 'termly'");
 
-  const customerColumns = `id, name, legal_name AS legalName, tenant_key AS tenantKey,
+  const customerColumns = `id, name, paybill_account_name AS paybillAccountName, legal_name AS legalName, tenant_key AS tenantKey,
     billing_email AS billingEmail, billing_phone AS billingPhone,
     billing_address AS billingAddress, tax_identifier AS taxIdentifier, currency,
     payment_terms AS paymentTerms, status, created_at AS createdAt, updated_at AS updatedAt`;
@@ -221,20 +221,26 @@ function createBillingStore(dataDir) {
     getCustomer(id) {
       return db.prepare(`SELECT ${customerColumns} FROM billing_customers WHERE id = ?`).get(id) || null;
     },
+    findCustomersByPaybillAccountName(name) {
+      const normalize = value => String(value || '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('en');
+      const target = normalize(name);
+      if (!target) return [];
+      return this.listCustomers().filter(customer => normalize(customer.paybillAccountName || customer.name) === target);
+    },
     createCustomer(customer) {
       const now = new Date().toISOString();
       db.prepare(`INSERT INTO billing_customers
-        (id,name,legal_name,tenant_key,billing_email,billing_phone,billing_address,tax_identifier,currency,payment_terms,status,created_at,updated_at)
-        VALUES (@id,@name,@legalName,@tenantKey,@billingEmail,@billingPhone,@billingAddress,@taxIdentifier,@currency,@paymentTerms,@status,@createdAt,@updatedAt)`)
-        .run({ ...customer, createdAt: now, updatedAt: now });
+        (id,name,paybill_account_name,legal_name,tenant_key,billing_email,billing_phone,billing_address,tax_identifier,currency,payment_terms,status,created_at,updated_at)
+        VALUES (@id,@name,@paybillAccountName,@legalName,@tenantKey,@billingEmail,@billingPhone,@billingAddress,@taxIdentifier,@currency,@paymentTerms,@status,@createdAt,@updatedAt)`)
+        .run({ ...customer, paybillAccountName: customer.paybillAccountName || customer.name, createdAt: now, updatedAt: now });
       return this.getCustomer(customer.id);
     },
     updateCustomer(id, customer) {
       const now = new Date().toISOString();
-      const result = db.prepare(`UPDATE billing_customers SET name=@name, legal_name=@legalName, tenant_key=@tenantKey,
+      const result = db.prepare(`UPDATE billing_customers SET name=@name, paybill_account_name=@paybillAccountName, legal_name=@legalName, tenant_key=@tenantKey,
         billing_email=@billingEmail, billing_phone=@billingPhone, billing_address=@billingAddress,
         tax_identifier=@taxIdentifier, currency=@currency, payment_terms=@paymentTerms,
-        status=@status, updated_at=@updatedAt WHERE id=@id`).run({ ...customer, id, updatedAt: now });
+        status=@status, updated_at=@updatedAt WHERE id=@id`).run({ ...customer, paybillAccountName: customer.paybillAccountName || customer.name, id, updatedAt: now });
       return result.changes ? this.getCustomer(id) : null;
     },
     listContracts(customerId = '') {
@@ -501,6 +507,8 @@ function createBillingStore(dataDir) {
           status: event.status || 'needs_review', payload: JSON.stringify(event.payload || {}),
           createdAt: now, updatedAt: now,
         });
+      db.prepare(`UPDATE mpesa_c2b_events SET matched_customer_id=?,matched_customer_name=?,review_reason=?
+        WHERE transaction_id=?`).run(event.matchedCustomerId || '', event.matchedCustomerName || '', event.reviewReason || '', event.transactionId);
       return db.prepare('SELECT * FROM mpesa_c2b_events WHERE transaction_id=?').get(event.transactionId);
     },
     listMpesaC2BEvents({ status = '' } = {}) {

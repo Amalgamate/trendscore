@@ -758,18 +758,18 @@ function renderBillingRegistry() {
   const contractsBody = $('billing-contracts-table');
   if (!customersBody || !contractsBody) return;
   const customerNeedle = BILLING_FILTERS.customers.trim().toLowerCase();
-  const customers = BILLING_CUSTOMERS.filter(customer => !customerNeedle || [customer.name, customer.legalName, customer.tenantKey, customer.billingEmail, customer.billingPhone].some(value => String(value || '').toLowerCase().includes(customerNeedle)));
+  const customers = BILLING_CUSTOMERS.filter(customer => !customerNeedle || [customer.name, customer.paybillAccountName, customer.legalName, customer.tenantKey, customer.billingEmail, customer.billingPhone].some(value => String(value || '').toLowerCase().includes(customerNeedle)));
   if (BILLING_DATA_STATUS.customers === 'unavailable') {
-    customersBody.innerHTML = '<tr><td colspan="7">Customer records could not be loaded.</td></tr>';
+    customersBody.innerHTML = '<tr><td colspan="8">Customer records could not be loaded.</td></tr>';
   } else if (!BILLING_CUSTOMERS.length) {
-    customersBody.innerHTML = '<tr><td colspan="7">No billing customers recorded yet.</td></tr>';
+    customersBody.innerHTML = '<tr><td colspan="8">No billing customers recorded yet.</td></tr>';
   } else if (!customers.length) {
-    customersBody.innerHTML = '<tr><td colspan="7">No customers match this search.</td></tr>';
+    customersBody.innerHTML = '<tr><td colspan="8">No customers match this search.</td></tr>';
   } else {
     customersBody.innerHTML = customers.map(customer => {
       const count = BILLING_CONTRACTS.filter(contract => contract.customerId === customer.id).length;
       return `<tr><td><strong>${esc(customer.name)}</strong>${customer.legalName ? `<div class="table-sub">${esc(customer.legalName)}</div>` : ''}</td>
-        <td>${esc(customer.tenantKey || 'Not linked')}</td><td>${esc(customer.billingEmail || 'No email')}<div class="table-sub">${esc(customer.billingPhone || '')}</div></td>
+        <td><strong>${esc(customer.paybillAccountName || customer.name)}</strong></td><td>${esc(customer.tenantKey || 'Not linked')}</td><td>${esc(customer.billingEmail || 'No email')}<div class="table-sub">${esc(customer.billingPhone || '')}</div></td>
         <td>${esc(customer.currency)}</td><td>${esc(customer.status)}</td><td>${count}</td>
         <td><button class="btn sm" data-billing-customer-edit="${esc(customer.id)}" data-super-admin-only type="button">Edit</button>
         <button class="btn sm" data-billing-contract-add="${esc(customer.id)}" data-super-admin-only type="button">Add contract</button></td></tr>`;
@@ -1043,10 +1043,11 @@ function renderDarajaC2B() {
   if (!table) return;
   const candidates = BILLING_INVOICES.filter(invoice => ['issued', 'sent'].includes(invoice.status) && Number(invoice.balanceKsh || 0) > 0);
   table.innerHTML = BILLING_C2B_EVENTS.length ? BILLING_C2B_EVENTS.map(event => {
-    const options = candidates.filter(invoice => Number(invoice.balanceKsh || 0) >= Number(event.amount_ksh || 0))
+    const schoolCandidates = event.matched_customer_id ? candidates.filter(invoice => invoice.customerId === event.matched_customer_id) : candidates;
+    const options = schoolCandidates.filter(invoice => Number(invoice.balanceKsh || 0) >= Number(event.amount_ksh || 0))
       .map(invoice => `<option value="${esc(invoice.id)}">${esc(invoice.invoiceNumber)} · ${esc(BILLING_CUSTOMERS.find(customer => customer.id === invoice.customerId)?.name || 'Customer')}</option>`).join('');
-    return `<tr><td><strong>${esc(event.transaction_id)}</strong></td><td>${esc(event.bill_reference || '—')}</td><td>${esc(event.sender_phone || '—')}</td><td>${esc(String(event.transaction_date || '').slice(0, 10))}</td><td>${formatBillingKsh(event.amount_ksh)}</td><td><select class="form-select" data-c2b-invoice="${esc(event.transaction_id)}"><option value="">Choose invoice</option>${options}</select><button class="btn sm" data-c2b-allocate="${esc(event.transaction_id)}" ${options ? '' : 'disabled'}>Allocate</button></td></tr>`;
-  }).join('') : '<tr><td colspan="6">No unallocated C2B payments.</td></tr>';
+    return `<tr><td><strong>${esc(event.transaction_id)}</strong></td><td>${esc(event.bill_reference || '—')}</td><td>${esc(event.matched_customer_name || 'Unmatched')}${event.review_reason ? `<div class="table-sub">${esc(event.review_reason)}</div>` : ''}</td><td>${esc(event.sender_phone || '—')}</td><td>${esc(String(event.transaction_date || '').slice(0, 10))}</td><td>${formatBillingKsh(event.amount_ksh)}</td><td><select class="form-select" data-c2b-invoice="${esc(event.transaction_id)}"><option value="">Choose invoice</option>${options}</select><button class="btn sm" data-c2b-allocate="${esc(event.transaction_id)}" ${options ? '' : 'disabled'}>Allocate</button></td></tr>`;
+  }).join('') : '<tr><td colspan="7">No unallocated C2B payments.</td></tr>';
 }
 
 function renderBillingReports() {
@@ -1100,6 +1101,7 @@ function openBillingCustomer(customer = null) {
   $('bc-name').dataset.mode = customer ? 'edit' : 'add';
   $('bc-name').dataset.selectedName = customer?.name || '';
   $('bc-name').value = customer?.name || '';
+  $('bc-paybill-name').value = customer?.paybillAccountName || customer?.name || '';
   $('bc-legal-name').value = customer?.legalName || '';
   $('bc-tenant-key').value = customer?.tenantKey || '';
   $('bc-email').value = customer?.billingEmail || '';
@@ -1490,7 +1492,7 @@ function closeBillingContract() { $('billing-contract-overlay')?.classList.remov
 
 function billingCustomerPayload() {
   return {
-    name: $('bc-name').value, legalName: $('bc-legal-name').value, tenantKey: $('bc-tenant-key').value,
+    name: $('bc-name').value, paybillAccountName: $('bc-paybill-name').value, legalName: $('bc-legal-name').value, tenantKey: $('bc-tenant-key').value,
     billingEmail: $('bc-email').value, billingPhone: $('bc-phone').value, taxIdentifier: $('bc-tax-id').value,
     currency: $('bc-currency').value, paymentTerms: $('bc-payment-terms').value,
     billingAddress: $('bc-address').value, status: $('bc-status').value,
@@ -4433,8 +4435,8 @@ function renderAgentDetailModal(agent) {
           <td style="font-weight:600">${esc(e.school_name || 'General')}</td>
           <td>${esc(e.description)}</td>
           <td>${formatKsh(e.gross_amount_ksh)}</td>
-          <td style="font-weight:700;color:var(--brand)">${formatKsh(e.earned_amount_ksh)}</td>
-          <td><span class="pill" style="font-size:11px;font-weight:600">${esc(e.status)}</span></td>
+          <td style="font-weight:700;color:var(--brand)">${formatKsh(e.earned_amount_ksh)}<div class="table-sub">Paid ${formatKsh(e.paid_amount_ksh || 0)} · Due ${formatKsh(e.balance_due_ksh ?? e.earned_amount_ksh)}</div></td>
+          <td><span class="pill" style="font-size:11px;font-weight:600">${esc(String(e.display_status || e.status).replaceAll('_', ' '))}</span></td>
         </tr>
       `).join('');
     }
@@ -4444,7 +4446,7 @@ function renderAgentDetailModal(agent) {
   const payoutsBody = $('agent-payouts-body');
   if (payoutsBody) {
     if (payouts.length === 0) {
-      payoutsBody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">No payouts disbursed to this agent yet. Click "💸 Record Payout" above to record a disbursement.</td></tr>';
+      payoutsBody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">No payouts disbursed to this agent yet. Click "💸 Record Payout" above to record a disbursement.</td></tr>';
     } else {
       payoutsBody.innerHTML = payouts.map(p => `
         <tr>
@@ -4452,6 +4454,7 @@ function renderAgentDetailModal(agent) {
           <td style="text-transform:uppercase;font-weight:600">${esc(p.payout_method)}</td>
           <td style="font-family:monospace;font-weight:700">${esc(p.reference || '—')}</td>
           <td style="font-weight:700;color:var(--green)">${formatKsh(p.amount_ksh)}</td>
+          <td>${(p.allocations || []).map(allocation => `<div>${esc(allocation.school_name || 'Commission')} · ${formatKsh(allocation.amount_ksh)}${allocation.invoice_ref ? `<div class="table-sub">${esc(allocation.invoice_ref)}</div>` : ''}</div>`).join('') || '—'}</td>
           <td><span class="pill" style="font-size:11px">${esc(p.status)}</span></td>
           <td>${esc(p.processed_by || 'admin')}</td>
         </tr>
