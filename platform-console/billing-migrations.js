@@ -625,6 +625,28 @@ const MIGRATIONS = [
       ensureColumn('mpesa_c2b_events', 'review_reason', "TEXT NOT NULL DEFAULT ''");
     },
   },
+  {
+    version: 18,
+    name: 'billing-commission-reconciliation',
+    notes: 'Drop billing_commission_attribution_failures to undo; this removes pending retry history.',
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS billing_commission_attribution_failures (
+          payment_id TEXT PRIMARY KEY REFERENCES billing_payments(id) ON DELETE RESTRICT,
+          invoice_id TEXT NOT NULL REFERENCES billing_invoices(id) ON DELETE RESTRICT,
+          status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','resolved')),
+          error TEXT NOT NULL DEFAULT '',
+          attempts INTEGER NOT NULL DEFAULT 0,
+          last_attempt_at TEXT NOT NULL DEFAULT '',
+          resolved_at TEXT NOT NULL DEFAULT '',
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS billing_commission_reconciliation_status_idx
+          ON billing_commission_attribution_failures(status, created_at);
+      `);
+    },
+  },
 ];
 
 module.exports = { MIGRATIONS };

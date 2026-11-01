@@ -35,6 +35,8 @@ CONSOLE_SUPER_ADMIN_EMAIL=admin@example.com
 CONSOLE_SUPER_ADMIN_PASSWORD=replace-with-a-strong-password
 CONSOLE_PLATFORM_OWNER_EMAIL=owner@example.com
 CONSOLE_PLATFORM_OWNER_PASSWORD=replace-with-a-strong-password
+CONSOLE_FINANCE_APPROVER_EMAIL=finance@example.com
+CONSOLE_FINANCE_APPROVER_PASSWORD=replace-with-a-strong-password
 CONSOLE_JWT_EXPIRES_IN=8h
 CONSOLE_COOKIE_SECURE=false
 ```
@@ -47,6 +49,7 @@ Do not commit real console passwords or JWT secrets to GitHub.
 - On reload, the page silently checks `/api/me` — if the cookie is still valid, login is skipped
 - Super Admin: full access to all sections including Controls
 - Platform Owner: read-only access; Controls section is locked
+- Finance Approver: billing and logs access; can approve flagged quote discounts but cannot create or issue billing records
 
 ---
 

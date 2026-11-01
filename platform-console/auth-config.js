@@ -27,6 +27,12 @@ const USERS = [
     role: 'platform_owner',
     name: 'Platform Owner',
   }),
+  optionalUser({
+    emailKey: 'CONSOLE_FINANCE_APPROVER_EMAIL',
+    passwordKey: 'CONSOLE_FINANCE_APPROVER_PASSWORD',
+    role: 'finance_approver',
+    name: 'Finance Approver',
+  }),
 ].filter(Boolean);
 
 const JWT_SECRET = process.env.CONSOLE_JWT_SECRET;

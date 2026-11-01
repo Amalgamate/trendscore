@@ -1727,6 +1727,9 @@ app.post('/api/leads/:id/convert', requireAuth, requireRole('super_admin'), (req
 
   try {
     const quoteSnapshot = buildQuote(req.body?.quote || {});
+    if (discountApprovalPending(quoteSnapshot)) {
+      return res.status(409).json({ ok: false, error: 'A discount requiring finance approval cannot be accepted during lead conversion. Create a billing quote, obtain finance approval, and then record customer acceptance.' });
+    }
     const schoolType = billingText(req.body?.schoolType || req.body?.quote?.schoolType, 40).toLowerCase();
     const tenantKey = instanceTenantKey(lead.school, '');
     let customer = billingStore.getCustomerByTenantKey(tenantKey);
@@ -1873,6 +1876,47 @@ app.get('/api/agents/:id', requireAuth, requireRole('super_admin', 'platform_own
   }
 });
 
+function agentSchoolOwnsCommissionInvoice(school, invoice) {
+  if (!school || !invoice) return false;
+  const snapshot = invoice.invoiceSnapshot || {};
+  const quoteSnapshot = snapshot.quoteSnapshot || {};
+  const leadId = String(snapshot.leadId || quoteSnapshot.leadId || '');
+  if (school.lead_id && leadId && String(school.lead_id) === leadId) return true;
+
+  const customer = billingStore.getCustomer(invoice.customerId);
+  const invoiceTenantKey = String(customer?.tenantKey || snapshot.customerSnapshot?.tenantKey || '').trim().toLowerCase();
+  if (school.tenant_key && invoiceTenantKey && String(school.tenant_key).trim().toLowerCase() === invoiceTenantKey) return true;
+
+  const normalizeSchoolName = value => String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  const assignedName = normalizeSchoolName(school.school_name);
+  const invoiceNames = [customer?.name, customer?.legalName, snapshot.customerSnapshot?.name, snapshot.customerSnapshot?.legalName]
+    .map(normalizeSchoolName).filter(Boolean);
+  return Boolean(assignedName && invoiceNames.includes(assignedName));
+}
+
+app.get('/api/agents/:id/commission-invoices', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  const agent = agentsStore.getAgent(req.params.id);
+  if (!agent) return res.status(404).json({ ok: false, error: 'Agent not found' });
+  const invoices = billingStore.listInvoices()
+    .filter(invoice => ['issued', 'sent', 'paid'].includes(invoice.status))
+    .map(invoice => {
+      const school = agent.schools.find(candidate => agentSchoolOwnsCommissionInvoice(candidate, invoice));
+      return school ? {
+        id: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+        amountKsh: invoice.amountKsh,
+        status: invoice.status,
+        schoolId: school.id,
+      } : null;
+    })
+    .filter(Boolean);
+  return res.json({ ok: true, schools: agent.schools.map(school => ({
+    id: school.id,
+    schoolName: school.school_name,
+    invoices: invoices.filter(invoice => invoice.schoolId === school.id),
+  })) });
+});
+
 app.put('/api/agents/:id', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
   try {
     const agent = agentsStore.updateAgent(req.params.id, req.body || {});
@@ -1979,7 +2023,21 @@ app.delete('/api/agents/schools/:schoolId', requireAuth, requireRole('super_admi
 
 app.post('/api/agents/:id/earnings', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
   try {
-    const earning = agentsStore.recordEarning(req.params.id, req.body || {});
+    const body = req.body || {};
+    const agent = agentsStore.getAgent(req.params.id);
+    if (!agent) return res.status(404).json({ ok: false, error: 'Agent not found' });
+    const school = agent.schools.find(candidate => candidate.id === String(body.school_id || ''));
+    if (!school) return res.status(400).json({ ok: false, error: 'Choose a school assigned to this agent.' });
+    const invoice = billingStore.getInvoice(String(body.invoice_id || ''));
+    if (!invoice || !['issued', 'sent', 'paid'].includes(invoice.status) || !agentSchoolOwnsCommissionInvoice(school, invoice)) {
+      return res.status(400).json({ ok: false, error: 'Choose an existing issued invoice belonging to the selected agent school.' });
+    }
+    const earning = agentsStore.recordEarning(req.params.id, {
+      ...body,
+      school_name: school.school_name,
+      gross_amount_ksh: invoice.amountKsh,
+      invoice_ref: invoice.invoiceNumber,
+    });
     pushAudit('AGENT_EARNING_RECORD', req.params.id, req.user.email, `Recorded commission of KES ${earning.earned_amount_ksh} for ${earning.school_name}`, 'Success');
     return res.status(201).json({ ok: true, earning });
   } catch (err) {
@@ -2476,6 +2534,24 @@ function billingText(value, maxLength = 500) {
   return String(value ?? '').trim().slice(0, maxLength);
 }
 
+function attributePaidInvoiceCommission(payment, invoice, actor) {
+  if (!payment || !invoice) return { earning: null, queued: false };
+  const customer = billingStore.getCustomer(invoice.customerId);
+  try {
+    const earning = agentsStore.attributePaymentCommission({ payment, invoice, customer });
+    if (earning) {
+      pushAudit('AGENT_COMMISSION_AUTO', earning.agent_id, actor || 'system',
+        `Auto-credited KSh ${earning.earned_amount_ksh.toLocaleString('en-KE')} commission for invoice ${invoice.invoiceNumber} to ${earning.agent_name} (${earning.agent_code})`, 'Success');
+    }
+    return { earning, queued: false };
+  } catch (error) {
+    billingStore.recordCommissionAttributionFailure({ paymentId: payment.id, invoiceId: invoice.id, error: error.message });
+    pushAudit('AGENT_COMMISSION_RECONCILIATION', invoice.invoiceNumber, actor || 'system',
+      `Payment ${payment.reference || payment.id} was recorded, but agent commission attribution failed and was queued for retry: ${billingText(error.message, 240)}`, 'Warning');
+    return { earning: null, queued: true, error: error.message };
+  }
+}
+
 function normalizeBillingCustomer(body = {}) {
   const status = billingText(body.status || 'active', 20).toLowerCase();
   const currency = billingText(body.currency || 'KES', 3).toUpperCase();
@@ -2608,8 +2684,13 @@ function calculateQuote(body = {}) {
 // Quotes with a schoolType are priced from the price list (flat per school). A request without one falls
 // back to the legacy per-student band calculation, which only exists so older draft quotes stay editable.
 function buildQuote(body = {}) {
-  if (body && body.schoolType) return calculateCatalogueQuote(body, billingStore.listProducts());
-  return calculateQuote(body);
+  if (!body || !body.schoolType) throw new Error('Choose a school type. New quotes are priced per school from the approved price list.');
+  return calculateCatalogueQuote(body, billingStore.listProducts());
+}
+
+function discountApprovalPending(quoteSnapshot = {}) {
+  const discount = quoteSnapshot.discount;
+  return Boolean(discount?.requiresApproval && discount.approvalStatus !== 'approved');
 }
 
 const BILLING_EMAIL_LOGO_URL = process.env.BILLING_EMAIL_LOGO_URL || 'https://trendscore.co.ke/splash/new/TrendsCORE-Logo.png';
@@ -3093,7 +3174,11 @@ app.put('/api/billing/quotes/:id', requireAuth, requireRole('super_admin'), (req
     const customer = billingStore.getCustomer(customerId);
     if (!customer) return res.status(404).json({ ok: false, error: 'Select a saved billing customer first' });
     if (customer.currency !== 'KES') return res.status(400).json({ ok: false, error: 'The approved school rate card is in KSh. Set this customer currency to KES before quoting.' });
-    const quoteSnapshot = buildQuote(req.body);
+    const quoteSnapshot = req.body?.schoolType
+      ? buildQuote(req.body)
+      : existing.quoteSnapshot?.pricingModel !== 'catalogue'
+        ? calculateQuote(req.body)
+        : buildQuote(req.body);
     const updated = billingStore.updateQuote(existing.id, {
       customerId,
       customerSnapshot: { name: customer.name, paybillAccountName: customer.paybillAccountName, legalName: customer.legalName, tenantKey: customer.tenantKey,
@@ -3161,10 +3246,27 @@ app.post('/api/billing/quotes/:id/send', requireAuth, requireRole('super_admin')
   }
 });
 
+app.post('/api/billing/quotes/:id/approve-discount', requireAuth, requireRole('finance_approver'), (req, res) => {
+  const quote = billingStore.getQuote(req.params.id);
+  if (!quote) return res.status(404).json({ ok: false, error: 'Quote not found' });
+  if (String(quote.createdBy || '').toLowerCase() === String(req.user.email || '').toLowerCase()) {
+    return res.status(403).json({ ok: false, error: 'The quote creator cannot approve their own discount.' });
+  }
+  try {
+    const updated = billingStore.recordQuoteDiscountApproval(quote.id, { approvedBy: req.user.email });
+    pushAudit('BILLING_DISCOUNT_APPROVE', quote.customerSnapshot?.name || quote.customerId, req.user.email,
+      `Approved KSh ${updated.quoteSnapshot.discount.amountKsh} discount on ${updated.quoteNumber}`);
+    return res.json({ ok: true, quote: updated });
+  } catch (error) {
+    return res.status(409).json({ ok: false, error: error.message || 'Could not approve discount' });
+  }
+});
+
 app.post('/api/billing/quotes/:id/accept', requireAuth, requireRole('super_admin'), (req, res) => {
   const quote = billingStore.getQuote(req.params.id);
   if (!quote) return res.status(404).json({ ok: false, error: 'Quote not found' });
   if (!['draft', 'sent'].includes(quote.status) || quote.cancelledAt) return res.status(409).json({ ok: false, error: `Quote is ${quote.status} and cannot be marked accepted` });
+  if (discountApprovalPending(quote.quoteSnapshot)) return res.status(409).json({ ok: false, error: 'A finance approver must approve this quote’s discount before acceptance.' });
   if (quote.expiresOn && quote.expiresOn < new Date().toISOString().slice(0, 10)) {
     billingStore.setQuoteStatus(quote.id, 'expired');
     return res.status(409).json({ ok: false, error: 'This quote has expired. Create a new quote before recording acceptance.' });
@@ -3184,6 +3286,7 @@ app.post('/api/billing/quotes/:id/convert', requireAuth, requireRole('super_admi
   const quote = billingStore.getQuote(req.params.id);
   if (!quote) return res.status(404).json({ ok: false, error: 'Quote not found' });
   if (quote.status !== 'accepted' && quote.status !== 'converted') return res.status(409).json({ ok: false, error: 'Record customer acceptance before creating a draft invoice' });
+  if (discountApprovalPending(quote.quoteSnapshot)) return res.status(409).json({ ok: false, error: 'A finance approver must approve this quote’s discount before invoice creation.' });
   const existing = billingStore.getInvoiceForQuote(quote.id);
   if (existing) {
     billingStore.setQuoteStatus(quote.id, 'converted');
@@ -3217,6 +3320,38 @@ app.get('/api/billing/payments', requireAuth, requireRole('super_admin', 'platfo
   return res.json({ ok: true, payments: billingStore.listPayments() });
 });
 
+app.get('/api/billing/commission-reconciliation', requireAuth, requireRole('super_admin', 'platform_owner', 'finance_approver', 'billing_operator'), (_req, res) => {
+  return res.json({ ok: true, failures: billingStore.listCommissionAttributionFailures({ status: 'pending' }) });
+});
+
+app.post('/api/billing/commission-reconciliation/:paymentId/retry', requireAuth, requireRole('super_admin'), (req, res) => {
+  const failure = billingStore.getCommissionAttributionFailure(req.params.paymentId);
+  if (!failure || failure.status !== 'pending') return res.status(404).json({ ok: false, error: 'Pending commission reconciliation was not found.' });
+  const payment = billingStore.getPayment(failure.paymentId);
+  const invoice = billingStore.getInvoice(failure.invoiceId);
+  if (!payment || !invoice) return res.status(409).json({ ok: false, error: 'The linked payment or invoice is unavailable; reconcile the billing record first.' });
+  billingStore.noteCommissionAttributionAttempt(failure.paymentId, 'Retry in progress');
+  try {
+    if (agentsStore.hasPaymentCommission(payment.id)) {
+      billingStore.resolveCommissionAttributionFailure(payment.id, 'Commission was already credited.');
+      return res.json({ ok: true, alreadyCredited: true });
+    }
+    const customer = billingStore.getCustomer(invoice.customerId);
+    const earning = agentsStore.attributePaymentCommission({ payment, invoice, customer });
+    if (!earning) {
+      billingStore.updateCommissionAttributionError(payment.id, 'No matching assigned agent school was found. Check the school, lead, and tenant links before retrying.');
+      return res.status(409).json({ ok: false, error: 'No matching assigned agent school was found. Check the school, lead, and tenant links before retrying.' });
+    }
+    billingStore.resolveCommissionAttributionFailure(payment.id, 'Commission successfully attributed.');
+    pushAudit('AGENT_COMMISSION_RECONCILIATION_RESOLVED', earning.agent_id, req.user.email,
+      `Retried and credited KSh ${earning.earned_amount_ksh.toLocaleString('en-KE')} commission for payment ${payment.reference || payment.id}`);
+    return res.json({ ok: true, earning });
+  } catch (error) {
+    billingStore.updateCommissionAttributionError(payment.id, error.message || 'Commission attribution retry failed');
+    return res.status(409).json({ ok: false, error: error.message || 'Commission attribution retry failed' });
+  }
+});
+
 app.get('/api/billing/payments/:id/receipt', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
   const payment = billingStore.getPayment(req.params.id);
   if (!payment) return res.status(404).json({ ok: false, error: 'Payment record not found' });
@@ -3238,28 +3373,22 @@ app.post('/api/billing/payments', requireAuth, requireRole('super_admin'), (req,
   const reference = billingText(req.body?.reference, 120);
   const notes = billingText(req.body?.notes, 500);
   if (!invoiceId) return res.status(400).json({ ok: false, error: 'Select an issued invoice' });
+  if (!reference) return res.status(400).json({ ok: false, error: 'Enter the bank, M-Pesa, cash receipt, cheque, or other payment reference.' });
   if (!Number.isSafeInteger(amountKsh) || amountKsh <= 0) return res.status(400).json({ ok: false, error: 'Enter a whole amount in KSh greater than zero' });
   const parsedPaymentDate = new Date(`${paymentDate}T00:00:00.000Z`);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(paymentDate) || !Number.isFinite(parsedPaymentDate.getTime()) || parsedPaymentDate.toISOString().slice(0, 10) !== paymentDate) return res.status(400).json({ ok: false, error: 'Enter a valid payment date' });
+  const todayNairobi = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Nairobi' }).format(new Date());
+  if (paymentDate > todayNairobi) return res.status(400).json({ ok: false, error: 'Payment date cannot be in the future.' });
   if (!['mpesa', 'bank_transfer', 'cash', 'cheque', 'other'].includes(method)) return res.status(400).json({ ok: false, error: 'Choose a supported payment method' });
+  const selectedInvoice = billingStore.getInvoice(invoiceId);
+  const issueDate = String(selectedInvoice?.invoiceSnapshot?.issuedAt || '').slice(0, 10);
+  if (issueDate && paymentDate < issueDate) return res.status(400).json({ ok: false, error: 'Payment date cannot be before the invoice was issued.' });
   try {
     const payment = billingStore.recordPayment({ id: crypto.randomUUID(), invoiceId, amountKsh, paymentDate, method, reference, notes, recordedBy: req.user.email });
     const invoice = billingStore.getInvoice(invoiceId);
     pushAudit('BILLING_PAYMENT_RECORD', invoice?.customerId || invoiceId, req.user.email, `Recorded KSh ${amountKsh.toLocaleString('en-KE')} payment against ${invoice?.invoiceNumber || invoiceId}${reference ? ` · reference ${reference}` : ''}`);
-
-    // Auto-attribute commission to assigned field agent
-    let autoEarning = null;
-    try {
-      const customer = invoice?.customerId ? billingStore.getCustomer(invoice.customerId) : null;
-      autoEarning = agentsStore.attributePaymentCommission({ payment, invoice, customer });
-      if (autoEarning) {
-        pushAudit('AGENT_COMMISSION_AUTO', autoEarning.agent_id, req.user.email, `Auto-credited KSh ${autoEarning.earned_amount_ksh.toLocaleString('en-KE')} commission for invoice ${invoice?.invoiceNumber || invoiceId} to ${autoEarning.agent_name} (${autoEarning.agent_code})`, 'Success');
-      }
-    } catch (attrErr) {
-      console.warn('[Agents] Auto-attribution notice:', attrErr?.message || attrErr);
-    }
-
-    return res.status(201).json({ ok: true, payment, invoice, autoEarning });
+    const attribution = attributePaidInvoiceCommission(payment, invoice, req.user.email);
+    return res.status(201).json({ ok: true, payment, invoice, autoEarning: attribution.earning, commissionReconciliationRequired: attribution.queued });
   } catch (error) {
     return res.status(409).json({ ok: false, error: error.message || 'Could not record payment' });
   }
@@ -3280,9 +3409,14 @@ function darajaReply(res, accepted, description) {
 
 function darajaPaymentDate(value) {
   const raw = String(value || '');
-  if (!/^\d{14}$/.test(raw)) return new Date().toISOString().slice(0, 10);
-  const date = new Date(`${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}T${raw.slice(8, 10)}:${raw.slice(10, 12)}:${raw.slice(12, 14)}+03:00`);
-  return Number.isFinite(date.getTime()) ? date.toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
+  if (!/^\d{14}$/.test(raw)) return '';
+  const datePart = `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
+  const hour = Number(raw.slice(8, 10));
+  const minute = Number(raw.slice(10, 12));
+  const second = Number(raw.slice(12, 14));
+  const date = new Date(`${datePart}T00:00:00.000Z`);
+  if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== datePart || hour > 23 || minute > 59 || second > 59) return '';
+  return datePart;
 }
 
 app.get('/api/settings/integrations/mpesa', requireAuth, requireRole('super_admin'), (_req, res) => {
@@ -3328,6 +3462,15 @@ app.post('/api/mpesa/c2b/:token/confirmation', (req, res) => {
     return darajaReply(res, true, 'Duplicate transaction already recorded');
   }
 
+  if (!transactionDate) {
+    const possibleCustomers = billReference ? billingStore.findCustomersByPaybillAccountName(billReference) : [];
+    const matched = possibleCustomers.length === 1 ? possibleCustomers[0] : null;
+    const reason = 'Daraja transaction timestamp is missing or invalid; enter the verified payment date during review.';
+    billingStore.recordMpesaC2BEvent({ transactionId, billReference, amountKsh, senderPhone, transactionDate: '', status: 'needs_review', matchedCustomerId: matched?.id, matchedCustomerName: matched?.name, reviewReason: reason, payload: req.body });
+    pushAudit('MPESA_C2B_REVIEW', billReference || transactionId, 'daraja', `C2B payment ${transactionId} needs manual review: ${reason}`, 'Warning');
+    return darajaReply(res, true, 'Received and queued for billing review');
+  }
+
   const matchedCustomers = billingStore.findCustomersByPaybillAccountName(billReference);
   const matchedCustomer = matchedCustomers.length === 1 ? matchedCustomers[0] : null;
   const candidateInvoices = matchedCustomer
@@ -3355,10 +3498,9 @@ app.post('/api/mpesa/c2b/:token/confirmation', (req, res) => {
     });
     billingStore.recordMpesaC2BEvent({ transactionId, billReference, amountKsh, senderPhone, transactionDate, invoiceId: invoice.id, status: 'allocated', payload: req.body });
     const freshInvoice = billingStore.getInvoice(invoice.id);
-    const customer = billingStore.getCustomer(invoice.customerId);
-    const earning = agentsStore.attributePaymentCommission({ payment, invoice: freshInvoice, customer });
-    pushAudit('MPESA_C2B_PAYMENT', invoice.invoiceNumber, 'daraja', `Recorded KSh ${amountKsh} C2B payment ${transactionId}${earning ? ` and credited KSh ${earning.earned_amount_ksh} agent commission` : ''}`);
-    return darajaReply(res, true, 'Payment recorded');
+    const attribution = attributePaidInvoiceCommission(payment, freshInvoice, 'daraja');
+    pushAudit('MPESA_C2B_PAYMENT', invoice.invoiceNumber, 'daraja', `Recorded KSh ${amountKsh} C2B payment ${transactionId}${attribution.earning ? ` and credited KSh ${attribution.earning.earned_amount_ksh} agent commission` : ''}`);
+    return darajaReply(res, true, attribution.queued ? 'Payment recorded; commission queued for reconciliation' : 'Payment recorded');
   } catch (error) {
     billingStore.recordMpesaC2BEvent({ transactionId, billReference, amountKsh, senderPhone, transactionDate, status: 'needs_review', matchedCustomerId: matchedCustomer.id, matchedCustomerName: matchedCustomer.name, reviewReason: billingText(error.message, 300), payload: req.body });
     pushAudit('MPESA_C2B_REVIEW', billReference || transactionId, 'daraja', `C2B payment ${transactionId} needs manual allocation: ${billingText(error.message, 200)}`, 'Warning');
@@ -3375,19 +3517,35 @@ app.post('/api/billing/mpesa-c2b-events/:transactionId/allocate', requireAuth, r
   if (!event) return res.status(404).json({ ok: false, error: 'Unallocated C2B payment not found' });
   const invoice = billingStore.getInvoice(req.body?.invoiceId);
   if (!invoice) return res.status(404).json({ ok: false, error: 'Select an invoice' });
+  const allocationReason = billingText(req.body?.allocationReason, 300);
+  if (!event.matched_customer_id && allocationReason.length < 10) {
+    return res.status(400).json({ ok: false, error: 'Add a short explanation for matching this unrecognized or ambiguous school payment to an invoice.' });
+  }
+  if (event.matched_customer_id && invoice.customerId !== event.matched_customer_id) {
+    return res.status(400).json({ ok: false, error: 'The selected invoice does not belong to the customer matched from this Paybill account name.' });
+  }
+  if (!['issued', 'sent'].includes(invoice.status)) return res.status(409).json({ ok: false, error: 'C2B payments can only be allocated to an issued invoice.' });
+  const eventDate = billingText(req.body?.paymentDate || event.transaction_date, 10);
+  const invoiceIssueDate = String(invoice.invoiceSnapshot?.issuedAt || '').slice(0, 10);
+  const todayNairobi = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Nairobi' }).format(new Date());
+  const parsedEventDate = new Date(`${eventDate}T00:00:00.000Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(eventDate) || !Number.isFinite(parsedEventDate.getTime())
+      || parsedEventDate.toISOString().slice(0, 10) !== eventDate || eventDate > todayNairobi
+      || (invoiceIssueDate && eventDate < invoiceIssueDate)) {
+    return res.status(409).json({ ok: false, error: 'The C2B payment date is invalid, in the future, or before the invoice issue date; review the receipt before allocation.' });
+  }
   try {
     const payment = billingStore.recordPayment({
       id: crypto.randomUUID(), invoiceId: invoice.id, amountKsh: Number(event.amount_ksh),
-      paymentDate: event.transaction_date, method: 'mpesa', reference: event.transaction_id,
-      notes: `Daraja C2B payment from ${event.sender_phone}; manually matched to ${invoice.invoiceNumber}`,
+      paymentDate: eventDate, method: 'mpesa', reference: event.transaction_id,
+      notes: `Daraja C2B payment from ${event.sender_phone}; manually matched to ${invoice.invoiceNumber}${allocationReason ? `; review: ${allocationReason}` : ''}`,
       recordedBy: req.user.email,
     });
     billingStore.resolveMpesaC2BEvent(event.transaction_id, invoice.id, 'allocated');
     const updatedInvoice = billingStore.getInvoice(invoice.id);
-    const customer = billingStore.getCustomer(invoice.customerId);
-    const earning = agentsStore.attributePaymentCommission({ payment, invoice: updatedInvoice, customer });
-    pushAudit('MPESA_C2B_ALLOCATE', invoice.invoiceNumber, req.user.email, `Allocated C2B payment ${event.transaction_id} to ${invoice.invoiceNumber}`);
-    return res.status(201).json({ ok: true, payment, invoice: updatedInvoice, autoEarning: earning });
+    const attribution = attributePaidInvoiceCommission(payment, updatedInvoice, req.user.email);
+    pushAudit('MPESA_C2B_ALLOCATE', invoice.invoiceNumber, req.user.email, `Allocated C2B payment ${event.transaction_id} to ${invoice.invoiceNumber}${allocationReason ? `; review: ${allocationReason}` : ''}`);
+    return res.status(201).json({ ok: true, payment, invoice: updatedInvoice, autoEarning: attribution.earning, commissionReconciliationRequired: attribution.queued });
   } catch (error) {
     return res.status(409).json({ ok: false, error: error.message || 'Could not allocate C2B payment' });
   }
@@ -3406,6 +3564,11 @@ app.post('/api/billing/invoices/:id/issue', requireAuth, requireRole('super_admi
   const existing = billingStore.getInvoice(req.params.id);
   if (!existing) return res.status(404).json({ ok: false, error: 'Invoice not found' });
   if (existing.status !== 'draft') return res.status(409).json({ ok: false, error: 'Only a draft invoice can be issued' });
+  if (existing.quoteId) {
+    const sourceQuote = billingStore.getQuote(existing.quoteId);
+    if (!sourceQuote || (sourceQuote.status !== 'accepted' && sourceQuote.status !== 'converted')) return res.status(409).json({ ok: false, error: 'Only an invoice from an accepted quote can be issued.' });
+    if (discountApprovalPending(sourceQuote.quoteSnapshot)) return res.status(409).json({ ok: false, error: 'A finance approver must approve the source quote’s discount before invoice issuance.' });
+  }
   try {
     const invoiceNumber = allocateNumber(billingStore._getDb(), 'INV', new Date().getUTCFullYear());
     const invoice = billingStore.issueDraftInvoice(existing.id, invoiceNumber, new Date().toISOString());

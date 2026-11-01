@@ -964,6 +964,10 @@ function createAgentsStore(dataDir) {
       }
     },
 
+    hasPaymentCommission(paymentId) {
+      return Boolean(db.prepare('SELECT 1 FROM agent_earnings WHERE payment_id=?').get(String(paymentId || '')));
+    },
+
     getSchool(schoolId) {
       if (!schoolId) return null;
       return db.prepare(`SELECT * FROM agent_schools WHERE id = ?`).get(schoolId) || null;

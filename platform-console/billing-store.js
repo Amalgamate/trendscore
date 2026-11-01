@@ -331,13 +331,35 @@ function createBillingStore(dataDir) {
       const now = new Date().toISOString();
       db.exec('BEGIN IMMEDIATE');
       try {
-        const row = db.prepare(`SELECT quote_snapshot AS snapshot,status FROM billing_quotes WHERE id=?`).get(id);
-        if (!row || !['draft', 'sent'].includes(row.status)) throw new Error('This quote is no longer awaiting customer acceptance');
+        const row = db.prepare(`SELECT quote_snapshot AS snapshot,status,cancelled_at AS cancelledAt FROM billing_quotes WHERE id=?`).get(id);
+        if (!row || !['draft', 'sent'].includes(row.status) || row.cancelledAt) throw new Error('This quote is no longer awaiting customer acceptance');
         const snapshot = decodeJson(row.snapshot) || {};
+        if (snapshot.discount?.requiresApproval === true && snapshot.discount.approvalStatus !== 'approved') throw new Error('A finance approver must approve this quote’s discount before acceptance');
         snapshot.acceptance = { ...acceptance, acceptedAt: now };
-        const result = db.prepare(`UPDATE billing_quotes SET status='accepted',quote_snapshot=?,updated_at=? WHERE id=? AND status IN ('draft','sent')`)
+        const result = db.prepare(`UPDATE billing_quotes SET status='accepted',quote_snapshot=?,updated_at=? WHERE id=? AND status IN ('draft','sent') AND cancelled_at=''`)
           .run(JSON.stringify(snapshot), now, id);
         if (!result.changes) throw new Error('This quote changed before acceptance could be saved');
+        db.exec('COMMIT');
+      } catch (error) {
+        try { db.exec('ROLLBACK'); } catch {}
+        throw error;
+      }
+      return this.getQuote(id);
+    },
+    recordQuoteDiscountApproval(id, { approvedBy, approvedAt } = {}) {
+      const now = approvedAt || new Date().toISOString();
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        const row = db.prepare(`SELECT quote_snapshot AS snapshot,status,cancelled_at AS cancelledAt
+          FROM billing_quotes WHERE id=?`).get(id);
+        if (!row || !['draft', 'sent'].includes(row.status) || row.cancelledAt) throw new Error('Only an active draft or sent quote can receive discount approval');
+        const snapshot = decodeJson(row.snapshot) || {};
+        if (!snapshot.discount?.amountKsh || snapshot.discount.requiresApproval !== true) throw new Error('This quote does not require discount approval');
+        if (snapshot.discount.approvalStatus === 'approved') throw new Error('This discount has already been approved');
+        snapshot.discount = { ...snapshot.discount, approvalStatus: 'approved', approvedBy, approvedAt: now };
+        const result = db.prepare(`UPDATE billing_quotes SET quote_snapshot=?,updated_at=?
+          WHERE id=? AND status IN ('draft','sent') AND cancelled_at=''`).run(JSON.stringify(snapshot), now, id);
+        if (!result.changes) throw new Error('This quote changed before the discount approval could be saved');
         db.exec('COMMIT');
       } catch (error) {
         try { db.exec('ROLLBACK'); } catch {}
@@ -517,6 +539,60 @@ function createBillingStore(dataDir) {
         : db.prepare('SELECT * FROM mpesa_c2b_events ORDER BY created_at DESC').all();
       return rows.map(row => ({ ...row, payload: decodeJson(row.payload) }));
     },
+    recordCommissionAttributionFailure({ paymentId, invoiceId, error }) {
+      const now = new Date().toISOString();
+      db.prepare(`INSERT INTO billing_commission_attribution_failures
+        (payment_id,invoice_id,status,error,attempts,last_attempt_at,resolved_at,created_at,updated_at)
+        VALUES (@paymentId,@invoiceId,'pending',@error,0,'','',@now,@now)
+        ON CONFLICT(payment_id) DO UPDATE SET invoice_id=excluded.invoice_id,status='pending',error=excluded.error,updated_at=excluded.updated_at`)
+        .run({ paymentId, invoiceId, error: String(error || 'Commission attribution failed').slice(0, 500), now });
+      return this.getCommissionAttributionFailure(paymentId);
+    },
+    getCommissionAttributionFailure(paymentId) {
+      return db.prepare(`SELECT payment_id AS paymentId,invoice_id AS invoiceId,status,error,attempts,
+        last_attempt_at AS lastAttemptAt,resolved_at AS resolvedAt,created_at AS createdAt,updated_at AS updatedAt
+        FROM billing_commission_attribution_failures WHERE payment_id=?`).get(paymentId) || null;
+    },
+    listCommissionAttributionFailures({ status = 'pending' } = {}) {
+      const rows = status
+        ? db.prepare(`SELECT f.payment_id AS paymentId,f.invoice_id AS invoiceId,f.status,f.error,f.attempts,
+            f.last_attempt_at AS lastAttemptAt,f.resolved_at AS resolvedAt,f.created_at AS createdAt,
+            p.amount_ksh AS amountKsh,p.payment_date AS paymentDate,p.method,p.reference,
+            i.invoice_number AS invoiceNumber,c.name AS customerName
+          FROM billing_commission_attribution_failures f
+          JOIN billing_payments p ON p.id=f.payment_id
+          JOIN billing_invoices i ON i.id=f.invoice_id
+          JOIN billing_customers c ON c.id=i.customer_id
+          WHERE f.status=? ORDER BY f.created_at DESC`).all(status)
+        : db.prepare(`SELECT f.payment_id AS paymentId,f.invoice_id AS invoiceId,f.status,f.error,f.attempts,
+            f.last_attempt_at AS lastAttemptAt,f.resolved_at AS resolvedAt,f.created_at AS createdAt,
+            p.amount_ksh AS amountKsh,p.payment_date AS paymentDate,p.method,p.reference,
+            i.invoice_number AS invoiceNumber,c.name AS customerName
+          FROM billing_commission_attribution_failures f
+          JOIN billing_payments p ON p.id=f.payment_id
+          JOIN billing_invoices i ON i.id=f.invoice_id
+          JOIN billing_customers c ON c.id=i.customer_id
+          ORDER BY f.created_at DESC`).all();
+      return rows;
+    },
+    noteCommissionAttributionAttempt(paymentId, error) {
+      const now = new Date().toISOString();
+      db.prepare(`UPDATE billing_commission_attribution_failures SET attempts=attempts+1,error=?,last_attempt_at=?,updated_at=?
+        WHERE payment_id=? AND status='pending'`).run(String(error || '').slice(0, 500), now, now, paymentId);
+      return this.getCommissionAttributionFailure(paymentId);
+    },
+    updateCommissionAttributionError(paymentId, error) {
+      const now = new Date().toISOString();
+      db.prepare(`UPDATE billing_commission_attribution_failures SET error=?,updated_at=? WHERE payment_id=? AND status='pending'`)
+        .run(String(error || '').slice(0, 500), now, paymentId);
+      return this.getCommissionAttributionFailure(paymentId);
+    },
+    resolveCommissionAttributionFailure(paymentId, note = '') {
+      const now = new Date().toISOString();
+      const result = db.prepare(`UPDATE billing_commission_attribution_failures SET status='resolved',error=?,resolved_at=?,updated_at=?
+        WHERE payment_id=? AND status='pending'`).run(String(note || '').slice(0, 500), now, now, paymentId);
+      return result.changes ? this.getCommissionAttributionFailure(paymentId) : null;
+    },
     resolveMpesaC2BEvent(transactionId, invoiceId, status = 'allocated') {
       const result = db.prepare(`UPDATE mpesa_c2b_events SET invoice_id=?,status=?,updated_at=? WHERE transaction_id=? AND status='needs_review'`)
         .run(invoiceId || '', status, new Date().toISOString(), transactionId);
@@ -552,7 +628,7 @@ function createBillingStore(dataDir) {
     },
     counts() {
       const n = t => Number(db.prepare(`SELECT COUNT(*) AS c FROM ${t}`).get().c);
-      return { customers: n('billing_customers'), contracts: n('billing_contracts'), quotes: n('billing_quotes'), invoices: n('billing_invoices'), payments: n('billing_payments') };
+      return { customers: n('billing_customers'), contracts: n('billing_contracts'), quotes: n('billing_quotes'), invoices: n('billing_invoices'), payments: n('billing_payments'), commissionFailures: n('billing_commission_attribution_failures') };
     },
     // Writes a consistent copy of the billing database into billing-backups/ and returns its path.
     backupNow(prefix = 'platform-billing') {
@@ -579,7 +655,7 @@ function createBillingStore(dataDir) {
       const backupPath = this.backupNow();
       db.exec('BEGIN IMMEDIATE');
       try {
-        for (const t of ['billing_payments', 'billing_invoice_deliveries', 'billing_invoices', 'billing_quote_deliveries', 'billing_quotes', 'billing_contracts', 'billing_customers']) db.exec(`DELETE FROM ${t}`);
+        for (const t of ['billing_commission_attribution_failures', 'billing_payments', 'billing_invoice_deliveries', 'billing_invoices', 'billing_quote_deliveries', 'billing_quotes', 'billing_contracts', 'billing_customers']) db.exec(`DELETE FROM ${t}`);
         db.exec('COMMIT');
       } catch (error) {
         try { db.exec('ROLLBACK'); } catch {}

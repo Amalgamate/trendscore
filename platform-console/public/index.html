@@ -662,6 +662,7 @@
         <section class="billing-tab-panel" id="billing-panel-payments" role="tabpanel" aria-labelledby="billing-tab-payments" tabindex="0" hidden>
           <div class="billing-kpis" aria-label="Payment totals"><div class="billing-kpi"><span>Payments recorded</span><strong id="billing-kpi-payment-count">—</strong><small>Manual entries in the ledger</small></div><div class="billing-kpi"><span>Collected</span><strong id="billing-kpi-collected">—</strong><small>Payments allocated to invoices</small></div><div class="billing-kpi"><span>Outstanding</span><strong id="billing-kpi-outstanding">—</strong><small>Issued invoices less payments</small></div></div>
           <div class="panel"><div class="panel-header"><div><div class="panel-title">Payment history</div><div class="panel-sub">Record verified bank, M-Pesa, cheque, or cash payments against issued invoices. Entries are kept in the ledger.</div></div><button class="btn primary" id="billing-payment-add" data-super-admin-only type="button">+ Record payment</button></div><div class="billing-register-note">Record a payment only after confirming receipt in your bank or payment provider. This does not initiate or verify a transfer.</div><div class="table-wrap"><table><thead><tr><th>Payment date</th><th>Invoice</th><th>Customer</th><th>Method</th><th>Reference</th><th>Amount</th><th>Recorded by</th><th>Receipt</th></tr></thead><tbody id="billing-payments-table"><tr><td colspan="8">Loading payments…</td></tr></tbody></table></div>
+            <div class="billing-subpanel"><div class="panel-header"><div><div class="panel-title">Commission reconciliation</div><div class="panel-sub">Payment records stay saved if agent commission attribution fails. Retry after correcting the agent or school link.</div></div></div><div class="table-wrap"><table><thead><tr><th>Payment</th><th>School</th><th>Invoice</th><th>Amount</th><th>Issue</th><th>Attempts</th><th></th></tr></thead><tbody id="billing-commission-reconciliation"><tr><td colspan="7">Loading reconciliation queue…</td></tr></tbody></table></div></div>
             <div class="billing-subpanel"><div class="panel-header"><div><div class="panel-title">Daraja C2B</div><div class="panel-sub">Ask each school to enter its exact Paybill account name shown on the invoice, not the invoice number. Payments auto-allocate only when the school and its single outstanding invoice are uniquely matched; other receipts go to finance review.</div></div><button class="btn" id="billing-mpesa-c2b-register" data-super-admin-only type="button">Register C2B callbacks</button></div><div id="billing-mpesa-c2b-status" class="billing-register-note">Checking Daraja configuration…</div><div class="table-wrap"><table><thead><tr><th>Receipt</th><th>School name entered</th><th>Matched school / review reason</th><th>Sender</th><th>Date</th><th>Amount</th><th>Allocate to invoice</th></tr></thead><tbody id="billing-mpesa-c2b-events"><tr><td colspan="7">No unallocated C2B payments.</td></tr></tbody></table></div></div>
           </div>
           <div class="panel billing-subpanel"><div class="panel-header"><div><div class="panel-title">Open invoice balances</div><div class="panel-sub">Only issued invoices can receive payment allocations.</div></div></div><div class="table-wrap"><table><thead><tr><th>Invoice</th><th>Customer</th><th>Issued</th><th>Due</th><th>Amount</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead><tbody id="billing-open-invoices-table"><tr><td colspan="8">Loading invoices…</td></tr></tbody></table></div></div>
@@ -1198,7 +1199,7 @@
       <label class="billing-option"><input id="bq-own-sms" type="checkbox"/><span><strong>School uses its own SMS provider</strong><small>Communication is then quoted at no charge.</small></span></label>
       <div class="billing-quote-grid billing-extra-row">
         <div class="form-row"><label class="form-label" for="bq-extras">Extra modules</label><textarea class="form-input" id="bq-extras" rows="2" placeholder="One module name per line; KSh 5,000 each"></textarea><small class="form-help">Each entered module is quoted at KSh 5,000.</small></div>
-        <div class="form-row"><label class="billing-option"><input id="bq-discount-approval" type="checkbox"/><span><strong>Flag discount for approval</strong><small>Marks the quote as needing sign-off</small></span></label></div>
+        <div class="form-row"><label class="billing-option"><input id="bq-discount-approval" type="checkbox"/><span><strong>Require finance approval</strong><small>Acceptance and invoice creation are blocked until a finance approver signs off.</small></span></label></div>
       </div>
       <div class="form-row"><label class="form-label" for="bq-notes">Quote notes / commercial terms</label><textarea class="form-input" id="bq-notes" rows="3" maxlength="3000" placeholder="Optional customer-specific terms"></textarea></div>
       <div class="billing-quote-preview" id="billing-quote-preview" aria-live="polite">Choose the school type to calculate a quote preview.</div>
@@ -1243,7 +1244,7 @@
     <div class="modal-body">
       <div class="form-row"><label class="form-label" for="bp-invoice">Issued invoice *</label><select class="form-select" id="bp-invoice" required><option value="">Choose invoice</option></select><small class="form-help" id="bp-balance-help">Only issued invoices with an outstanding balance are shown.</small></div>
       <div class="billing-quote-grid"><div class="form-row"><label class="form-label" for="bp-amount">Amount received (KSh) *</label><input class="form-input" id="bp-amount" type="number" min="1" step="1" required/></div><div class="form-row"><label class="form-label" for="bp-date">Payment date *</label><input class="form-input" id="bp-date" type="date" required/></div></div>
-      <div class="billing-quote-grid"><div class="form-row"><label class="form-label" for="bp-method">Payment method *</label><select class="form-select" id="bp-method" required><option value="mpesa">M-Pesa</option><option value="bank_transfer">Bank transfer</option><option value="cash">Cash</option><option value="cheque">Cheque</option><option value="other">Other</option></select></div><div class="form-row"><label class="form-label" for="bp-reference">Provider / bank reference</label><input class="form-input" id="bp-reference" maxlength="120" placeholder="e.g. M-Pesa receipt code"/></div></div>
+      <div class="billing-quote-grid"><div class="form-row"><label class="form-label" for="bp-method">Payment method *</label><select class="form-select" id="bp-method" required><option value="mpesa">M-Pesa</option><option value="bank_transfer">Bank transfer</option><option value="cash">Cash</option><option value="cheque">Cheque</option><option value="other">Other</option></select></div><div class="form-row"><label class="form-label" for="bp-reference">Payment / receipt reference *</label><input class="form-input" id="bp-reference" maxlength="120" placeholder="Enter the provider code or cash receipt number" required/></div></div>
       <div class="form-row"><label class="form-label" for="bp-notes">Notes</label><textarea class="form-input" id="bp-notes" rows="2" maxlength="500"></textarea></div>
       <div class="billing-register-note">This records a payment you have already verified. The ledger entry cannot currently be edited or deleted; check the invoice, amount, date, and reference before saving.</div>
     </div>
@@ -1582,11 +1583,19 @@
     <div class="modal-body">
       <div class="form-row">
         <label class="form-label" for="earning-form-school">School Name *</label>
-        <input class="form-input" id="earning-form-school" placeholder="e.g. Hillcrest Preparatory" required maxlength="120"/>
+        <select class="form-select" id="earning-form-school" required>
+          <option value="">Loading assigned schools…</option>
+        </select>
       </div>
       <div class="form-row">
-        <label class="form-label" for="earning-form-gross">School Invoice / Gross Amount (KES)</label>
-        <input class="form-input" id="earning-form-gross" type="number" step="1" placeholder="e.g. 50000"/>
+        <label class="form-label" for="earning-form-invoice-select">Existing School Invoice *</label>
+        <select class="form-select" id="earning-form-invoice-select" required disabled>
+          <option value="">Select a school first</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label class="form-label" for="earning-form-gross">School Invoice Amount (KES)</label>
+        <input class="form-input" id="earning-form-gross" type="number" step="1" placeholder="Selected invoice amount" readonly/>
       </div>
       <div class="form-row">
         <label class="form-label" for="earning-form-earned">Commission Amount (KES) *</label>
@@ -1594,7 +1603,7 @@
       </div>
       <div class="form-row">
         <label class="form-label" for="earning-form-invoice">Invoice / Payment Ref</label>
-        <input class="form-input" id="earning-form-invoice" placeholder="e.g. INV-2026-0042" maxlength="60"/>
+        <input class="form-input" id="earning-form-invoice" placeholder="Populated from selected invoice" maxlength="60" readonly/>
       </div>
       <div class="form-row">
         <label class="form-label" for="earning-form-desc">Description</label>

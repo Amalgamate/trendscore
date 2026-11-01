@@ -33,6 +33,9 @@ let BILLING_DELIVERIES = [];
 let BILLING_INVOICE_DELIVERIES = [];
 let BILLING_EMAIL_STATUS = 'unknown';
 let BILLING_MAIL_DRAFT = null;
+let CURRENT_AGENT_COMMISSION_SCHOOLS = [];
+let BILLING_COMMISSION_FAILURES = [];
+let BILLING_COMMISSION_FAILURES_STATUS = 'loading';
 const BILLING_DATA_STATUS = { customers: 'loading', contracts: 'loading', quotes: 'loading', invoices: 'loading' };
 const BILLING_FILTERS = { customers: '', quotes: '', quoteStatus: '', invoices: '', invoiceStatus: '' };
 let billingQuotePreviewTimer = null;
@@ -674,7 +677,7 @@ function containerRows(instance) {
 
 async function loadBillingData() {
   try {
-    const [customersResponse, contractsResponse, schoolsResponse, quotesResponse, invoicesResponse, paymentsResponse, emailStatusResponse, mpesaResponse, c2bEventsResponse, termsResponse, flagsResponse] = await Promise.all([
+    const [customersResponse, contractsResponse, schoolsResponse, quotesResponse, invoicesResponse, paymentsResponse, emailStatusResponse, mpesaResponse, c2bEventsResponse, termsResponse, flagsResponse, commissionFailuresResponse] = await Promise.all([
       fetch('/api/billing/customers', { credentials: 'same-origin' }).catch(() => null),
       fetch('/api/billing/contracts', { credentials: 'same-origin' }).catch(() => null),
       fetch('/api/billing/schools', { credentials: 'same-origin' }).catch(() => null),
@@ -686,6 +689,7 @@ async function loadBillingData() {
       fetch('/api/billing/mpesa-c2b-events', { credentials: 'same-origin' }).catch(() => null),
       fetch('/api/term-calendar', { credentials: 'same-origin' }).catch(() => null),
       fetch('/api/feature-flags', { credentials: 'same-origin' }).catch(() => null),
+      fetch('/api/billing/commission-reconciliation', { credentials: 'same-origin' }).catch(() => null),
     ]);
     const [customersData, contractsData] = await Promise.all([
       customersResponse?.ok ? customersResponse.json().catch(() => ({})) : {},
@@ -707,6 +711,9 @@ async function loadBillingData() {
     const termsData = termsResponse?.ok ? await termsResponse.json().catch(() => ({})) : {};
     BILLING_TERMS = Array.isArray(termsData.terms) ? termsData.terms : [];
     const flagsData = flagsResponse?.ok ? await flagsResponse.json().catch(() => ({})) : {};
+    const commissionFailuresData = commissionFailuresResponse?.ok ? await commissionFailuresResponse.json().catch(() => ({})) : {};
+    BILLING_COMMISSION_FAILURES = Array.isArray(commissionFailuresData.failures) ? commissionFailuresData.failures : [];
+    BILLING_COMMISSION_FAILURES_STATUS = commissionFailuresResponse?.ok && Array.isArray(commissionFailuresData.failures) ? 'ready' : 'unavailable';
     BILLING_FEATURE_FLAGS = Array.isArray(flagsData.flags) ? flagsData.flags : [];
     BILLING_DATA_STATUS.quotes = quotesResponse?.ok && Array.isArray(quotesData.quotes) ? 'ready' : 'unavailable';
     BILLING_DATA_STATUS.invoices = invoicesResponse?.ok && Array.isArray(invoicesData.invoices) ? 'ready' : 'unavailable';
@@ -730,6 +737,7 @@ async function loadBillingData() {
     Object.keys(BILLING_DATA_STATUS).forEach(key => { BILLING_DATA_STATUS[key] = 'unavailable'; });
     BILLING_EMAIL_STATUS = 'unavailable';
     BILLING_PAYMENTS_STATUS = 'unavailable';
+    BILLING_COMMISSION_FAILURES_STATUS = 'unavailable';
     if ($('billing-customers-table')) $('billing-customers-table').innerHTML = `<tr><td colspan="7">${esc(error.message || 'Billing data is unavailable.')}</td></tr>`;
     if ($('billing-contracts-table')) $('billing-contracts-table').innerHTML = '<tr><td colspan="7">Billing contracts are unavailable.</td></tr>';
     ['billing-kpi-customers', 'billing-kpi-open-quotes', 'billing-kpi-accepted', 'billing-kpi-drafts'].forEach(id => { if ($(id)) $(id).textContent = 'Unavailable'; });
@@ -740,6 +748,7 @@ async function loadBillingData() {
     renderBillingSettings();
     renderAutomaticRenewalSetting();
     renderBillingPayments();
+    renderCommissionAttributionFailures();
     renderDarajaC2B();
     renderBillingReports();
   }
@@ -800,6 +809,7 @@ function renderBillingRegistry() {
   renderBillingOverview();
   renderBillingSettings();
   renderBillingPayments();
+  renderCommissionAttributionFailures();
   renderBillingReports();
   document.querySelectorAll('[data-super-admin-only]').forEach(element => {
     if (window.consoleUserRole) element.hidden = window.consoleUserRole !== 'super_admin';
@@ -948,15 +958,17 @@ function renderBillingQuotes() {
       const customer = quote.customerSnapshot || BILLING_CUSTOMERS.find(item => item.id === quote.customerId) || {};
       const existingInvoice = BILLING_INVOICES.find(invoice => invoice.quoteId === quote.id);
       const deliveryCount = BILLING_DELIVERIES.find(item => item.quoteId === quote.id)?.attempts?.length || 0;
+      const discountPending = quote.quoteSnapshot?.discount?.requiresApproval === true && quote.quoteSnapshot.discount.approvalStatus !== 'approved';
       const actions = [`<a class="btn sm" href="/api/billing/quotes/${encodeURIComponent(quote.id)}/pdf" target="_blank" rel="noopener">PDF</a>`];
       if (quote.status === 'draft' && !quote.sentAt) actions.push(`<button class="btn sm" data-quote-edit="${esc(quote.id)}" data-super-admin-only type="button">Edit</button>`);
       if (['draft', 'sent'].includes(quote.status)) actions.push(`<button class="btn sm" data-quote-send="${esc(quote.id)}" data-super-admin-only type="button">${quote.status === 'sent' ? 'Resend email' : 'Send email'}</button>`);
-      if (['draft', 'sent'].includes(quote.status)) actions.push(`<button class="btn sm" data-quote-accept="${esc(quote.id)}" data-super-admin-only type="button">Record accepted</button>`);
+      if (discountPending && window.consoleUserRole === 'finance_approver') actions.push(`<button class="btn sm primary" data-quote-discount-approve="${esc(quote.id)}" type="button">Approve discount</button>`);
+      if (['draft', 'sent'].includes(quote.status) && !discountPending) actions.push(`<button class="btn sm" data-quote-accept="${esc(quote.id)}" data-super-admin-only type="button">Record accepted</button>`);
       if (['draft', 'sent', 'accepted'].includes(quote.status)) actions.push(`<button class="btn sm" data-quote-cancel="${esc(quote.id)}" data-super-admin-only type="button">Cancel</button>`);
       if (quote.status === 'draft' && !quote.sentAt && !deliveryCount && !existingInvoice) actions.push(`<button class="btn sm danger" data-quote-delete="${esc(quote.id)}" data-super-admin-only type="button">Delete</button>`);
       if (quote.status === 'accepted') actions.push(`<button class="btn sm" data-quote-convert="${esc(quote.id)}" data-super-admin-only type="button">Create draft invoice</button>`);
       if (quote.status === 'converted' && existingInvoice) actions.push(`<span class="table-sub">${esc(existingInvoice.invoiceNumber)}</span>`);
-      return `<tr><td><strong>${esc(quote.quoteNumber)}</strong></td><td>${esc(customer.name || 'Customer')}</td><td>${Number(quote.enrollmentCount) > 0 ? Number(quote.enrollmentCount).toLocaleString('en-KE') : esc(quote.quoteSnapshot?.schoolTypeLabel || '-')}</td><td>${formatBillingKsh(quote.subtotalKsh)}</td><td>${esc(quote.expiresOn || 'No expiry')}</td><td>${esc(quote.status)}${deliveryCount ? `<div class="table-sub">${deliveryCount} email attempt${deliveryCount === 1 ? '' : 's'}</div>` : ''}</td><td><div class="billing-action-row">${actions.join('')}</div></td></tr>`;
+      return `<tr><td><strong>${esc(quote.quoteNumber)}</strong></td><td>${esc(customer.name || 'Customer')}</td><td>${Number(quote.enrollmentCount) > 0 ? Number(quote.enrollmentCount).toLocaleString('en-KE') : esc(quote.quoteSnapshot?.schoolTypeLabel || '-')}</td><td>${formatBillingKsh(quote.subtotalKsh)}</td><td>${esc(quote.expiresOn || 'No expiry')}</td><td>${esc(quote.status)}${discountPending ? '<div class="table-sub">Discount approval pending</div>' : ''}${deliveryCount ? `<div class="table-sub">${deliveryCount} email attempt${deliveryCount === 1 ? '' : 's'}</div>` : ''}</td><td><div class="billing-action-row">${actions.join('')}</div></td></tr>`;
     }).join('');
   }
   const invoiceNeedle = BILLING_FILTERS.invoices.trim().toLowerCase();
@@ -1046,8 +1058,21 @@ function renderDarajaC2B() {
     const schoolCandidates = event.matched_customer_id ? candidates.filter(invoice => invoice.customerId === event.matched_customer_id) : candidates;
     const options = schoolCandidates.filter(invoice => Number(invoice.balanceKsh || 0) >= Number(event.amount_ksh || 0))
       .map(invoice => `<option value="${esc(invoice.id)}">${esc(invoice.invoiceNumber)} · ${esc(BILLING_CUSTOMERS.find(customer => customer.id === invoice.customerId)?.name || 'Customer')}</option>`).join('');
-    return `<tr><td><strong>${esc(event.transaction_id)}</strong></td><td>${esc(event.bill_reference || '—')}</td><td>${esc(event.matched_customer_name || 'Unmatched')}${event.review_reason ? `<div class="table-sub">${esc(event.review_reason)}</div>` : ''}</td><td>${esc(event.sender_phone || '—')}</td><td>${esc(String(event.transaction_date || '').slice(0, 10))}</td><td>${formatBillingKsh(event.amount_ksh)}</td><td><select class="form-select" data-c2b-invoice="${esc(event.transaction_id)}"><option value="">Choose invoice</option>${options}</select><button class="btn sm" data-c2b-allocate="${esc(event.transaction_id)}" ${options ? '' : 'disabled'}>Allocate</button></td></tr>`;
+    return `<tr><td><strong>${esc(event.transaction_id)}</strong></td><td>${esc(event.bill_reference || '—')}</td><td>${esc(event.matched_customer_name || 'Unmatched')}${event.review_reason ? `<div class="table-sub">${esc(event.review_reason)}</div>` : ''}</td><td>${esc(event.sender_phone || '—')}</td><td><input class="form-input" type="date" data-c2b-date="${esc(event.transaction_id)}" value="${esc(String(event.transaction_date || '').slice(0, 10))}" max="${esc(billingTodayDate())}" aria-label="Verified transaction date for ${esc(event.transaction_id)}"></td><td>${formatBillingKsh(event.amount_ksh)}</td><td><input class="form-input" data-c2b-reason="${esc(event.transaction_id)}" maxlength="300" placeholder="Reason if school match is unclear"><select class="form-select" data-c2b-invoice="${esc(event.transaction_id)}"><option value="">Choose invoice</option>${options}</select><button class="btn sm" data-c2b-allocate="${esc(event.transaction_id)}" ${options ? '' : 'disabled'}>Allocate</button></td></tr>`;
   }).join('') : '<tr><td colspan="7">No unallocated C2B payments.</td></tr>';
+}
+
+function renderCommissionAttributionFailures() {
+  const body = $('billing-commission-reconciliation');
+  if (!body) return;
+  body.innerHTML = BILLING_COMMISSION_FAILURES_STATUS !== 'ready'
+    ? '<tr><td colspan="7">Commission reconciliation queue is unavailable.</td></tr>'
+    : BILLING_COMMISSION_FAILURES.length
+    ? BILLING_COMMISSION_FAILURES.map(item => `<tr><td>${esc(item.reference || item.paymentId)}</td><td>${esc(item.customerName || 'Unknown school')}</td><td>${esc(item.invoiceNumber || 'Invoice unavailable')}</td><td>${formatBillingKsh(item.amountKsh)}</td><td>${esc(item.error || 'Attribution failed')}</td><td>${Number(item.attempts || 0)}</td><td><button class="btn sm" data-commission-attribution-retry="${esc(item.paymentId)}" data-super-admin-only type="button">Retry</button></td></tr>`).join('')
+    : '<tr><td colspan="7">No commission attribution failures need review.</td></tr>';
+  body.querySelectorAll('[data-super-admin-only]').forEach(element => {
+    if (window.consoleUserRole) element.hidden = window.consoleUserRole !== 'super_admin';
+  });
 }
 
 function renderBillingReports() {
@@ -1087,6 +1112,7 @@ function openBillingPayment() {
   $('bp-amount').value = '';
   $('bp-amount').max = '';
   $('bp-date').value = billingTodayDate();
+  $('bp-date').max = billingTodayDate();
   $('bp-method').value = 'mpesa';
   $('bp-reference').value = '';
   $('bp-notes').value = '';
@@ -3049,18 +3075,21 @@ document.body.addEventListener('click', event => {
   if (btn.dataset.c2bAllocate) {
     const transactionId = btn.dataset.c2bAllocate;
     const invoiceSelect = [...document.querySelectorAll('[data-c2b-invoice]')].find(input => input.dataset.c2bInvoice === transactionId);
+    const paymentDateInput = [...document.querySelectorAll('[data-c2b-date]')].find(input => input.dataset.c2bDate === transactionId);
+    const allocationReasonInput = [...document.querySelectorAll('[data-c2b-reason]')].find(input => input.dataset.c2bReason === transactionId);
     if (!invoiceSelect?.value) { toast('Choose an issued invoice first.'); return; }
+    if (!paymentDateInput?.value) { toast('Enter the verified M-Pesa transaction date first.'); return; }
     btn.disabled = true;
     (async () => {
       try {
         const response = await fetch(`/api/billing/mpesa-c2b-events/${encodeURIComponent(transactionId)}/allocate`, {
           method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ invoiceId: invoiceSelect.value }),
+          body: JSON.stringify({ invoiceId: invoiceSelect.value, paymentDate: paymentDateInput.value, allocationReason: allocationReasonInput?.value || '' }),
         });
         const result = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(result.error || 'Could not allocate payment');
         await loadBillingData();
-        toast('C2B payment allocated and commission attribution updated.');
+        toast(result.commissionReconciliationRequired ? 'C2B payment allocated; commission was queued for reconciliation.' : 'C2B payment allocated and commission attribution updated.');
       } catch (error) { toast(error.message || 'Payment allocation failed.'); btn.disabled = false; }
     })();
     return;
@@ -3265,6 +3294,32 @@ document.body.addEventListener('click', event => {
   if (quoteEditId) {
     const quote = BILLING_QUOTES.find(item => item.id === quoteEditId);
     if (quote) openBillingQuote(quote);
+    return;
+  }
+  const quoteDiscountApproveId = btn.dataset.quoteDiscountApprove;
+  if (quoteDiscountApproveId) {
+    (async () => {
+      try {
+        const response = await fetch(`/api/billing/quotes/${encodeURIComponent(quoteDiscountApproveId)}/approve-discount`, { method: 'POST', credentials: 'same-origin' });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'Could not approve discount');
+        await loadBillingData(); toast('Discount approved. The quote may now be accepted.');
+      } catch (error) { toast(error.message || 'Could not approve discount.'); }
+    })();
+    return;
+  }
+  const commissionRetryPaymentId = btn.dataset.commissionAttributionRetry;
+  if (commissionRetryPaymentId) {
+    btn.disabled = true;
+    (async () => {
+      try {
+        const response = await fetch(`/api/billing/commission-reconciliation/${encodeURIComponent(commissionRetryPaymentId)}/retry`, { method: 'POST', credentials: 'same-origin' });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'Could not retry commission attribution');
+        await loadBillingData(); toast(payload.alreadyCredited ? 'Commission was already credited; reconciliation closed.' : 'Commission attributed successfully.');
+      } catch (error) { toast(error.message || 'Could not retry commission attribution.'); }
+      finally { btn.disabled = false; }
+    })();
     return;
   }
   const quoteDeleteId = btn.dataset.quoteDelete;
@@ -4644,24 +4699,69 @@ async function submitPayout() {
   }
 }
 
-function openEarningModal(agentId) {
+function updateCommissionInvoiceOptions() {
+  const schoolSelect = $('earning-form-school');
+  const invoiceSelect = $('earning-form-invoice-select');
+  if (!schoolSelect || !invoiceSelect) return;
+  const school = CURRENT_AGENT_COMMISSION_SCHOOLS.find(item => item.id === schoolSelect.value);
+  const invoices = school?.invoices || [];
+  invoiceSelect.innerHTML = invoices.length
+    ? `<option value="">Select an existing invoice…</option>${invoices.map(invoice => `<option value="${esc(invoice.id)}">${esc(invoice.invoiceNumber)} · ${esc(formatKsh(invoice.amountKsh))} · ${esc(invoice.status)}</option>`).join('')}`
+    : `<option value="">${school ? 'No issued invoices found for this school' : 'Select a school first'}</option>`;
+  invoiceSelect.disabled = invoices.length === 0;
+  $('earning-form-gross').value = '';
+  $('earning-form-invoice').value = '';
+}
+
+function applySelectedCommissionInvoice() {
+  const school = CURRENT_AGENT_COMMISSION_SCHOOLS.find(item => item.id === $('earning-form-school')?.value);
+  const invoice = school?.invoices?.find(item => item.id === $('earning-form-invoice-select')?.value);
+  $('earning-form-gross').value = invoice ? String(invoice.amountKsh) : '';
+  $('earning-form-invoice').value = invoice?.invoiceNumber || '';
+}
+
+async function openEarningModal(agentId) {
   const agent = CURRENT_AGENT && CURRENT_AGENT.id === agentId ? CURRENT_AGENT : AGENTS.find(a => a.id === agentId);
   if (!agent) return;
   CURRENT_AGENT = agent;
-  $('earning-form-school').value = '';
+  CURRENT_AGENT_COMMISSION_SCHOOLS = [];
+  $('earning-form-school').innerHTML = '<option value="">Loading assigned schools…</option>';
+  $('earning-form-school').disabled = true;
+  $('earning-form-invoice-select').innerHTML = '<option value="">Select a school first</option>';
+  $('earning-form-invoice-select').disabled = true;
   $('earning-form-gross').value = '';
   $('earning-form-earned').value = '';
   $('earning-form-invoice').value = '';
   $('earning-form-desc').value = '';
   $('earning-form-status').value = 'approved';
   openAgentOperationFromOverlay('agent-earning-overlay', 'Record commission earning');
+  try {
+    const response = await fetch(`/api/agents/${encodeURIComponent(agent.id)}/commission-invoices`, { credentials: 'same-origin' });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Could not load assigned schools and invoices');
+    if (CURRENT_AGENT?.id !== agent.id || $('agent-drawer-operation').hidden) return;
+    CURRENT_AGENT_COMMISSION_SCHOOLS = Array.isArray(result.schools) ? result.schools : [];
+    $('earning-form-school').innerHTML = CURRENT_AGENT_COMMISSION_SCHOOLS.length
+      ? `<option value="">Select an assigned school…</option>${CURRENT_AGENT_COMMISSION_SCHOOLS.map(school => `<option value="${esc(school.id)}">${esc(school.schoolName)}${school.invoices.length ? ` · ${school.invoices.length} invoice${school.invoices.length === 1 ? '' : 's'}` : ' · no invoices'}</option>`).join('')}`
+      : '<option value="">No schools assigned to this agent</option>';
+    $('earning-form-school').disabled = CURRENT_AGENT_COMMISSION_SCHOOLS.length === 0;
+    updateCommissionInvoiceOptions();
+    if (!CURRENT_AGENT_COMMISSION_SCHOOLS.length) setAgentOperationFeedback('Assign a school to this agent before recording a commission.');
+  } catch (error) {
+    $('earning-form-school').innerHTML = '<option value="">Could not load assigned schools</option>';
+    setAgentOperationFeedback(error.message || 'Could not load assigned schools and invoices');
+  }
 }
 
 async function submitEarning() {
   if (!CURRENT_AGENT) return;
-  const school_name = $('earning-form-school').value.trim();
+  const school_id = $('earning-form-school').value;
+  const invoice_id = $('earning-form-invoice-select').value;
+  const school = CURRENT_AGENT_COMMISSION_SCHOOLS.find(item => item.id === school_id);
+  const invoice = school?.invoices?.find(item => item.id === invoice_id);
   const earned_amount_ksh = parseFloat($('earning-form-earned').value);
-  if (!school_name) return setAgentOperationFeedback('School name is required.');
+  if (!school) return setAgentOperationFeedback('Choose a school assigned to this agent.');
+  if (!invoice) return setAgentOperationFeedback('Choose an existing invoice for the selected school.');
   if (!Number.isSafeInteger(earned_amount_ksh) || earned_amount_ksh <= 0) return setAgentOperationFeedback('Enter a whole KSh commission amount greater than zero.');
 
   try {
@@ -4669,10 +4769,9 @@ async function submitEarning() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        school_name,
-        gross_amount_ksh: parseFloat($('earning-form-gross').value) || 0,
+        school_id,
+        invoice_id,
         earned_amount_ksh,
-        invoice_ref: $('earning-form-invoice').value.trim(),
         description: $('earning-form-desc').value.trim(),
         status: $('earning-form-status').value,
       }),
@@ -4824,6 +4923,8 @@ function bindAgentEvents() {
   $('agent-earning-close')?.addEventListener('click', closeAgentOperation);
   $('earning-form-cancel')?.addEventListener('click', closeAgentOperation);
   $('earning-form-submit')?.addEventListener('click', submitEarning);
+  $('earning-form-school')?.addEventListener('change', updateCommissionInvoiceOptions);
+  $('earning-form-invoice-select')?.addEventListener('change', applySelectedCommissionInvoice);
 
   // School modal
   $('agent-school-close')?.addEventListener('click', closeAgentOperation);

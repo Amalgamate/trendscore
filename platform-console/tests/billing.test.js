@@ -11,11 +11,14 @@ const TEST_PORT = process.env.CONSOLE_BILLING_TEST_PORT || '3187';
 const BASE_URL = `http://127.0.0.1:${TEST_PORT}`;
 const ADMIN_EMAIL = 'billing-admin@example.test';
 const ADMIN_PASSWORD = 'billing-test-password-only';
+const FINANCE_EMAIL = 'finance-approver@example.test';
+const FINANCE_PASSWORD = 'finance-test-password-only';
 
 let serverProcess;
 let tmpDataDir;
 let startupOutput = '';
 let cookie = '';
+let financeCookie = '';
 
 function waitForHealth(timeoutMs = 20000) {
   const deadline = Date.now() + timeoutMs;
@@ -32,10 +35,10 @@ function waitForHealth(timeoutMs = 20000) {
   });
 }
 
-async function api(method, route, body, { auth = true } = {}) {
+async function api(method, route, body, { auth = true, sessionCookie = cookie } = {}) {
   const res = await fetch(`${BASE_URL}${route}`, {
     method,
-    headers: { 'Content-Type': 'application/json', ...(auth && cookie ? { Cookie: cookie } : {}) },
+    headers: { 'Content-Type': 'application/json', ...(auth && sessionCookie ? { Cookie: sessionCookie } : {}) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const json = await res.json().catch(() => ({}));
@@ -64,6 +67,8 @@ before(async () => {
       CONSOLE_SUPER_ADMIN_PASSWORD: ADMIN_PASSWORD,
       CONSOLE_PLATFORM_OWNER_EMAIL: '',
       CONSOLE_PLATFORM_OWNER_PASSWORD: '',
+      CONSOLE_FINANCE_APPROVER_EMAIL: FINANCE_EMAIL,
+      CONSOLE_FINANCE_APPROVER_PASSWORD: FINANCE_PASSWORD,
       CONSOLE_COOKIE_SECURE: 'false',
       BILLING_ALLOW_RESET: '',
       MPESA_DARAJA_CALLBACK_TOKEN: 'billing-c2b-test-token',
@@ -86,6 +91,12 @@ before(async () => {
   });
   assert.equal(login.status, 200, 'test admin should be able to log in');
   cookie = login.headers.getSetCookie().map(value => value.split(';')[0]).join('; ');
+  const financeLogin = await fetch(`${BASE_URL}/api/login`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: FINANCE_EMAIL, password: FINANCE_PASSWORD }),
+  });
+  assert.equal(financeLogin.status, 200, 'test finance approver should be able to log in');
+  financeCookie = financeLogin.headers.getSetCookie().map(value => value.split(';')[0]).join('; ');
 });
 
 after(async () => {
@@ -102,7 +113,7 @@ after(async () => {
 });
 
 test('billing endpoints refuse unauthenticated requests', async () => {
-  for (const route of ['/api/billing/products', '/api/billing/quotes', '/api/billing/invoices', '/api/billing/payments']) {
+  for (const route of ['/api/billing/products', '/api/billing/quotes', '/api/billing/invoices', '/api/billing/payments', '/api/billing/commission-reconciliation']) {
     const res = await api('GET', route, undefined, { auth: false });
     assert.equal(res.status, 401, route);
   }
@@ -179,6 +190,32 @@ test('a discount needs a reason and is carried on the quote', async () => {
   assert.equal(ok.body.grossKsh, 40000);
   assert.equal(ok.body.subtotalKsh, 35000);
   assert.equal(ok.body.discount.requiresApproval, true);
+  assert.equal(ok.body.discount.approvalStatus, 'pending');
+});
+
+test('a flagged discount requires approval by a separate finance approver before acceptance', async () => {
+  const customer = await newCustomer('Discount Approval School', 'discount-approval-school');
+  const created = await api('POST', '/api/billing/quotes', {
+    customerId: customer.id,
+    schoolType: 'private',
+    discount: { amountKsh: 1000, reason: 'Approved pilot rate', requiresApproval: true },
+  });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const quoteId = created.body.quote.id;
+  const acceptedEarly = await api('POST', `/api/billing/quotes/${quoteId}/accept`, {
+    acceptedBy: 'School administrator', acceptanceMethod: 'email', acceptanceEvidence: 'email-thread:DISCOUNT-01',
+  });
+  assert.equal(acceptedEarly.status, 409);
+  const sameAdminApproval = await api('POST', `/api/billing/quotes/${quoteId}/approve-discount`);
+  assert.equal(sameAdminApproval.status, 403);
+  const approval = await api('POST', `/api/billing/quotes/${quoteId}/approve-discount`, undefined, { sessionCookie: financeCookie });
+  assert.equal(approval.status, 200, JSON.stringify(approval.body));
+  assert.equal(approval.body.quote.quoteSnapshot.discount.approvalStatus, 'approved');
+  assert.equal(approval.body.quote.quoteSnapshot.discount.approvedBy, FINANCE_EMAIL);
+  const accepted = await api('POST', `/api/billing/quotes/${quoteId}/accept`, {
+    acceptedBy: 'School administrator', acceptanceMethod: 'email', acceptanceEvidence: 'email-thread:DISCOUNT-01',
+  });
+  assert.equal(accepted.status, 200, JSON.stringify(accepted.body));
 });
 
 test('saved quotes keep their price snapshot when the price list changes', async () => {
@@ -212,11 +249,11 @@ test('an unsent draft quote can be re-priced by changing school type', async () 
   assert.equal(updated.body.quote.subtotalKsh, 15000);
 });
 
-test('legacy per-student quotes (no school type) still price the old way', async () => {
+test('new quotes require school type and cannot use legacy per-student pricing', async () => {
   const customer = await newCustomer('Legacy School', 'legacy-school');
   const res = await api('POST', '/api/billing/quotes', { customerId: customer.id, enrollmentCount: 100, setupFeeKsh: 5000 });
-  assert.equal(res.status, 201, JSON.stringify(res.body));
-  assert.equal(res.body.quote.subtotalKsh, 10000); // 100 students x KSh 50 + 5,000 setup
+  assert.equal(res.status, 400, JSON.stringify(res.body));
+  assert.match(res.body.error, /school type/i);
 });
 
 test('reset needs the exact phrase', async () => {
@@ -264,6 +301,21 @@ test('reset is refused once an invoice has been issued', async () => {
   assert.equal(dated.status, 200, JSON.stringify(dated.body));
   const issued = await api('POST', `/api/billing/invoices/${converted2.body.invoice.id}/issue`, {});
   assert.equal(issued.status, 200, JSON.stringify(issued.body));
+  const issuedDate = issued.body.invoice.invoiceSnapshot.issuedAt.slice(0, 10);
+  const missingReference = await api('POST', '/api/billing/payments', {
+    invoiceId: issued.body.invoice.id, amountKsh: 100, paymentDate: issuedDate, method: 'cash', reference: '',
+  });
+  assert.equal(missingReference.status, 400);
+  const futurePayment = await api('POST', '/api/billing/payments', {
+    invoiceId: issued.body.invoice.id, amountKsh: 100, paymentDate: '2999-01-01', method: 'cash', reference: 'FUTURE-RECEIPT',
+  });
+  assert.equal(futurePayment.status, 400);
+  const beforeIssueDate = new Date(`${issuedDate}T00:00:00Z`);
+  beforeIssueDate.setUTCDate(beforeIssueDate.getUTCDate() - 1);
+  const earlyPayment = await api('POST', '/api/billing/payments', {
+    invoiceId: issued.body.invoice.id, amountKsh: 100, paymentDate: beforeIssueDate.toISOString().slice(0, 10), method: 'cash', reference: 'EARLY-RECEIPT',
+  });
+  assert.equal(earlyPayment.status, 400);
 
   const blocked = await api('POST', '/api/billing/reset', { confirm: 'RESET BILLING' });
   assert.equal(blocked.status, 409, JSON.stringify(blocked.body));
@@ -333,4 +385,28 @@ test('Daraja matches the entered school name only when one customer and one open
   assert.match(review.body.events.find(item => item.transaction_id === 'C2B-SCHOOL-NAME-002').review_reason, /multiple outstanding invoices/);
   assert.match(review.body.events.find(item => item.transaction_id === 'C2B-SCHOOL-NAME-003').review_reason, /No billing customer matches/);
   assert.match(review.body.events.find(item => item.transaction_id === 'C2B-SCHOOL-NAME-004').review_reason, /More than one billing customer/);
+  const unverifiedManualMatch = await api('POST', '/api/billing/mpesa-c2b-events/C2B-SCHOOL-NAME-003/allocate', {
+    invoiceId: firstInvoice.id, paymentDate: '2026-11-01',
+  });
+  assert.equal(unverifiedManualMatch.status, 400);
+  assert.match(unverifiedManualMatch.body.error, /explanation/);
+
+  const otherCustomer = await newCustomer('Different School', 'different-school');
+  const otherQuote = await api('POST', '/api/billing/quotes', { customerId: otherCustomer.id, schoolType: 'private' });
+  const otherAccepted = await api('POST', `/api/billing/quotes/${otherQuote.body.quote.id}/accept`, {
+    acceptedBy: 'School administrator', acceptanceMethod: 'email', acceptanceEvidence: 'email-thread:OTHER-SCHOOL',
+  });
+  assert.equal(otherAccepted.status, 200);
+  const otherDraft = await api('POST', `/api/billing/quotes/${otherQuote.body.quote.id}/convert`, {});
+  const otherInvoice = await api('POST', `/api/billing/invoices/${otherDraft.body.invoice.id}/issue`, {});
+  assert.equal(otherInvoice.status, 200);
+  const crossSchoolAllocation = await api('POST', '/api/billing/mpesa-c2b-events/C2B-SCHOOL-NAME-002/allocate', { invoiceId: otherInvoice.body.invoice.id });
+  assert.equal(crossSchoolAllocation.status, 400);
+  assert.match(crossSchoolAllocation.body.error, /does not belong to the customer matched/);
+
+  const allocated = await api('POST', '/api/billing/mpesa-c2b-events/C2B-SCHOOL-NAME-002/allocate', {
+    invoiceId: firstInvoice.id, paymentDate: '2026-11-01',
+  });
+  assert.equal(allocated.status, 201, JSON.stringify(allocated.body));
+  assert.equal(allocated.body.payment.paymentDate, '2026-11-01');
 });
