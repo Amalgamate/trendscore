@@ -241,7 +241,9 @@ test('reset is refused once an invoice has been issued', async () => {
   const customer = await newCustomer('Invoiced School', 'invoiced-school');
   const quote = await api('POST', '/api/billing/quotes', { customerId: customer.id, schoolType: 'private' });
   assert.equal(quote.status, 201);
-  const accepted = await api('POST', `/api/billing/quotes/${quote.body.quote.id}/accept`, {});
+  const accepted = await api('POST', `/api/billing/quotes/${quote.body.quote.id}/accept`, {
+    acceptedBy: 'School administrator', acceptanceMethod: 'email', acceptanceEvidence: 'email-thread:INV-SCHOOL-01',
+  });
   assert.equal(accepted.status, 200, JSON.stringify(accepted.body));
   const converted = await api('POST', `/api/billing/quotes/${quote.body.quote.id}/convert`, {});
   assert.equal(converted.status, 201, JSON.stringify(converted.body));
@@ -252,7 +254,9 @@ test('reset is refused once an invoice has been issued', async () => {
 
   const customer2 = await newCustomer('Issued School', 'issued-school');
   const quote2 = await api('POST', '/api/billing/quotes', { customerId: customer2.id, schoolType: 'private' });
-  await api('POST', `/api/billing/quotes/${quote2.body.quote.id}/accept`, {});
+  await api('POST', `/api/billing/quotes/${quote2.body.quote.id}/accept`, {
+    acceptedBy: 'School administrator', acceptanceMethod: 'email', acceptanceEvidence: 'email-thread:INV-SCHOOL-02',
+  });
   const converted2 = await api('POST', `/api/billing/quotes/${quote2.body.quote.id}/convert`, {});
   const dated = await api('PUT', `/api/billing/invoices/${converted2.body.invoice.id}`, { dueDate: '2099-01-31', termsNote: '' });
   assert.equal(dated.status, 200, JSON.stringify(dated.body));

@@ -108,3 +108,15 @@ platform-console/
 - Audited start, stop, restart, backup, redeploy controls
 - NGINX Proxy Manager at admin.trendscore.co.ke
 - Convert approved contract terms into reviewed draft invoices, then add PDF/email delivery after accounting and eTIMS decisions are signed off
+
+## Billing operations and integrations
+
+- Agent commission defaults to 25% of each payment on the school's first paid invoice, including installments, then 10% of later school payments. Super admins can set different first and recurring rates per agent. Payments attribute by lead, tenant key, or a unique exact school-name match; ambiguous fuzzy matches are not auto-credited.
+- An unassigned CRM lead can be linked to an active agent with **Assign agent**. This creates the agent-school portfolio link used by CRM status sync and commission attribution.
+- **Record Manual Payout** is bookkeeping for money already sent outside this console. It requires a receipt reference and explicit confirmation; it does not transfer funds. Real agent withdrawals use the separate Daraja B2C endpoint and remain pending until Safaricom confirms the result.
+- Lead conversion in **Leads & CRM** records the customer approver, acceptance method, and an evidence reference. It creates the billing customer, active termly contract with saved price lines, accepted quote, and an unissued draft onboarding invoice.
+- Provisioning script is included in the console image at `/app/scripts/provision-instance.sh`. Set `CONSOLE_INSTANCE_PROVISION_SCRIPT=/app/scripts/provision-instance.sh` in the console environment to enable the provisioning endpoint. The endpoint remains disabled when that variable is absent.
+- In **Billing → Customers**, select a configured school term and prepare renewal draft invoices from active contracts. The **Automatic term renewal drafts** switch is off by default; when enabled, the console checks configured term billing dates daily. It creates drafts only. Admins still review, issue, and email each invoice.
+- In **Billing → Payments**, Daraja C2B callbacks can be registered after the server has valid credentials and a public HTTPS callback URL. Set `MPESA_DARAJA_ENV` (`sandbox` or `production`), `MPESA_DARAJA_CONSUMER_KEY`, `MPESA_DARAJA_CONSUMER_SECRET`, `MPESA_DARAJA_SHORTCODE` (defaults to `508885`), `MPESA_DARAJA_CALLBACK_BASE_URL`, and a long random `MPESA_DARAJA_CALLBACK_TOKEN`. The admin registration action registers the callbacks and enables C2B. Payments with an unmatched or overpaid invoice reference appear in the review queue.
+- Agent withdrawals use Daraja B2C and are recorded as pending until a provider result callback confirms success or failure. Configure `MPESA_DARAJA_INITIATOR_NAME`, a Safaricom-encrypted `MPESA_DARAJA_SECURITY_CREDENTIAL`, and the HTTPS callback settings above. B2C is disabled until the operator explicitly sets `MPESA_B2C_ENABLED=true`. Test in sandbox before configuring production credentials.
+- Provider credentials and callback URL tokens belong in the protected console environment file, never in the browser or repository. The console shows readiness without exposing secret values.

@@ -58,13 +58,17 @@
               </div>
 
               <div class="form-group">
-                <label class="form-label" for="loginPin">4-Digit Security PIN</label>
+                <label class="form-label" for="loginPin">6-Digit Security PIN</label>
                 <input type="password" id="loginPin" class="form-input" placeholder="••••" maxlength="6" inputmode="numeric" required autocomplete="current-password">
               </div>
 
               <button type="submit" id="btnLogin" class="submit-btn login-btn-accent" style="margin-top: 14px;">
                 <span>Sign In to Portal</span>
               </button>
+
+              <div class="auth-switch-prompt" style="margin-top:10px">
+                <a href="javascript:void(0)" onclick="requestForgotPin()">Forgot PIN?</a>
+              </div>
 
               <div class="auth-switch-prompt">
                 <span>New field agent?</span>
@@ -197,19 +201,19 @@
               <span class="section-step-num">3</span>
               <div>
                 <h3 class="section-step-title">Account Security PIN</h3>
-                <p class="section-step-sub">Create a 4-digit numeric PIN for logging into your agent portal</p>
+                <p class="section-step-sub">Create a 6-digit numeric PIN for logging into your agent portal</p>
               </div>
             </div>
 
             <div class="form-grid-2">
               <div class="form-group">
-                <label class="form-label" for="regPin">Create 4-Digit PIN *</label>
-                <input type="password" id="regPin" class="form-input" placeholder="••••" maxlength="4" inputmode="numeric" required autocomplete="new-password">
+                <label class="form-label" for="regPin">Create 6-Digit PIN *</label>
+                <input type="password" id="regPin" class="form-input" placeholder="••••••" maxlength="6" inputmode="numeric" required autocomplete="new-password">
               </div>
 
               <div class="form-group">
-                <label class="form-label" for="regPinConfirm">Confirm 4-Digit PIN *</label>
-                <input type="password" id="regPinConfirm" class="form-input" placeholder="••••" maxlength="4" inputmode="numeric" required autocomplete="new-password">
+                <label class="form-label" for="regPinConfirm">Confirm 6-Digit PIN *</label>
+                <input type="password" id="regPinConfirm" class="form-input" placeholder="••••••" maxlength="6" inputmode="numeric" required autocomplete="new-password">
               </div>
             </div>
           </div>
@@ -514,7 +518,7 @@
             <h3 class="section-title">Commission Ledger</h3>
           </div>
           <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 14px;">
-            Auto-credited commissions linked to school subscription payments and renewals.
+            Commissions are credited from confirmed school subscription payments and renewals. M-Pesa withdrawals stay pending until Safaricom confirms the transfer.
           </p>
           <div id="fullEarningsList" class="ledger-list">
             <!-- Injected via agent.js -->
@@ -533,6 +537,12 @@
             <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;" id="profPhone">-</div>
             <div style="font-size: 12px; color: var(--text-muted);" id="profCounty">-</div>
             <div style="font-size: 12px; color: var(--text-subtle); margin-top: 6px;" id="profTerms">-</div>
+          </div>
+
+          <div class="school-card" style="margin-bottom: 20px;">
+            <h4 style="font-size:13px;font-weight:700;margin-bottom:8px;color:var(--text-main)">Account Security</h4>
+            <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Use a 6-digit PIN. Avoid repeated digits and simple sequences.</p>
+            <button class="submit-btn" type="button" onclick="openPinChangeOverlay(false)" style="padding:10px;font-size:13px">Change Security PIN</button>
           </div>
 
           <!-- Payout History -->
@@ -755,8 +765,8 @@
           </div>
 
           <div class="form-group">
-            <label class="form-label" for="withdrawPin">4-Digit Security PIN *</label>
-            <input type="password" id="withdrawPin" class="form-input" placeholder="••••" maxlength="6" inputmode="numeric" required autocomplete="current-password">
+            <label class="form-label" for="withdrawPin">6-Digit Security PIN *</label>
+            <input type="password" id="withdrawPin" class="form-input" placeholder="••••••" maxlength="6" inputmode="numeric" required autocomplete="current-password">
           </div>
 
           <div class="fee-calc-box">
@@ -876,7 +886,21 @@
     </div>
   </div><!-- end #viewApp -->
 
+  <div id="pinChangeOverlay" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="pinChangeTitle">
+    <div class="bottom-sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header"><h3 class="sheet-title" id="pinChangeTitle">Change Security PIN</h3><button id="pinChangeClose" type="button" class="icon-btn" onclick="closePinChangeOverlay()" aria-label="Close PIN change">✕</button></div>
+      <p id="pinChangeMessage" style="font-size:13px;color:var(--text-muted);margin:0 0 14px">Enter your current PIN and choose a new 6-digit PIN.</p>
+      <form id="pinChangeForm" onsubmit="submitPinChange(event)">
+        <div class="form-group"><label class="form-label" for="pinCurrent">Current or temporary PIN</label><input id="pinCurrent" class="form-input" type="password" inputmode="numeric" maxlength="6" autocomplete="current-password" required></div>
+        <div class="form-group"><label class="form-label" for="pinNew">New 6-digit PIN</label><input id="pinNew" class="form-input" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password" required></div>
+        <div class="form-group"><label class="form-label" for="pinConfirm">Confirm new PIN</label><input id="pinConfirm" class="form-input" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password" required></div>
+        <button id="pinChangeSubmit" type="submit" class="submit-btn">Save New PIN</button>
+      </form>
+    </div>
+  </div>
 
-  <script src="/agent/agent.js?v=20261027d"></script>
+
+  <script src="/agent/agent.js?v=20261101a"></script>
 </body>
 </html>

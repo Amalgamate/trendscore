@@ -24,6 +24,10 @@ let BILLING_SCHOOL_TYPES = {};
 let BILLING_QUOTES = [];
 let BILLING_INVOICES = [];
 let BILLING_PAYMENTS = [];
+let BILLING_MPESA_STATUS = null;
+let BILLING_C2B_EVENTS = [];
+let BILLING_TERMS = [];
+let BILLING_FEATURE_FLAGS = [];
 let BILLING_PAYMENTS_STATUS = 'loading';
 let BILLING_DELIVERIES = [];
 let BILLING_INVOICE_DELIVERIES = [];
@@ -670,7 +674,7 @@ function containerRows(instance) {
 
 async function loadBillingData() {
   try {
-    const [customersResponse, contractsResponse, schoolsResponse, quotesResponse, invoicesResponse, paymentsResponse, emailStatusResponse] = await Promise.all([
+    const [customersResponse, contractsResponse, schoolsResponse, quotesResponse, invoicesResponse, paymentsResponse, emailStatusResponse, mpesaResponse, c2bEventsResponse, termsResponse, flagsResponse] = await Promise.all([
       fetch('/api/billing/customers', { credentials: 'same-origin' }).catch(() => null),
       fetch('/api/billing/contracts', { credentials: 'same-origin' }).catch(() => null),
       fetch('/api/billing/schools', { credentials: 'same-origin' }).catch(() => null),
@@ -678,6 +682,10 @@ async function loadBillingData() {
       fetch('/api/billing/invoices', { credentials: 'same-origin' }).catch(() => null),
       fetch('/api/billing/payments', { credentials: 'same-origin' }).catch(() => null),
       fetch('/api/billing/email-status', { credentials: 'same-origin' }).catch(() => null),
+      fetch('/api/settings/integrations/mpesa', { credentials: 'same-origin' }).catch(() => null),
+      fetch('/api/billing/mpesa-c2b-events', { credentials: 'same-origin' }).catch(() => null),
+      fetch('/api/term-calendar', { credentials: 'same-origin' }).catch(() => null),
+      fetch('/api/feature-flags', { credentials: 'same-origin' }).catch(() => null),
     ]);
     const [customersData, contractsData] = await Promise.all([
       customersResponse?.ok ? customersResponse.json().catch(() => ({})) : {},
@@ -693,6 +701,13 @@ async function loadBillingData() {
     const invoicesData = invoicesResponse?.ok ? await invoicesResponse.json().catch(() => ({})) : {};
     const paymentsData = paymentsResponse?.ok ? await paymentsResponse.json().catch(() => ({})) : {};
     const emailData = emailStatusResponse?.ok ? await emailStatusResponse.json().catch(() => ({})) : {};
+    BILLING_MPESA_STATUS = mpesaResponse?.ok ? await mpesaResponse.json().catch(() => null) : null;
+    const c2bEventsData = c2bEventsResponse?.ok ? await c2bEventsResponse.json().catch(() => ({})) : {};
+    BILLING_C2B_EVENTS = Array.isArray(c2bEventsData.events) ? c2bEventsData.events : [];
+    const termsData = termsResponse?.ok ? await termsResponse.json().catch(() => ({})) : {};
+    BILLING_TERMS = Array.isArray(termsData.terms) ? termsData.terms : [];
+    const flagsData = flagsResponse?.ok ? await flagsResponse.json().catch(() => ({})) : {};
+    BILLING_FEATURE_FLAGS = Array.isArray(flagsData.flags) ? flagsData.flags : [];
     BILLING_DATA_STATUS.quotes = quotesResponse?.ok && Array.isArray(quotesData.quotes) ? 'ready' : 'unavailable';
     BILLING_DATA_STATUS.invoices = invoicesResponse?.ok && Array.isArray(invoicesData.invoices) ? 'ready' : 'unavailable';
     BILLING_QUOTES = quotesData.quotes || [];
@@ -709,6 +724,8 @@ async function loadBillingData() {
       BILLING_SCHOOL_TYPES = productsData.schoolTypes || {};
     } catch { BILLING_PRODUCTS = []; }
     renderBillingRegistry();
+    renderBillingRenewalTerms();
+    renderAutomaticRenewalSetting();
   } catch (error) {
     Object.keys(BILLING_DATA_STATUS).forEach(key => { BILLING_DATA_STATUS[key] = 'unavailable'; });
     BILLING_EMAIL_STATUS = 'unavailable';
@@ -721,9 +738,19 @@ async function loadBillingData() {
     if ($('billing-attention-list')) $('billing-attention-list').innerHTML = '<div class="billing-empty">Billing records could not be loaded. Refresh to try again.</div>';
     if ($('billing-recent-list')) $('billing-recent-list').innerHTML = '<div class="billing-empty">Recent billing records are unavailable.</div>';
     renderBillingSettings();
+    renderAutomaticRenewalSetting();
     renderBillingPayments();
+    renderDarajaC2B();
     renderBillingReports();
   }
+}
+
+function renderAutomaticRenewalSetting() {
+  const input = $('billing-auto-term-renewals');
+  if (!input) return;
+  const flag = BILLING_FEATURE_FLAGS.find(item => item.name === 'AUTO_TERM_RENEWAL_INVOICES');
+  input.checked = Boolean(flag?.enabled);
+  input.disabled = !flag;
 }
 
 function renderBillingRegistry() {
@@ -778,6 +805,17 @@ function renderBillingRegistry() {
     if (window.consoleUserRole) element.hidden = window.consoleUserRole !== 'super_admin';
   });
   updateBillingActionVisibility();
+}
+
+function renderBillingRenewalTerms() {
+  const select = $('billing-renewal-term');
+  if (!select) return;
+  const selected = select.value;
+  select.innerHTML = '<option value="">Choose term</option>' + BILLING_TERMS.map(term => {
+    const value = `${term.year}:${term.term}`;
+    return `<option value="${esc(value)}">${esc(term.year)} · Term ${esc(term.term)} · ${esc(term.startDate)} to ${esc(term.endDate)}</option>`;
+  }).join('');
+  if (BILLING_TERMS.some(term => `${term.year}:${term.term}` === selected)) select.value = selected;
 }
 
 function billingEmailPreviewHtml(draft) {
@@ -988,6 +1026,27 @@ function renderBillingPayments() {
     const overdue = dueDate && dueDate < billingTodayDate();
     return `<tr><td><strong>${esc(invoice.invoiceNumber)}</strong></td><td>${esc(customer.name || 'Customer')}</td><td>${esc(String(invoice.invoiceSnapshot?.issuedAt || '').slice(0, 10) || '—')}</td><td>${esc(dueDate || 'On receipt')}</td><td>${formatBillingKsh(invoice.amountKsh)}</td><td>${formatBillingKsh(invoice.paidAmountKsh)}</td><td><strong>${formatBillingKsh(invoice.balanceKsh)}</strong></td><td>${overdue ? 'Overdue' : invoice.paymentStatus === 'partially_paid' ? 'Partially paid' : 'Unpaid'}</td></tr>`;
   }).join('') : '<tr><td colspan="8">No outstanding issued invoices.</td></tr>';
+  renderDarajaC2B();
+}
+
+function renderDarajaC2B() {
+  const status = $('billing-mpesa-c2b-status');
+  const register = $('billing-mpesa-c2b-register');
+  const table = $('billing-mpesa-c2b-events');
+  if (status) {
+    const config = BILLING_MPESA_STATUS;
+    status.textContent = !config
+      ? 'Daraja configuration status is unavailable. Check the server configuration.'
+      : `Daraja ${config.environment} · shortcode ${config.shortcode || 'not configured'} · C2B ${config.c2bEnabled ? 'enabled' : 'disabled'} · callbacks ${config.c2bReady ? 'ready' : 'need HTTPS URL, callback token, and API credentials'} · B2C payouts ${config.b2cReady && config.b2cEnabled ? 'enabled' : 'disabled'}${config.b2cReady && !config.b2cEnabled ? ' (operator opt-in required)' : ''}.`;
+  }
+  if (register) register.disabled = !BILLING_MPESA_STATUS?.c2bReady || BILLING_MPESA_STATUS?.c2bEnabled;
+  if (!table) return;
+  const candidates = BILLING_INVOICES.filter(invoice => ['issued', 'sent'].includes(invoice.status) && Number(invoice.balanceKsh || 0) > 0);
+  table.innerHTML = BILLING_C2B_EVENTS.length ? BILLING_C2B_EVENTS.map(event => {
+    const options = candidates.filter(invoice => Number(invoice.balanceKsh || 0) >= Number(event.amount_ksh || 0))
+      .map(invoice => `<option value="${esc(invoice.id)}">${esc(invoice.invoiceNumber)} · ${esc(BILLING_CUSTOMERS.find(customer => customer.id === invoice.customerId)?.name || 'Customer')}</option>`).join('');
+    return `<tr><td><strong>${esc(event.transaction_id)}</strong></td><td>${esc(event.bill_reference || '—')}</td><td>${esc(event.sender_phone || '—')}</td><td>${esc(String(event.transaction_date || '').slice(0, 10))}</td><td>${formatBillingKsh(event.amount_ksh)}</td><td><select class="form-select" data-c2b-invoice="${esc(event.transaction_id)}"><option value="">Choose invoice</option>${options}</select><button class="btn sm" data-c2b-allocate="${esc(event.transaction_id)}" ${options ? '' : 'disabled'}>Allocate</button></td></tr>`;
+  }).join('') : '<tr><td colspan="6">No unallocated C2B payments.</td></tr>';
 }
 
 function renderBillingReports() {
@@ -1318,6 +1377,26 @@ async function validateCommunicationsSettings() {
 
 $('communications-email-form')?.addEventListener('submit', saveCommunicationsSettings);
 $('communications-email-test')?.addEventListener('click', validateCommunicationsSettings);
+$('billing-auto-term-renewals')?.addEventListener('change', async event => {
+  const input = event.currentTarget;
+  const enabled = input.checked;
+  input.disabled = true;
+  try {
+    const response = await fetch('/api/feature-flags/AUTO_TERM_RENEWAL_INVOICES', {
+      method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || 'Could not update renewal setting');
+    const flag = BILLING_FEATURE_FLAGS.find(item => item.name === 'AUTO_TERM_RENEWAL_INVOICES');
+    if (flag) flag.enabled = enabled;
+    else BILLING_FEATURE_FLAGS.push({ name: 'AUTO_TERM_RENEWAL_INVOICES', enabled });
+    toast(enabled ? 'Automatic renewal draft generation enabled.' : 'Automatic renewal draft generation disabled.');
+  } catch (error) {
+    input.checked = !enabled;
+    toast(error.message || 'Could not update renewal setting.');
+  } finally { input.disabled = !BILLING_FEATURE_FLAGS.some(item => item.name === 'AUTO_TERM_RENEWAL_INVOICES'); }
+});
 
 const BILLING_TABS = ['overview', 'customers', 'quotes', 'invoices', 'payments', 'catalogue', 'reports', 'settings'];
 function selectBillingTab(tab, focus = false) {
@@ -1634,7 +1713,8 @@ function renderPipeline() {
             </div>
             <button class="k-card-edit" onclick="openLeadModal(null, '${lead.id}')">Edit</button>
             <button class="k-card-edit" style="right:46px" onclick="convertLeadToProvision('${lead.id}')">Convert</button>
-            <button class="k-card-edit" style="right:112px" onclick="deleteLead('${lead.id}')">Delete</button>
+            <button class="k-card-edit" data-super-admin-only style="right:112px" onclick="openLeadConversion('${lead.id}')">Customer</button>
+            <button class="k-card-edit" style="right:178px" onclick="deleteLead('${lead.id}')">Delete</button>
           </div>`;
         }).join('')}
       </div>
@@ -1656,6 +1736,12 @@ function renderPipeline() {
             const newStage = toCol.closest('.kanban-column').dataset.stage;
             
             const lead = LEADS.find(l => l.id === leadId);
+            if (lead && newStage === 'converted' && lead.stage !== 'converted') {
+              renderEverything();
+              openLeadConversion(leadId);
+              toast('Record customer acceptance to convert this lead and create its billing records.');
+              return;
+            }
             if (lead && lead.stage !== newStage) {
               lead.stage = newStage;
               updateLeadApi(leadId, { stage: newStage }).catch(() => toast('Stage save failed — refresh to restore'));
@@ -1734,7 +1820,9 @@ function renderLeadsList() {
       <td>
         <div class="action-row">
           <button class="tbl-btn" onclick="openLeadModal(null, '${lead.id}')">Edit</button>
+          ${!lead.agentId && !['converted', 'lost'].includes(lead.stage) ? `<button class="tbl-btn" onclick="openLeadAssignment('${esc(lead.id)}')">Assign agent</button>` : ''}
           <button class="tbl-btn primary" onclick="convertLeadToProvision('${lead.id}')">Convert & Provision</button>
+          <button class="tbl-btn" data-super-admin-only onclick="openLeadConversion('${lead.id}')">Convert to Customer</button>
           <button class="tbl-btn danger" onclick="deleteLead('${lead.id}')">Delete</button>
         </div>
       </td>
@@ -1787,6 +1875,22 @@ window.convertLeadToProvision = function(leadId) {
   refreshProvisionAutoAssignment();
   addAudit({ action: 'Lead Convert Initiated', instance: schoolName, details: `Provision form opened from CRM lead ${lead.id}` });
   toast(`Provision form prefilled from ${schoolName}.`);
+};
+
+window.openLeadConversion = function(leadId) {
+  const lead = LEADS.find(item => item.id === leadId);
+  if (!lead) return;
+  $('lc-lead-id').value = lead.id;
+  $('lc-school-label').textContent = `Convert ${lead.school} into a billing customer, contract, accepted quote, and draft invoice.`;
+  $('lc-email').value = lead.billingEmail || '';
+  $('lc-phone').value = lead.billingPhone || lead.phone || '';
+  $('lc-students').value = Number(lead.students) || '';
+  $('lc-accepted-by').value = lead.name || '';
+  $('lc-evidence').value = '';
+  $('lc-start-date').value = new Date().toISOString().slice(0, 10);
+  $('lc-modules').value = '';
+  $('lc-comms').checked = false;
+  $('lead-convert-overlay')?.classList.add('open');
 };
 
 function toggleCrmMetrics() {
@@ -2879,6 +2983,133 @@ document.body.addEventListener('click', event => {
   }
 
   const id = btn.id;
+  if (id === 'billing-acceptance-close' || id === 'billing-acceptance-cancel') {
+    $('billing-acceptance-overlay')?.classList.remove('open');
+    return;
+  }
+  if (id === 'billing-acceptance-submit') {
+    const quoteId = $('ba-quote-id')?.value;
+    const acceptedBy = $('ba-accepted-by')?.value.trim();
+    const acceptanceEvidence = $('ba-evidence')?.value.trim();
+    if (!acceptedBy || !acceptanceEvidence) { toast('Enter the customer approver and an evidence reference.'); return; }
+    btn.disabled = true;
+    (async () => {
+      try {
+        const response = await fetch(`/api/billing/quotes/${encodeURIComponent(quoteId)}/accept`, {
+          method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ acceptedBy, acceptanceMethod: $('ba-method').value, acceptanceEvidence }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'Could not record acceptance');
+        $('billing-acceptance-overlay')?.classList.remove('open');
+        await loadBillingData();
+        toast('Customer acceptance and evidence reference recorded.');
+      } catch (error) { toast(error.message || 'Could not record acceptance.'); }
+      finally { btn.disabled = false; }
+    })();
+    return;
+  }
+  if (id === 'billing-generate-term-invoices') {
+    const [year, term] = String($('billing-renewal-term')?.value || '').split(':').map(Number);
+    if (!year || !term) { toast('Choose a configured school term first.'); return; }
+    if (!window.confirm(`Prepare draft renewal invoices from active termly contracts for ${year} Term ${term}?`)) return;
+    btn.disabled = true;
+    (async () => {
+      try {
+        const response = await fetch('/api/billing/term-invoices', {
+          method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ year, term }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || 'Could not prepare renewal invoices');
+        await loadBillingData();
+        toast(`${result.count} draft renewal invoice(s) prepared for ${result.periodKey}.`);
+      } catch (error) { toast(error.message || 'Could not prepare renewal invoices.'); }
+      finally { btn.disabled = false; }
+    })();
+    return;
+  }
+  if (id === 'billing-mpesa-c2b-register') {
+    if (btn.disabled || !window.confirm('Register this console’s HTTPS validation and confirmation URLs with Safaricom Daraja and enable C2B collections?')) return;
+    btn.disabled = true;
+    (async () => {
+      try {
+        const response = await fetch('/api/settings/integrations/mpesa/c2b/register', { method: 'POST', credentials: 'same-origin' });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || 'Could not register C2B callbacks');
+        await loadBillingData();
+        toast('Daraja C2B callbacks registered and collections enabled.');
+      } catch (error) { toast(error.message || 'C2B callback registration failed.'); }
+      finally { renderDarajaC2B(); }
+    })();
+    return;
+  }
+  if (btn.dataset.c2bAllocate) {
+    const transactionId = btn.dataset.c2bAllocate;
+    const invoiceSelect = [...document.querySelectorAll('[data-c2b-invoice]')].find(input => input.dataset.c2bInvoice === transactionId);
+    if (!invoiceSelect?.value) { toast('Choose an issued invoice first.'); return; }
+    btn.disabled = true;
+    (async () => {
+      try {
+        const response = await fetch(`/api/billing/mpesa-c2b-events/${encodeURIComponent(transactionId)}/allocate`, {
+          method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ invoiceId: invoiceSelect.value }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || 'Could not allocate payment');
+        await loadBillingData();
+        toast('C2B payment allocated and commission attribution updated.');
+      } catch (error) { toast(error.message || 'Payment allocation failed.'); btn.disabled = false; }
+    })();
+    return;
+  }
+  if (id === 'lead-convert-close' || id === 'lead-convert-cancel') {
+    $('lead-convert-overlay')?.classList.remove('open');
+    return;
+  }
+  if (id === 'lead-convert-submit') {
+    const leadId = $('lc-lead-id')?.value;
+    const acceptedBy = $('lc-accepted-by')?.value.trim();
+    const acceptanceEvidence = $('lc-evidence')?.value.trim();
+    const startDate = $('lc-start-date')?.value;
+    if (!acceptedBy || !acceptanceEvidence || !startDate) {
+      toast('Enter the customer approver, acceptance evidence, and contract start date.');
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = 'Creating billing records…';
+    (async () => {
+      try {
+        const response = await fetch(`/api/leads/${encodeURIComponent(leadId)}/convert`, {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            billingEmail: $('lc-email').value.trim(), billingPhone: $('lc-phone').value.trim(),
+            schoolType: $('lc-school-type').value, startDate, acceptedBy,
+            acceptanceMethod: $('lc-acceptance-method').value, acceptanceEvidence,
+            quote: {
+              schoolType: $('lc-school-type').value,
+              enrollmentCount: Number($('lc-students').value || 0),
+              extraModules: $('lc-modules').value.split(',').map(value => value.trim()).filter(Boolean),
+              communicationsIncluded: $('lc-comms').checked,
+            },
+          }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || 'Lead conversion failed');
+        $('lead-convert-overlay')?.classList.remove('open');
+        await Promise.all([loadLeadsFromApi(), loadBillingData()]);
+        renderEverything();
+        toast(`Customer converted. Draft invoice ${result.invoice.invoiceNumber} is ready to review.`);
+      } catch (error) {
+        toast(error.message || 'Lead conversion failed.');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Create customer & draft invoice';
+      }
+    })();
+    return;
+  }
   if (id === 'btn-new-instance-overview' || id === 'btn-new-instance-list') {
     openNewInstanceTypePicker();
     return;
@@ -3201,16 +3432,12 @@ document.body.addEventListener('click', event => {
 
   const quoteAcceptId = btn.dataset.quoteAccept;
   if (quoteAcceptId) {
-    if (!window.confirm('Confirm that the customer has accepted this quote? This records acceptance and enables draft invoice creation.')) return;
-    (async () => {
-      try {
-        const response = await fetch(`/api/billing/quotes/${encodeURIComponent(quoteAcceptId)}/accept`, { method: 'POST', credentials: 'same-origin' });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(payload.error || 'Could not record acceptance');
-        await loadBillingData();
-        toast('Customer acceptance recorded. You can now create a draft invoice.');
-      } catch (error) { toast(error.message); }
-    })();
+    const quote = BILLING_QUOTES.find(item => item.id === quoteAcceptId);
+    $('ba-quote-id').value = quoteAcceptId;
+    $('ba-quote-label').textContent = quote ? `${quote.quoteNumber} · ${quote.customerSnapshot?.name || 'Customer'}` : quoteAcceptId;
+    $('ba-accepted-by').value = '';
+    $('ba-evidence').value = '';
+    $('billing-acceptance-overlay')?.classList.add('open');
     return;
   }
 
@@ -3334,6 +3561,7 @@ function bindModalEvents() {
       const payload = {
         appType: currentProvisionApp,
         name,
+        leadId: pendingProvisionLeadId || '',
         domain: $('f-domain')?.value.trim() || '',
         version: version?.value || 'latest',
         image: version?.image || '',
@@ -3453,8 +3681,7 @@ function bindModalEvents() {
           if (leadIdx >= 0) {
             const updatedLead = {
               ...LEADS[leadIdx],
-              stage: 'converted',
-              nextActivity: `Provisioning ${app.label} (${payload.version})`,
+              nextActivity: `Instance provisioned · ${app.label}`,
               notes: [LEADS[leadIdx].notes, `Provision requested for ${payload.name} (${payload.domain})`]
                 .filter(Boolean)
                 .join(' | '),
@@ -3462,7 +3689,7 @@ function bindModalEvents() {
             try {
               LEADS[leadIdx] = await updateLeadApi(updatedLead.id, updatedLead);
               addAudit({
-                action: 'Lead Converted',
+                action: 'Provisioning Linked to Lead',
                 instance: updatedLead.school,
                 details: `Lead linked to provisioning request for ${payload.name}`,
                 status: 'Success',
@@ -3561,6 +3788,57 @@ $('btn-view-clients')?.addEventListener('click', () => {
   $('btn-view-clients')?.classList.add('active');
 });
 
+async function openLeadAssignment(leadId) {
+  const lead = LEADS.find(item => String(item.id) === String(leadId));
+  if (!lead) return toast('Lead not found. Refresh the CRM list and try again.', true);
+  $('lead-assign-agent-id').value = lead.id;
+  $('lead-assign-agent-school').textContent = `${lead.school} · ${lead.name || 'Contact not set'}`;
+  const select = $('lead-assign-agent-select');
+  select.innerHTML = '<option value="">Loading agents…</option>';
+  $('lead-assign-agent-overlay').style.display = 'grid';
+  try {
+    const response = await fetch('/api/agents?status=active', { credentials: 'same-origin' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !Array.isArray(data.agents)) throw new Error(data.error || 'Could not load active agents');
+    const activeAgents = data.agents.filter(agent => agent.status === 'active');
+    select.innerHTML = '<option value="">Choose an agent</option>' + activeAgents.map(agent =>
+      `<option value="${esc(agent.id)}">${esc(agent.full_name)} (${esc(agent.agent_code)})</option>`).join('');
+    if (!activeAgents.length) select.innerHTML = '<option value="">No active agents available</option>';
+  } catch (error) {
+    select.innerHTML = '<option value="">Could not load agents</option>';
+    toast(error.message || 'Could not load active agents', true);
+  }
+}
+
+function closeLeadAssignment() {
+  if ($('lead-assign-agent-overlay')) $('lead-assign-agent-overlay').style.display = 'none';
+}
+
+async function submitLeadAssignment() {
+  const leadId = $('lead-assign-agent-id')?.value;
+  const agentId = $('lead-assign-agent-select')?.value;
+  if (!leadId || !agentId) return toast('Choose an active agent first.', true);
+  const button = $('lead-assign-agent-submit');
+  button.disabled = true;
+  try {
+    const response = await fetch(`/api/leads/${encodeURIComponent(leadId)}/assign-agent`, {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentId }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.ok) throw new Error(result.error || 'Could not assign lead');
+    closeLeadAssignment();
+    await loadLeadsFromApi();
+    renderEverything();
+    toast(`${result.lead.school} assigned to ${result.agent.full_name}.`);
+  } catch (error) {
+    toast(error.message || 'Could not assign lead', true);
+  } finally {
+    button.disabled = false;
+  }
+}
+window.openLeadAssignment = openLeadAssignment;
+
 window.openLeadModal = function(defaultStage = 'new', editLeadId = null) {
   const lead = editLeadId ? LEADS.find(l => l.id === editLeadId) : null;
   
@@ -3586,6 +3864,9 @@ window.openLeadModal = function(defaultStage = 'new', editLeadId = null) {
 $('lead-modal-close')?.addEventListener('click', () => $('lead-modal-overlay')?.classList.remove('open'));
 $('lead-modal-cancel')?.addEventListener('click', () => $('lead-modal-overlay')?.classList.remove('open'));
 $('btn-new-lead')?.addEventListener('click', () => openLeadModal('new', null));
+$('lead-assign-agent-close')?.addEventListener('click', closeLeadAssignment);
+$('lead-assign-agent-cancel')?.addEventListener('click', closeLeadAssignment);
+$('lead-assign-agent-submit')?.addEventListener('click', submitLeadAssignment);
 $('btn-toggle-crm-metrics')?.addEventListener('click', toggleCrmMetrics);
 
 $('lead-search')?.addEventListener('input', (e) => {
@@ -3787,11 +4068,7 @@ function renderAgentsTable() {
   }
 
   tableBody.innerHTML = AGENTS.map(agent => {
-    const rateLabel = agent.commission_type === 'percentage'
-      ? `${agent.commission_rate}% sub`
-      : agent.commission_type === 'fixed_per_student'
-      ? `${formatKsh(agent.commission_rate)}/student`
-      : `${formatKsh(agent.commission_rate)}/school`;
+    const rateLabel = `${Number(agent.first_payment_commission_rate ?? 25)}% first · ${Number(agent.recurring_payment_commission_rate ?? 10)}% recurring`;
 
     const statusBadge = agent.status === 'active'
       ? '<span class="status-badge" style="background:rgba(5,150,105,.12);color:#059669;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:700">● Active</span>'
@@ -3878,8 +4155,8 @@ function openNewAgentModal() {
   $('agent-form-national-id').value = '';
   $('agent-form-county').value = '';
   $('agent-form-base').value = '';
-  $('agent-form-commission-type').value = 'percentage';
-  $('agent-form-commission-rate').value = '10.0';
+  $('agent-form-first-commission-rate').value = '25';
+  $('agent-form-recurring-commission-rate').value = '10';
   $('agent-form-mpesa').value = '';
   $('agent-form-status').value = 'active';
   $('agent-form-bank-name').value = '';
@@ -3901,8 +4178,8 @@ function openEditAgentModal(agentId) {
   $('agent-form-national-id').value = agent.national_id || '';
   $('agent-form-county').value = agent.county || '';
   $('agent-form-base').value = agent.base_location || '';
-  $('agent-form-commission-type').value = agent.commission_type || 'percentage';
-  $('agent-form-commission-rate').value = agent.commission_rate ?? 10.0;
+  $('agent-form-first-commission-rate').value = agent.first_payment_commission_rate ?? 25;
+  $('agent-form-recurring-commission-rate').value = agent.recurring_payment_commission_rate ?? (agent.commission_type === 'percentage' ? agent.commission_rate : 10);
   $('agent-form-mpesa').value = agent.mpesa_number || '';
   $('agent-form-status').value = agent.status || 'active';
   $('agent-form-bank-name').value = agent.bank_name || '';
@@ -3957,17 +4234,14 @@ async function saveAgentForm() {
     national_id: $('agent-form-national-id').value.trim(),
     county: $('agent-form-county').value.trim(),
     base_location: $('agent-form-base').value.trim(),
-    commission_type: $('agent-form-commission-type').value,
-    commission_rate: parseFloat($('agent-form-commission-rate').value) || 0,
+    first_payment_commission_rate: parseFloat($('agent-form-first-commission-rate').value),
+    recurring_payment_commission_rate: parseFloat($('agent-form-recurring-commission-rate').value),
     mpesa_number: $('agent-form-mpesa').value.trim(),
     status: $('agent-form-status').value,
     bank_name: $('agent-form-bank-name').value.trim(),
     bank_account: $('agent-form-bank-account').value.trim(),
     notes: $('agent-form-notes').value.trim(),
   };
-
-  const pin = $('agent-form-pin').value.trim();
-  if (pin) payload.pin = pin;
 
   try {
     const url = id ? `/api/agents/${id}` : '/api/agents';
@@ -3980,6 +4254,9 @@ async function saveAgentForm() {
     });
     const result = await res.json();
     if (!res.ok) throw new Error(result.error || 'Failed to save agent');
+    if (!id && result.tempPin) {
+      window.alert(`Temporary PIN for ${result.agent?.full_name || full_name}: ${result.tempPin}\n\nExpires: ${result.tempPinExpiresAt || 'in 24 hours'}\n\nShare this PIN securely. It is shown only once and must be changed at first sign-in.`);
+    }
     toast(id ? 'Agent updated successfully' : `Agent ${result.agent?.agent_code || ''} registered`);
     $('agent-modal-overlay').style.display = 'none';
     loadAgentsData();
@@ -4013,6 +4290,26 @@ function closeAgentDrawer() {
   document.body.style.overflow = '';
 }
 
+async function resetAgentPin(agentId) {
+  if (window.consoleUserRole !== 'super_admin') return alert('Only a super admin can reset agent PINs.');
+  const agent = CURRENT_AGENT;
+  if (!agent || agent.id !== agentId) return;
+  if (!window.confirm(`Issue a temporary PIN for ${agent.full_name}? Their current sessions will be signed out.`)) return;
+  try {
+    const response = await fetch(`/api/agents/${encodeURIComponent(agentId)}/reset-pin`, {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: '{}',
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.ok) throw new Error(result.error || 'Could not reset PIN');
+    window.alert(`Temporary PIN for ${agent.full_name}: ${result.tempPin}\n\nExpires: ${result.expiresAt}\n\nShare this PIN securely. It is shown only once and must be changed at first sign-in.`);
+    CURRENT_AGENT = result.agent || CURRENT_AGENT;
+    toast('Temporary PIN issued. Share it securely with the agent.');
+    await openAgentDetailModal(agentId);
+  } catch (error) {
+    alert(error.message || 'Could not reset agent PIN');
+  }
+}
+
 async function openAgentDetailModal(agentId) {
   try {
     const res = await fetch(`/api/agents/${agentId}`, { credentials: 'same-origin' });
@@ -4030,12 +4327,16 @@ function renderAgentDetailModal(agent) {
   if ($('agent-detail-avatar')) $('agent-detail-avatar').textContent = getAgentInitials(agent.full_name);
   $('agent-detail-code').textContent = agent.agent_code;
   $('agent-detail-name').textContent = agent.full_name;
+  const resetRequest = $('agent-pin-reset-request');
+  if (resetRequest) {
+    const requestedAt = agent.pin_reset_requested_at || '';
+    resetRequest.hidden = !requestedAt;
+    resetRequest.textContent = requestedAt
+      ? `PIN reset requested at ${new Date(requestedAt).toLocaleString()}. Verify the agent’s identity before issuing a temporary PIN.`
+      : '';
+  }
   
-  const rateLabel = agent.commission_type === 'percentage'
-    ? `${agent.commission_rate}% of subscription`
-    : agent.commission_type === 'fixed_per_student'
-    ? `${formatKsh(agent.commission_rate)} / student`
-    : `${formatKsh(agent.commission_rate)} / school`;
+  const rateLabel = `${Number(agent.first_payment_commission_rate ?? 25)}% first school invoice · ${Number(agent.recurring_payment_commission_rate ?? 10)}% recurring terms`;
 
   $('agent-detail-sub').textContent = `Rate: ${rateLabel} · Registered: ${agent.created_at ? agent.created_at.slice(0, 10) : '—'}`;
 
@@ -4056,6 +4357,8 @@ function renderAgentDetailModal(agent) {
   const btnPayout = $('btn-agent-record-payout');
   const btnApprove = $('btn-agent-approve');
   const btnReject = $('btn-agent-reject');
+  const btnResetPin = $('btn-agent-reset-pin');
+  if (btnResetPin) btnResetPin.hidden = window.consoleUserRole !== 'super_admin';
   if (agent.status === 'pending') {
     if (btnPayout) btnPayout.style.display = 'none';
     if (btnApprove) btnApprove.style.display = 'inline-flex';
@@ -4192,6 +4495,8 @@ function openPayoutModal(agentId) {
   $('payout-form-ref').value = '';
   $('payout-form-notes').value = '';
   $('payout-form-date').value = new Date().toISOString().slice(0, 10);
+  $('payout-transfer-confirmed').checked = false;
+  $('payout-form-submit').disabled = true;
   $('agent-payout-overlay').style.display = 'grid';
 }
 
@@ -4201,6 +4506,7 @@ async function submitPayout() {
   const reference = $('payout-form-ref').value.trim();
   if (isNaN(amount_ksh) || amount_ksh <= 0) return alert('Please enter a valid payout amount');
   if (!reference) return alert('Transaction reference (e.g. M-Pesa receipt code) is required');
+  if (!$('payout-transfer-confirmed').checked) return alert('Confirm that you already sent this payout outside the console.');
 
   try {
     const res = await fetch(`/api/agents/${CURRENT_AGENT.id}/payouts`, {
@@ -4210,6 +4516,7 @@ async function submitPayout() {
         amount_ksh,
         payout_method: $('payout-form-method').value,
         reference,
+        transferConfirmed: true,
         payout_date: $('payout-form-date').value,
         notes: $('payout-form-notes').value.trim(),
       }),
@@ -4377,6 +4684,9 @@ function bindAgentEvents() {
       openEditAgentModal(CURRENT_AGENT.id);
     }
   });
+  $('btn-agent-reset-pin')?.addEventListener('click', () => {
+    if (CURRENT_AGENT) resetAgentPin(CURRENT_AGENT.id);
+  });
   $('btn-agent-delete')?.addEventListener('click', () => {
     if (CURRENT_AGENT) deleteAgent(CURRENT_AGENT.id);
   });
@@ -4385,6 +4695,9 @@ function bindAgentEvents() {
   $('agent-payout-close')?.addEventListener('click', () => { $('agent-payout-overlay').style.display = 'none'; });
   $('payout-form-cancel')?.addEventListener('click', () => { $('agent-payout-overlay').style.display = 'none'; });
   $('payout-form-submit')?.addEventListener('click', submitPayout);
+  $('payout-transfer-confirmed')?.addEventListener('change', event => {
+    $('payout-form-submit').disabled = !event.target.checked;
+  });
 
   // Earning modal
   $('agent-earning-close')?.addEventListener('click', () => { $('agent-earning-overlay').style.display = 'none'; });
@@ -4402,6 +4715,7 @@ window.openAgentDetailModal = openAgentDetailModal;
 window.closeAgentDrawer = closeAgentDrawer;
 window.openPayoutModal = openPayoutModal;
 window.openEditAgentModal = openEditAgentModal;
+window.resetAgentPin = resetAgentPin;
 window.deleteSchoolAssignment = deleteSchoolAssignment;
 window.deleteAgent = deleteAgent;
 

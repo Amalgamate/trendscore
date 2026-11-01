@@ -597,6 +597,16 @@ const MIGRATIONS = [
       `);
     },
   },
+  {
+    version: 16,
+    name: 'automatic-term-renewal-flag',
+    notes: 'Delete AUTO_TERM_RENEWAL_INVOICES from feature_flags to undo.',
+    up(db) {
+      db.prepare(`INSERT OR IGNORE INTO feature_flags (name,enabled,description,updated_at,updated_by)
+        VALUES ('AUTO_TERM_RENEWAL_INVOICES',0,'Create draft invoices for active termly contracts on configured billing dates.',?,'system')`)
+        .run(new Date().toISOString());
+    },
+  },
 ];
 
 module.exports = { MIGRATIONS };

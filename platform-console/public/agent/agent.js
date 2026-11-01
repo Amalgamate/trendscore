@@ -53,7 +53,10 @@ async function api(path, options = {}) {
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok || data.ok === false) {
-    throw new Error(data.error || 'Request failed');
+    const error = new Error(data.error || 'Request failed');
+    error.code = data.code || '';
+    if (error.code === 'PIN_CHANGE_REQUIRED') openPinChangeOverlay(true);
+    throw error;
   }
   return data;
 }
@@ -185,6 +188,9 @@ async function handleLogin(e) {
     if (data.agent.status === 'pending') {
       showToast('Your account is awaiting approval.');
       showPendingView(data.agent);
+    } else if (data.mustChangePin || data.agent.pin_must_change) {
+      openPinChangeOverlay(true);
+      showToast('Choose a new 6-digit PIN to continue.');
     } else {
       showToast(`Welcome back, ${data.agent.full_name}!`);
       renderAgent();
@@ -222,12 +228,12 @@ async function handleRegister(e) {
     showToast('Please select your county', true);
     return;
   }
-  if (!/^\d{4}$/.test(pin)) {
-    showToast('Security PIN must be exactly 4 numeric digits', true);
+  if (!/^\d{6}$/.test(pin)) {
+    showToast('Security PIN must be exactly 6 numeric digits', true);
     return;
   }
   if (pin !== pinConfirm) {
-    showToast('PINs do not match. Please verify your 4-digit PIN.', true);
+    showToast('PINs do not match. Please verify your 6-digit PIN.', true);
     return;
   }
 
@@ -266,6 +272,79 @@ async function handleRegister(e) {
     btn.innerHTML = '<span>Create Account &amp; Start Earning</span>';
   }
 }
+
+async function requestForgotPin() {
+  const phoneInput = document.getElementById('loginPhone');
+  const phone = String(phoneInput?.value || '').trim();
+  if (!phone) {
+    showToast('Enter your phone number first, then select Forgot PIN.', true);
+    phoneInput?.focus();
+    return;
+  }
+  try {
+    const result = await api('/api/agent/forgot-pin', { method: 'POST', body: JSON.stringify({ phone }) });
+    showToast(result.message || 'If that number is registered, an admin has been asked to reset your PIN.');
+  } catch (error) {
+    showToast(error.message || 'Could not submit the PIN reset request.', true);
+  }
+}
+
+let pinChangeRequired = false;
+function openPinChangeOverlay(required = false) {
+  const overlay = document.getElementById('pinChangeOverlay');
+  if (!overlay) return;
+  pinChangeRequired = pinChangeRequired || Boolean(required);
+  const closeButton = document.getElementById('pinChangeClose');
+  const message = document.getElementById('pinChangeMessage');
+  const title = document.getElementById('pinChangeTitle');
+  if (title) title.textContent = pinChangeRequired ? 'Choose a New PIN' : 'Change Security PIN';
+  if (message) message.textContent = pinChangeRequired
+    ? 'Your temporary or older PIN must be replaced before you can use the agent portal.'
+    : 'Enter your current PIN and choose a new 6-digit PIN.';
+  if (closeButton) closeButton.hidden = pinChangeRequired;
+  overlay.classList.add('active');
+  document.getElementById('pinCurrent')?.focus();
+}
+
+function closePinChangeOverlay() {
+  if (pinChangeRequired) return;
+  document.getElementById('pinChangeOverlay')?.classList.remove('active');
+  document.getElementById('pinChangeForm')?.reset();
+}
+
+async function submitPinChange(event) {
+  event.preventDefault();
+  const old_pin = document.getElementById('pinCurrent').value.trim();
+  const new_pin = document.getElementById('pinNew').value.trim();
+  const confirmation = document.getElementById('pinConfirm').value.trim();
+  const button = document.getElementById('pinChangeSubmit');
+  if (!/^\d{6}$/.test(new_pin)) return showToast('New PIN must be exactly 6 numeric digits.', true);
+  if (new_pin !== confirmation) return showToast('The new PINs do not match.', true);
+  if (new_pin === old_pin) return showToast('Choose a new PIN different from your current PIN.', true);
+  button.disabled = true;
+  button.textContent = 'Saving…';
+  try {
+    const result = await api('/api/agent/profile', { method: 'PUT', body: JSON.stringify({ old_pin, new_pin }) });
+    currentAgent = result.agent;
+    if (result.token) setStoredToken(result.token);
+    pinChangeRequired = false;
+    document.getElementById('pinChangeOverlay')?.classList.remove('active');
+    document.getElementById('pinChangeForm')?.reset();
+    showAppView();
+    renderAgent();
+    switchTab('profile');
+    showToast('Your security PIN was changed.');
+  } catch (error) {
+    showToast(error.message || 'Could not change PIN.', true);
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Save New PIN';
+  }
+}
+window.requestForgotPin = requestForgotPin;
+window.openPinChangeOverlay = openPinChangeOverlay;
+window.closePinChangeOverlay = closePinChangeOverlay;
+window.submitPinChange = submitPinChange;
 
 async function handleLogout() {
   try {
@@ -332,6 +411,11 @@ document.addEventListener('click', (e) => {
 function renderAgent() {
   if (!currentAgent) return;
 
+  if (currentAgent.pin_must_change) {
+    openPinChangeOverlay(true);
+    return;
+  }
+
   // If agent is pending, show the waiting screen instead
   if (currentAgent.status === 'pending') {
     showPendingView(currentAgent);
@@ -374,7 +458,7 @@ function renderAgent() {
 
   // Dashboard status badge
   const dashStatusTag = document.getElementById('dashStatusTag');
-  dashStatusTag.textContent = `${currentAgent.commission_rate}${currentAgent.commission_type === 'percentage' ? '%' : ' KES'} Commission`;
+  dashStatusTag.textContent = `${Number(currentAgent.first_payment_commission_rate ?? 25)}% first · ${Number(currentAgent.recurring_payment_commission_rate ?? 10)}% recurring`;
 
   // Desktop Sidebar sync
   const sidebarInitials = document.getElementById('sidebarAvatarInitials');
@@ -496,7 +580,7 @@ function renderProfile() {
   document.getElementById('profCode').textContent = `Code: ${currentAgent.agent_code}`;
   document.getElementById('profPhone').textContent = `Phone: ${currentAgent.phone}`;
   document.getElementById('profCounty').textContent = `County: ${currentAgent.county || 'Not specified'}`;
-  document.getElementById('profTerms').textContent = `Commission Terms: ${currentAgent.commission_rate}${currentAgent.commission_type === 'percentage' ? '% per payment' : ' KES per school'}`;
+  document.getElementById('profTerms').textContent = `Commission Terms: ${Number(currentAgent.first_payment_commission_rate ?? 25)}% on first school invoice; ${Number(currentAgent.recurring_payment_commission_rate ?? 10)}% on later term payments`;
 
   const mpesaInput = document.getElementById('profMpesa');
   if (mpesaInput) mpesaInput.value = currentAgent.mpesa_number || currentAgent.phone || '';
@@ -878,7 +962,7 @@ async function handleWithdraw(e) {
   }
 
   if (!pin) {
-    showToast('Enter your 4-digit security PIN', true);
+    showToast('Enter your 6-digit security PIN', true);
     return;
   }
 
@@ -936,8 +1020,12 @@ window.addEventListener('DOMContentLoaded', async () => {
     const data = await api('/api/agent/me');
     currentAgent = data.agent;
     showAppView();
-    renderAgent();
-    switchTab('dashboard');
+    if (currentAgent.pin_must_change) {
+      openPinChangeOverlay(true);
+    } else {
+      renderAgent();
+      switchTab('dashboard');
+    }
     fetchNotifications();
   } catch {
     showLoginView();

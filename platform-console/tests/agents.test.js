@@ -19,7 +19,7 @@ test('Agents Store Lifecycle & Financials', async (t) => {
       county: 'Kiambu',
       commission_type: 'percentage',
       commission_rate: 10.0,
-      pin: '4321',
+      pin: '432187',
     });
     assert.equal(a1.agent_code, 'AGT-1001');
     assert.equal(a1.full_name, 'Grace Wambui');
@@ -101,11 +101,11 @@ test('Agents Store Lifecycle & Financials', async (t) => {
   });
 
   await t.test('Authenticates agent PIN for mobile app', () => {
-    const grace = store.authenticateAgent('0722111222', '4321');
+    const grace = store.authenticateAgent('0722111222', '432187');
     assert.ok(grace);
     assert.equal(grace.agent_code, 'AGT-1001');
 
-    const wrongPin = store.authenticateAgent('0722111222', '0000');
+    const wrongPin = store.authenticateAgent('0722111222', '000000');
     assert.equal(wrongPin, null);
   });
 
@@ -147,9 +147,23 @@ test('Agents Store Lifecycle & Financials', async (t) => {
 
     assert.ok(earning);
     assert.equal(earning.agent_id, grace.id);
-    assert.equal(earning.earned_amount_ksh, 5000); // 10% of 50,000
+    assert.equal(earning.earned_amount_ksh, 12500); // 25% first-payment rate
     assert.equal(earning.status, 'approved');
     assert.equal(earning.payment_id, 'pay_test_998');
+
+    const secondInstallment = store.attributePaymentCommission({
+      payment: { ...mockPayment, id: 'pay_test_999', amountKsh: 25000 },
+      invoice: mockInvoice,
+      customer: mockCustomer,
+    });
+    assert.equal(secondInstallment.earned_amount_ksh, 6250); // 25% applies to later installments on the first invoice
+
+    const renewalEarning = store.attributePaymentCommission({
+      payment: { ...mockPayment, id: 'pay_test_renewal', amountKsh: 50000 },
+      invoice: { ...mockInvoice, id: 'inv_test_renewal', invoiceType: 'renewal' },
+      customer: mockCustomer,
+    });
+    assert.equal(renewalEarning.earned_amount_ksh, 5000); // later invoices use the recurring 10% rate
 
     // Idempotency: second call should be ignored
     const duplicate = store.attributePaymentCommission({
@@ -169,6 +183,38 @@ test('Agents Store Lifecycle & Financials', async (t) => {
     const deleted = store.deleteAgent(peter.id);
     assert.equal(deleted, true);
     assert.equal(store.getAgent(peter.id), null);
+  });
+
+  await t.test('Pending withdrawals reserve wallet funds and failed transfers release them', () => {
+    const grace = store.listAgents().find(a => a.agent_code === 'AGT-1001');
+    const pending = store.recordPayout(grace.id, {
+      amount_ksh: 1000, payout_method: 'mpesa', status: 'pending', reference: '',
+    }, 'agent_app_self_service');
+    assert.equal(store.getAgent(grace.id).financials.pendingPayoutsKsh, 1000);
+    assert.throws(() => store.recordPayout(grace.id, {
+      amount_ksh: 30000, payout_method: 'mpesa', status: 'pending', reference: '',
+    }, 'agent_app_self_service'), /exceeds available commission balance/);
+    store.updateProviderPayout(pending.id, 'failed');
+    assert.equal(store.getAgent(grace.id).financials.pendingPayoutsKsh, 0);
+  });
+
+  await t.test('Per-agent first and recurring commission overrides are applied', () => {
+    const grace = store.listAgents().find(a => a.agent_code === 'AGT-1001');
+    store.updateAgent(grace.id, { first_payment_commission_rate: 30, recurring_payment_commission_rate: 7 });
+    const school = store.addSchool(grace.id, { school_name: 'Override School', tenant_key: 'override-school' });
+    const customer = { name: school.school_name, tenantKey: school.tenant_key };
+    const initial = store.attributePaymentCommission({
+      payment: { id: 'pay_override_first', amountKsh: 10000 },
+      invoice: { id: 'inv_override_first', invoiceNumber: 'INV-OVERRIDE-1', invoiceSnapshot: { customerSnapshot: customer } },
+      customer,
+    });
+    const recurring = store.attributePaymentCommission({
+      payment: { id: 'pay_override_recurring', amountKsh: 10000 },
+      invoice: { id: 'inv_override_recurring', invoiceNumber: 'INV-OVERRIDE-2', invoiceSnapshot: { customerSnapshot: customer } },
+      customer,
+    });
+    assert.equal(initial.earned_amount_ksh, 3000);
+    assert.equal(recurring.earned_amount_ksh, 700);
   });
 });
 

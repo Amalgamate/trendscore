@@ -2,6 +2,7 @@
 
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const { DatabaseSync } = require('node:sqlite');
 const { DEFAULT_PRODUCTS } = require('./billing-pricing');
 const { runMigrations } = require('./billing-migrate');
@@ -125,6 +126,18 @@ function createBillingStore(dataDir) {
       updated_by TEXT NOT NULL DEFAULT '',
       updated_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS mpesa_c2b_events (
+      transaction_id TEXT PRIMARY KEY,
+      bill_reference TEXT NOT NULL DEFAULT '',
+      amount_ksh INTEGER NOT NULL DEFAULT 0,
+      sender_phone TEXT NOT NULL DEFAULT '',
+      transaction_date TEXT NOT NULL DEFAULT '',
+      invoice_id TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'needs_review',
+      payload TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
   `);
 
   // Seed the price list once; INSERT OR IGNORE keeps any edits made later in the admin UI.
@@ -148,6 +161,7 @@ function createBillingStore(dataDir) {
   ensureColumn('billing_quotes', 'cancel_reason', "TEXT NOT NULL DEFAULT ''");
   ensureColumn('billing_invoices', 'cancel_reason', "TEXT NOT NULL DEFAULT ''");
   ensureColumn('billing_invoices', 'cancelled_by', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn('billing_contract_lines', 'cadence', "TEXT NOT NULL DEFAULT 'termly'");
 
   const customerColumns = `id, name, legal_name AS legalName, tenant_key AS tenantKey,
     billing_email AS billingEmail, billing_phone AS billingPhone,
@@ -168,8 +182,10 @@ function createBillingStore(dataDir) {
     sent_at AS sentAt, email_message_id AS emailMessageId, cancelled_at AS cancelledAt,
     cancelled_by AS cancelledBy, cancel_reason AS cancelReason`;
   const invoiceColumns = `id, invoice_number AS invoiceNumber, quote_id AS quoteId,
+    contract_id AS contractId, invoice_type AS invoiceType, period_key AS periodKey,
     customer_id AS customerId, invoice_snapshot AS invoiceSnapshotJson, amount_ksh AS amountKsh,
-    status, created_by AS createdBy, created_at AS createdAt, updated_at AS updatedAt,
+    status, settlement_status AS settlementStatus, due_date AS dueDate, issued_at AS issuedAt,
+    created_by AS createdBy, created_at AS createdAt, updated_at AS updatedAt,
     cancel_reason AS cancelReason, cancelled_by AS cancelledBy`;
   const decodeQuote = row => row && ({ ...row, status: row.cancelledAt ? 'cancelled' : (row.status === 'sent' && row.expiresOn && row.expiresOn < todayNairobi() ? 'expired' : row.status), customerSnapshot: decodeJson(row.customerSnapshotJson), quoteSnapshot: decodeJson(row.quoteSnapshotJson), customerSnapshotJson: undefined, quoteSnapshotJson: undefined });
   const decodeInvoice = row => row && ({ ...row, invoiceSnapshot: decodeJson(row.invoiceSnapshotJson), invoiceSnapshotJson: undefined });
@@ -229,10 +245,26 @@ function createBillingStore(dataDir) {
     },
     createContract(contract) {
       const now = new Date().toISOString();
-      db.prepare(`INSERT INTO billing_contracts
-        (id,customer_id,reference,service_description,cadence,start_date,end_date,renewal_date,terms_note,status,created_at,updated_at)
-        VALUES (@id,@customerId,@reference,@serviceDescription,@cadence,@startDate,@endDate,@renewalDate,@termsNote,@status,@createdAt,@updatedAt)`)
-        .run({ ...contract, createdAt: now, updatedAt: now });
+      const { lines = [], ...contractValues } = contract;
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        db.prepare(`INSERT INTO billing_contracts
+          (id,customer_id,reference,service_description,cadence,start_date,end_date,renewal_date,terms_note,status,created_at,updated_at)
+          VALUES (@id,@customerId,@reference,@serviceDescription,@cadence,@startDate,@endDate,@renewalDate,@termsNote,@status,@createdAt,@updatedAt)`)
+          .run({ ...contractValues, createdAt: now, updatedAt: now });
+        const lineStmt = db.prepare(`INSERT INTO billing_contract_lines
+          (id,contract_id,product_code,quantity,unit_price_ksh,description,cadence,created_at)
+          VALUES (?,?,?,?,?,?,?,?)`);
+        for (const line of Array.isArray(lines) ? lines : []) {
+          lineStmt.run(crypto.randomUUID(), contract.id, String(line.productCode || 'custom'),
+            Math.max(1, Number(line.quantity || 1)), Number(line.unitPriceKsh || 0), String(line.description || '').slice(0, 500),
+            ['one_off', 'termly', 'monthly', 'annual'].includes(line.cadence) ? line.cadence : 'termly', now);
+        }
+        db.exec('COMMIT');
+      } catch (error) {
+        try { db.exec('ROLLBACK'); } catch {}
+        throw error;
+      }
       return db.prepare(`SELECT ${contractColumns} FROM billing_contracts WHERE id = ?`).get(contract.id);
     },
     updateContract(id, contract) {
@@ -242,6 +274,11 @@ function createBillingStore(dataDir) {
         terms_note=@termsNote, status=@status, updated_at=@updatedAt WHERE id=@id`).run({ ...contract, id, updatedAt: now });
       if (!result.changes) return null;
       return db.prepare(`SELECT ${contractColumns} FROM billing_contracts WHERE id = ?`).get(id);
+    },
+    linkContractOnboardingInvoice(contractId, invoiceId) {
+      db.prepare(`UPDATE billing_contracts SET onboarding_invoice_id=?,updated_at=? WHERE id=?`)
+        .run(invoiceId, new Date().toISOString(), contractId);
+      return true;
     },
     listQuotes() {
       return db.prepare(`SELECT ${quoteColumns} FROM billing_quotes ORDER BY created_at DESC`).all().map(decodeQuote);
@@ -284,6 +321,24 @@ function createBillingStore(dataDir) {
       const result = db.prepare(`UPDATE billing_quotes SET status=@status, updated_at=@updatedAt WHERE id=@id`).run({ id, status, updatedAt: now });
       return result.changes ? this.getQuote(id) : null;
     },
+    recordQuoteAcceptance(id, acceptance) {
+      const now = new Date().toISOString();
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        const row = db.prepare(`SELECT quote_snapshot AS snapshot,status FROM billing_quotes WHERE id=?`).get(id);
+        if (!row || !['draft', 'sent'].includes(row.status)) throw new Error('This quote is no longer awaiting customer acceptance');
+        const snapshot = decodeJson(row.snapshot) || {};
+        snapshot.acceptance = { ...acceptance, acceptedAt: now };
+        const result = db.prepare(`UPDATE billing_quotes SET status='accepted',quote_snapshot=?,updated_at=? WHERE id=? AND status IN ('draft','sent')`)
+          .run(JSON.stringify(snapshot), now, id);
+        if (!result.changes) throw new Error('This quote changed before acceptance could be saved');
+        db.exec('COMMIT');
+      } catch (error) {
+        try { db.exec('ROLLBACK'); } catch {}
+        throw error;
+      }
+      return this.getQuote(id);
+    },
     recordQuoteDelivery(delivery) {
       const now = new Date().toISOString();
       db.prepare(`INSERT INTO billing_quote_deliveries
@@ -306,15 +361,83 @@ function createBillingStore(dataDir) {
     getInvoice(id) {
       return withPaymentTotals(decodeInvoice(db.prepare(`SELECT ${invoiceColumns} FROM billing_invoices WHERE id=?`).get(id) || null));
     },
+    getInvoiceByNumber(invoiceNumber) {
+      return withPaymentTotals(decodeInvoice(db.prepare(`SELECT ${invoiceColumns} FROM billing_invoices WHERE invoice_number=?`).get(String(invoiceNumber || '')) || null));
+    },
     getInvoiceForQuote(quoteId) {
       return withPaymentTotals(decodeInvoice(db.prepare(`SELECT ${invoiceColumns} FROM billing_invoices WHERE quote_id=?`).get(quoteId) || null));
+    },
+    getInvoiceForContractPeriod(contractId, periodKey) {
+      return withPaymentTotals(decodeInvoice(db.prepare(`SELECT ${invoiceColumns} FROM billing_invoices WHERE contract_id=? AND period_key=?`).get(contractId, periodKey) || null));
+    },
+    createTermRenewalInvoices(term, actor) {
+      const periodKey = `${term.year}-T${term.term}`;
+      const contracts = db.prepare(`SELECT c.*, cu.name AS customer_name, cu.legal_name AS customer_legal_name,
+        cu.tenant_key, cu.billing_email, cu.billing_phone, cu.billing_address, cu.tax_identifier, cu.currency
+        FROM billing_contracts c JOIN billing_customers cu ON cu.id=c.customer_id
+        WHERE c.status='active' AND c.cadence='termly' AND cu.status='active'
+        AND (c.start_date='' OR c.start_date<=?) AND (c.end_date='' OR c.end_date>=?)
+        ORDER BY c.created_at`).all(term.endDate, term.startDate);
+      const created = [];
+      for (const contract of contracts) {
+        const existing = this.getInvoiceForContractPeriod(contract.id, periodKey);
+        if (existing) continue;
+        const lines = db.prepare(`SELECT product_code AS productCode,quantity,unit_price_ksh AS unitPriceKsh,description
+          FROM billing_contract_lines WHERE contract_id=? AND cadence='termly' AND description NOT LIKE 'Discount (%'`).all(contract.id);
+        if (!lines.length) continue;
+        const amountKsh = lines.reduce((sum, line) => sum + Number(line.quantity) * Number(line.unitPriceKsh), 0);
+        if (!Number.isSafeInteger(amountKsh) || amountKsh <= 0) continue;
+        const id = crypto.randomUUID();
+        const now = new Date().toISOString();
+        const onboarding = contract.onboarding_invoice_id
+          ? db.prepare('SELECT invoice_snapshot FROM billing_invoices WHERE id=?').get(contract.onboarding_invoice_id)
+          : null;
+        const onboardingSnapshot = onboarding ? decodeJson(onboarding.invoice_snapshot) : null;
+        const snapshot = {
+          source: 'term_renewal', contractId: contract.id, periodKey,
+          customerSnapshot: {
+            name: contract.customer_name, legalName: contract.customer_legal_name, tenantKey: contract.tenant_key,
+            billingEmail: contract.billing_email, billingPhone: contract.billing_phone,
+            billingAddress: contract.billing_address, taxIdentifier: contract.tax_identifier, currency: contract.currency,
+          },
+          quoteSnapshot: {
+            enrollmentCount: Number(onboardingSnapshot?.quoteSnapshot?.enrollmentCount || 0),
+            lines: lines.map(line => ({ ...line, cadence: 'termly', amountKsh: Number(line.quantity) * Number(line.unitPriceKsh) })),
+          },
+          dueDate: term.dueDate, term: { year: term.year, term: term.term, startDate: term.startDate, endDate: term.endDate },
+          taxNote: 'Tax treatment is not included; this commercial invoice is not an eTIMS tax invoice.',
+        };
+        try {
+          db.exec('BEGIN IMMEDIATE');
+          db.prepare(`INSERT INTO billing_invoices
+            (id,invoice_number,quote_id,contract_id,invoice_type,period_key,customer_id,invoice_snapshot,amount_ksh,status,settlement_status,due_date,created_by,created_at,updated_at)
+            VALUES (?, ?, NULL, ?, 'renewal', ?, ?, ?, ?, 'draft', 'unpaid', ?, ?, ?, ?)`)
+            .run(id, `DRAFT-${periodKey}-${id.slice(0, 8)}`, contract.id, periodKey, contract.customer_id,
+              JSON.stringify(snapshot), amountKsh, term.dueDate || '', actor || 'system', now, now);
+          const insertLine = db.prepare(`INSERT INTO billing_invoice_lines
+            (id,invoice_id,description,quantity,unit_price_ksh,amount_ksh,product_code,cadence,sort_order,created_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?)`);
+          lines.forEach((line, index) => insertLine.run(crypto.randomUUID(), id, line.description,
+            Number(line.quantity), Number(line.unitPriceKsh), Number(line.quantity) * Number(line.unitPriceKsh),
+            line.productCode, 'termly', index, now));
+          db.exec('COMMIT');
+          created.push(this.getInvoice(id));
+        } catch (error) {
+          try { db.exec('ROLLBACK'); } catch {}
+          if (String(error.message).includes('UNIQUE')) continue;
+          throw error;
+        }
+      }
+      return { periodKey, created };
     },
     createDraftInvoice(invoice) {
       const now = new Date().toISOString();
       db.prepare(`INSERT INTO billing_invoices
-        (id,invoice_number,quote_id,customer_id,invoice_snapshot,amount_ksh,status,created_by,created_at,updated_at)
-        VALUES (@id,@invoiceNumber,@quoteId,@customerId,@invoiceSnapshot,@amountKsh,'draft',@createdBy,@createdAt,@updatedAt)`)
-        .run({ ...invoice, invoiceSnapshot: JSON.stringify(invoice.invoiceSnapshot), createdAt: now, updatedAt: now });
+        (id,invoice_number,quote_id,contract_id,invoice_type,period_key,customer_id,invoice_snapshot,amount_ksh,status,due_date,created_by,created_at,updated_at)
+        VALUES (@id,@invoiceNumber,@quoteId,@contractId,@invoiceType,@periodKey,@customerId,@invoiceSnapshot,@amountKsh,'draft',@dueDate,@createdBy,@createdAt,@updatedAt)`)
+        .run({ ...invoice, contractId: invoice.contractId || null, invoiceType: invoice.invoiceType || 'onboarding',
+          periodKey: invoice.periodKey || null, dueDate: invoice.dueDate || '',
+          invoiceSnapshot: JSON.stringify(invoice.invoiceSnapshot), createdAt: now, updatedAt: now });
       return decodeInvoice(db.prepare(`SELECT ${invoiceColumns} FROM billing_invoices WHERE id=?`).get(invoice.id));
     },
     updateDraftInvoice(id, details) {
@@ -360,6 +483,36 @@ function createBillingStore(dataDir) {
     getPayment(id) {
       return db.prepare(`SELECT id,invoice_id AS invoiceId,amount_ksh AS amountKsh,payment_date AS paymentDate,
         method,reference,notes,recorded_by AS recordedBy,created_at AS createdAt FROM billing_payments WHERE id=?`).get(id) || null;
+    },
+    getPaymentByReference(method, reference) {
+      return db.prepare(`SELECT id,invoice_id AS invoiceId,amount_ksh AS amountKsh,payment_date AS paymentDate,
+        method,reference,notes,recorded_by AS recordedBy,created_at AS createdAt
+        FROM billing_payments WHERE method=? AND lower(reference)=lower(?) LIMIT 1`).get(method, reference) || null;
+    },
+    recordMpesaC2BEvent(event) {
+      const now = new Date().toISOString();
+      db.prepare(`INSERT INTO mpesa_c2b_events
+        (transaction_id,bill_reference,amount_ksh,sender_phone,transaction_date,invoice_id,status,payload,created_at,updated_at)
+        VALUES (@transactionId,@billReference,@amountKsh,@senderPhone,@transactionDate,@invoiceId,@status,@payload,@createdAt,@updatedAt)
+        ON CONFLICT(transaction_id) DO NOTHING`).run({
+          transactionId: event.transactionId, billReference: event.billReference || '',
+          amountKsh: Number(event.amountKsh || 0), senderPhone: event.senderPhone || '',
+          transactionDate: event.transactionDate || '', invoiceId: event.invoiceId || '',
+          status: event.status || 'needs_review', payload: JSON.stringify(event.payload || {}),
+          createdAt: now, updatedAt: now,
+        });
+      return db.prepare('SELECT * FROM mpesa_c2b_events WHERE transaction_id=?').get(event.transactionId);
+    },
+    listMpesaC2BEvents({ status = '' } = {}) {
+      const rows = status
+        ? db.prepare('SELECT * FROM mpesa_c2b_events WHERE status=? ORDER BY created_at DESC').all(status)
+        : db.prepare('SELECT * FROM mpesa_c2b_events ORDER BY created_at DESC').all();
+      return rows.map(row => ({ ...row, payload: decodeJson(row.payload) }));
+    },
+    resolveMpesaC2BEvent(transactionId, invoiceId, status = 'allocated') {
+      const result = db.prepare(`UPDATE mpesa_c2b_events SET invoice_id=?,status=?,updated_at=? WHERE transaction_id=? AND status='needs_review'`)
+        .run(invoiceId || '', status, new Date().toISOString(), transactionId);
+      return result.changes > 0 ? db.prepare('SELECT * FROM mpesa_c2b_events WHERE transaction_id=?').get(transactionId) : null;
     },
     recordPayment(payment) {
       db.exec('BEGIN IMMEDIATE');

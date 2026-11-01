@@ -635,7 +635,7 @@
               <tbody id="billing-customers-table"><tr><td colspan="7">Loading customers…</td></tr></tbody></table></div>
           </div>
           <div class="panel billing-subpanel">
-            <div class="panel-header"><div><div class="panel-title">Service contracts</div><div class="panel-sub">Signed service terms and cadence. Contract prices and recurring schedules are not yet configured.</div></div></div>
+            <div class="panel-header"><div><div class="panel-title">Service contracts</div><div class="panel-sub">Signed service terms, saved per-term price lines, and renewal schedules.</div></div><span style="display:flex;gap:8px;align-items:center"><select class="form-select" id="billing-renewal-term" aria-label="Choose renewal term"><option value="">Choose term</option></select><button class="btn" id="billing-generate-term-invoices" data-super-admin-only type="button">Prepare renewal drafts</button></span></div>
             <div class="table-wrap"><table><thead><tr><th>Customer</th><th>Reference</th><th>Service</th><th>Cadence</th><th>Term</th><th>Status</th><th>Actions</th></tr></thead>
               <tbody id="billing-contracts-table"><tr><td colspan="7">Loading contracts…</td></tr></tbody></table></div>
           </div>
@@ -661,7 +661,9 @@
 
         <section class="billing-tab-panel" id="billing-panel-payments" role="tabpanel" aria-labelledby="billing-tab-payments" tabindex="0" hidden>
           <div class="billing-kpis" aria-label="Payment totals"><div class="billing-kpi"><span>Payments recorded</span><strong id="billing-kpi-payment-count">—</strong><small>Manual entries in the ledger</small></div><div class="billing-kpi"><span>Collected</span><strong id="billing-kpi-collected">—</strong><small>Payments allocated to invoices</small></div><div class="billing-kpi"><span>Outstanding</span><strong id="billing-kpi-outstanding">—</strong><small>Issued invoices less payments</small></div></div>
-          <div class="panel"><div class="panel-header"><div><div class="panel-title">Payment history</div><div class="panel-sub">Record verified bank, M-Pesa, cheque, or cash payments against issued invoices. Entries are kept in the ledger.</div></div><button class="btn primary" id="billing-payment-add" data-super-admin-only type="button">+ Record payment</button></div><div class="billing-register-note">Record a payment only after confirming receipt in your bank or payment provider. This does not initiate or verify a transfer.</div><div class="table-wrap"><table><thead><tr><th>Payment date</th><th>Invoice</th><th>Customer</th><th>Method</th><th>Reference</th><th>Amount</th><th>Recorded by</th><th>Receipt</th></tr></thead><tbody id="billing-payments-table"><tr><td colspan="8">Loading payments…</td></tr></tbody></table></div></div>
+          <div class="panel"><div class="panel-header"><div><div class="panel-title">Payment history</div><div class="panel-sub">Record verified bank, M-Pesa, cheque, or cash payments against issued invoices. Entries are kept in the ledger.</div></div><button class="btn primary" id="billing-payment-add" data-super-admin-only type="button">+ Record payment</button></div><div class="billing-register-note">Record a payment only after confirming receipt in your bank or payment provider. This does not initiate or verify a transfer.</div><div class="table-wrap"><table><thead><tr><th>Payment date</th><th>Invoice</th><th>Customer</th><th>Method</th><th>Reference</th><th>Amount</th><th>Recorded by</th><th>Receipt</th></tr></thead><tbody id="billing-payments-table"><tr><td colspan="8">Loading payments…</td></tr></tbody></table></div>
+            <div class="billing-subpanel"><div class="panel-header"><div><div class="panel-title">Daraja C2B</div><div class="panel-sub">Paybill collections are matched by invoice number. Unmatched or excess payments are queued for review.</div></div><button class="btn" id="billing-mpesa-c2b-register" data-super-admin-only type="button">Register C2B callbacks</button></div><div id="billing-mpesa-c2b-status" class="billing-register-note">Checking Daraja configuration…</div><div class="table-wrap"><table><thead><tr><th>Receipt</th><th>Reference</th><th>Sender</th><th>Date</th><th>Amount</th><th>Allocate to invoice</th></tr></thead><tbody id="billing-mpesa-c2b-events"><tr><td colspan="6">No unallocated C2B payments.</td></tr></tbody></table></div></div>
+          </div>
           <div class="panel billing-subpanel"><div class="panel-header"><div><div class="panel-title">Open invoice balances</div><div class="panel-sub">Only issued invoices can receive payment allocations.</div></div></div><div class="table-wrap"><table><thead><tr><th>Invoice</th><th>Customer</th><th>Issued</th><th>Due</th><th>Amount</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead><tbody id="billing-open-invoices-table"><tr><td colspan="8">Loading invoices…</td></tr></tbody></table></div></div>
         </section>
 
@@ -677,8 +679,9 @@
           <div class="panel">
             <div class="panel-header"><div><div class="panel-title">Billing configuration readiness</div><div class="panel-sub">Configuration values are shown as readiness only; credentials are never displayed.</div></div></div>
             <div id="billing-settings-email-status" class="billing-email-status" role="status">Checking email configuration…</div>
+            <div class="billing-setting-row" data-super-admin-only style="margin:12px 0"><span><strong>Automatic term renewal drafts</strong><br><small>On each configured billing date, create draft invoices from active termly contracts. Invoices are never automatically issued or emailed.</small></span><label><input id="billing-auto-term-renewals" type="checkbox"/> Enabled</label></div>
              <div class="billing-setting-row" data-super-admin-only style="margin:12px 0"><span><strong>Reset billing to zero</strong><br><small>Deletes all customers, contracts, quotes, invoices, payments and delivery logs. A backup file is saved first.</small></span><span><input class="form-input" id="billing-reset-confirm" placeholder="Type RESET BILLING" aria-label="Type RESET BILLING to confirm"> <button class="btn" id="billing-reset-btn" type="button">Reset billing</button></span></div>
-            <div class="billing-settings-grid"><div class="billing-setting-row"><span>Invoice status</span><strong>Commercial invoice issuance enabled</strong></div><div class="billing-setting-row"><span>Invoice numbering</span><strong>INV- prefix · based on quote reference</strong></div><div class="billing-setting-row"><span>Payments</span><strong>Manual recording · allocation to issued invoices</strong></div><div class="billing-setting-row"><span>Tax invoice / eTIMS integration</span><strong>Not configured</strong></div><div class="billing-setting-row"><span>Seller legal identity and tax details</span><strong>Confirm before tax invoice use</strong></div><div class="billing-setting-row"><span>Payment instructions</span><strong>Use customer-approved terms and verified references</strong></div></div><div class="billing-register-note">The issue action creates a commercial invoice and does not certify tax compliance or submit anything to eTIMS. Configure seller tax identity and an approved eTIMS route before treating these as tax invoices. Email sender credentials are managed in Communications.</div>
+            <div class="billing-settings-grid"><div class="billing-setting-row"><span>Invoice status</span><strong>Commercial invoice issuance enabled</strong></div><div class="billing-setting-row"><span>Invoice numbering</span><strong>Sequential INV-YYYY-NNNNNN</strong></div><div class="billing-setting-row"><span>Payments</span><strong>Manual ledger and optional Daraja C2B callbacks</strong></div><div class="billing-setting-row"><span>Tax invoice / eTIMS integration</span><strong>Not configured</strong></div><div class="billing-setting-row"><span>Seller legal identity and tax details</span><strong>Confirm before tax invoice use</strong></div><div class="billing-setting-row"><span>Payment instructions</span><strong>Use customer-approved terms and verified references</strong></div></div><div class="billing-register-note">The issue action creates a commercial invoice and does not certify tax compliance or submit anything to eTIMS. Configure seller tax identity and an approved eTIMS route before treating these as tax invoices. Email sender credentials are managed in Communications.</div>
           </div>
         </section>
       </div>
@@ -1058,7 +1061,7 @@
             <option value="new">New</option>
             <option value="contacted">Contacted</option>
             <option value="interested">Interested</option>
-            <option value="converted">Converted</option>
+            <option value="converted" disabled>Converted — use acceptance workflow</option>
             <option value="lost">Lost</option>
           </select>
         </div>
@@ -1115,6 +1118,44 @@
 </div>
 <!-- END LEAD MODAL -->
 
+<div class="overlay" id="lead-assign-agent-overlay" aria-modal="true" role="dialog" style="display:none">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header"><div class="modal-title">Assign CRM Lead to Agent</div><button class="modal-close" id="lead-assign-agent-close" type="button" aria-label="Close">×</button></div>
+    <div class="modal-body">
+      <input id="lead-assign-agent-id" type="hidden"/>
+      <p class="form-help" id="lead-assign-agent-school"></p>
+      <div class="form-row" style="margin-bottom:0"><label class="form-label" for="lead-assign-agent-select">Active field agent *</label><select class="form-select" id="lead-assign-agent-select"><option value="">Loading agents…</option></select></div>
+      <p class="form-help">This links the CRM lead to the agent’s school portfolio for explicit commission attribution.</p>
+    </div>
+    <div class="modal-footer"><button class="btn" id="lead-assign-agent-cancel" type="button">Cancel</button><button class="btn primary" id="lead-assign-agent-submit" type="button">Assign Lead</button></div>
+  </div>
+</div>
+
+<!-- LEAD CUSTOMER CONVERSION -->
+<div class="overlay" id="lead-convert-overlay" aria-modal="true" role="dialog">
+  <div class="modal" style="max-width:680px">
+    <div class="modal-header"><div class="modal-title">Convert accepted lead</div><button class="modal-close" id="lead-convert-close" type="button" aria-label="Close">×</button></div>
+    <div class="modal-body">
+      <input id="lc-lead-id" type="hidden"/>
+      <p id="lc-school-label" class="form-help">Creates the billing customer, active contract, accepted quote, and draft onboarding invoice.</p>
+      <div class="billing-quote-grid">
+        <div class="form-row"><label class="form-label" for="lc-email">Billing email</label><input class="form-input" id="lc-email" type="email" maxlength="254"/></div>
+        <div class="form-row"><label class="form-label" for="lc-phone">Billing phone</label><input class="form-input" id="lc-phone" type="tel" maxlength="40"/></div>
+        <div class="form-row"><label class="form-label" for="lc-school-type">School type *</label><select class="form-select" id="lc-school-type"><option value="private">Private school</option><option value="public_primary">Public primary school</option></select></div>
+        <div class="form-row"><label class="form-label" for="lc-students">Student count</label><input class="form-input" id="lc-students" type="number" min="0" max="100000" step="1"/></div>
+        <div class="form-row"><label class="form-label" for="lc-modules">Add-on modules</label><input class="form-input" id="lc-modules" placeholder="Comma-separated (optional)"/></div>
+        <div class="form-row"><label class="form-label" for="lc-accepted-by">Accepted by *</label><input class="form-input" id="lc-accepted-by" maxlength="160"/></div>
+        <div class="form-row"><label class="form-label" for="lc-acceptance-method">Acceptance method *</label><select class="form-select" id="lc-acceptance-method"><option value="signed_contract">Signed contract</option><option value="email">Email</option><option value="in_person">In person</option><option value="phone">Phone</option></select></div>
+        <div class="form-row"><label class="form-label" for="lc-start-date">Contract start date *</label><input class="form-input" id="lc-start-date" type="date"/></div>
+      </div>
+      <div class="form-row"><label class="form-label" for="lc-evidence">Acceptance evidence reference *</label><textarea class="form-input" id="lc-evidence" rows="2" maxlength="1200" placeholder="Document filename, email subject/date, or call record reference" style="resize:vertical;font-family:var(--sans)"></textarea></div>
+      <label class="form-help"><input id="lc-comms" type="checkbox"/> Include the communications module</label>
+      <p class="form-help">The invoice is created as a draft. Add a durable reference to the signed document or customer communication; conversion does not issue or email an invoice.</p>
+    </div>
+    <div class="modal-footer"><button class="btn" id="lead-convert-cancel" type="button">Cancel</button><button class="btn primary" id="lead-convert-submit" type="button">Create customer &amp; draft invoice</button></div>
+  </div>
+</div>
+
 <!-- BILLING CUSTOMER MODAL -->
 <div class="overlay" id="billing-customer-overlay" aria-modal="true" role="dialog">
   <div class="modal" style="max-width:650px">
@@ -1163,6 +1204,21 @@
       <div class="form-help">The total adds all listed lines; recurring periods are shown per line. Each quote stores the selected pricing rule and enrollment snapshot. Tax is not added to this quote.</div>
     </div>
     <div class="modal-footer"><button class="btn" id="billing-quote-cancel" type="button">Cancel</button><button class="btn primary" id="billing-quote-save" data-super-admin-only type="button">Save draft quote</button></div>
+  </div>
+</div>
+
+<div class="overlay" id="billing-acceptance-overlay" aria-modal="true" role="dialog">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header"><div class="modal-title">Record customer acceptance</div><button class="modal-close" id="billing-acceptance-close" type="button" aria-label="Close">×</button></div>
+    <div class="modal-body">
+      <input id="ba-quote-id" type="hidden"/>
+      <p id="ba-quote-label" class="form-help"></p>
+      <div class="form-row"><label class="form-label" for="ba-accepted-by">Accepted by *</label><input class="form-input" id="ba-accepted-by" maxlength="160"/></div>
+      <div class="form-row"><label class="form-label" for="ba-method">Acceptance method *</label><select class="form-select" id="ba-method"><option value="signed_contract">Signed contract</option><option value="email">Email</option><option value="in_person">In person</option><option value="phone">Phone</option></select></div>
+      <div class="form-row"><label class="form-label" for="ba-evidence">Evidence reference *</label><textarea class="form-input" id="ba-evidence" rows="3" maxlength="1200" placeholder="Signed agreement file, email subject/date, or CRM call record reference"></textarea></div>
+      <p class="form-help">This records your evidence reference and admin identity in the quote history. It does not replace keeping the signed document or original customer communication.</p>
+    </div>
+    <div class="modal-footer"><button class="btn" id="billing-acceptance-cancel" type="button">Cancel</button><button class="btn primary" id="billing-acceptance-submit" type="button">Save acceptance</button></div>
   </div>
 </div>
 
@@ -1280,16 +1336,12 @@
           <input class="form-input" id="agent-form-base" placeholder="e.g. Thika Town" maxlength="80"/>
         </div>
         <div class="form-row">
-          <label class="form-label" for="agent-form-commission-type">Commission Model</label>
-          <select class="form-select" id="agent-form-commission-type">
-            <option value="percentage">Percentage of Subscription (%)</option>
-            <option value="fixed_per_school">Fixed KES per School Onboarded</option>
-            <option value="fixed_per_student">Fixed KES per Enrolled Student</option>
-          </select>
+          <label class="form-label" for="agent-form-first-commission-rate">First school invoice commission (%) *</label>
+          <input class="form-input" id="agent-form-first-commission-rate" type="number" min="0" max="100" step="0.1" value="25" required/>
         </div>
         <div class="form-row">
-          <label class="form-label" for="agent-form-commission-rate">Commission Rate / Amount *</label>
-          <input class="form-input" id="agent-form-commission-rate" type="number" step="0.1" value="10.0" placeholder="10.0" required/>
+          <label class="form-label" for="agent-form-recurring-commission-rate">Recurring term commission (%) *</label>
+          <input class="form-input" id="agent-form-recurring-commission-rate" type="number" min="0" max="100" step="0.1" value="10" required/>
         </div>
         <div class="form-row">
           <label class="form-label" for="agent-form-mpesa">M-Pesa Payout Number</label>
@@ -1312,9 +1364,9 @@
           <input class="form-input" id="agent-form-bank-account" placeholder="e.g. 0123456789" maxlength="80"/>
         </div>
         <div class="form-row" style="grid-column:1/-1">
-          <label class="form-label" for="agent-form-pin">Agent App Access PIN (4-digit)</label>
-          <input class="form-input" id="agent-form-pin" type="password" maxlength="6" placeholder="Set a 4-6 digit numeric PIN for the agent mobile app"/>
-          <div class="form-hint" style="font-size:11px;color:var(--muted);margin-top:3px">The agent will use their phone number and this PIN to log in to their mobile earnings dashboard.</div>
+          <label class="form-label" for="agent-form-pin">Agent App Access PIN</label>
+          <input class="form-input" id="agent-form-pin" type="password" maxlength="6" placeholder="Generated after saving" disabled/>
+          <div class="form-hint" style="font-size:11px;color:var(--muted);margin-top:3px">A temporary 6-digit PIN is generated after creation or reset, shown once, and must be changed at first sign-in.</div>
         </div>
         <div class="form-row" style="grid-column:1/-1;margin-bottom:0">
           <label class="form-label" for="agent-form-notes">Internal Notes &amp; Terms Reference</label>
@@ -1360,8 +1412,10 @@
         <button class="btn" id="btn-agent-add-school" type="button">+ Assign School</button>
         <button class="btn" id="btn-agent-add-earning" type="button">+ Record Commission</button>
         <button class="btn" id="btn-agent-edit-profile" type="button">✏️ Edit Profile</button>
+        <button class="btn" id="btn-agent-reset-pin" data-super-admin-only type="button">🔐 Reset Agent PIN</button>
         <button class="btn danger-outline" id="btn-agent-delete" type="button">🗑️ Delete Agent</button>
       </div>
+      <div id="agent-pin-reset-request" hidden style="margin:0 0 14px;padding:10px 12px;border:1px solid rgba(217,119,6,.28);background:rgba(217,119,6,.08);border-radius:8px;color:#92400e;font-size:12px"></div>
 
       <!-- Financial Performance Stats -->
       <div class="drawer-kpi-grid">
@@ -1468,24 +1522,25 @@
 <div class="overlay" id="agent-payout-overlay" aria-modal="true" role="dialog" style="display:none">
   <div class="modal" style="max-width:480px">
     <div class="modal-header">
-      <div class="modal-title">Record Agent Payout</div>
+      <div class="modal-title">Record Manual Payout (Already Sent)</div>
       <button class="modal-close" id="agent-payout-close" type="button" aria-label="Close">×</button>
     </div>
     <div class="modal-body">
       <div style="padding:10px 12px;background:rgba(3,11,130,.05);border-radius:6px;margin-bottom:14px">
-        <div style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase">Disbursing To</div>
+        <div style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase">Recipient</div>
         <div id="payout-modal-agent-name" style="font-weight:700;font-size:14px;color:var(--ink)">-</div>
         <div id="payout-modal-agent-mpesa" style="font-size:12px;color:var(--muted)">M-Pesa: -</div>
         <div id="payout-modal-balance-hint" style="font-size:12px;font-weight:600;color:var(--brand);margin-top:4px">Current Outstanding Balance: KES 0</div>
       </div>
+      <div class="billing-register-note" style="margin-bottom:14px">This is a bookkeeping entry for a transfer already made outside this console. It does not send money.</div>
       <div class="form-row">
         <label class="form-label" for="payout-form-amount">Payout Amount (KES) *</label>
         <input class="form-input" id="payout-form-amount" type="number" step="1" required/>
       </div>
       <div class="form-row">
-        <label class="form-label" for="payout-form-method">Disbursement Method</label>
+        <label class="form-label" for="payout-form-method">Method already used</label>
         <select class="form-select" id="payout-form-method">
-          <option value="mpesa">M-Pesa B2C / Send Money</option>
+          <option value="mpesa">M-Pesa transfer (already sent)</option>
           <option value="bank_transfer">Bank Transfer (EFT / RTGS)</option>
           <option value="cash">Cash Voucher</option>
           <option value="other">Other / Cheque</option>
@@ -1503,10 +1558,11 @@
         <label class="form-label" for="payout-form-notes">Notes / Reason</label>
         <input class="form-input" id="payout-form-notes" placeholder="e.g. Term 1 settlement" maxlength="250"/>
       </div>
+      <label style="display:flex;gap:8px;align-items:flex-start;margin-top:14px;font-size:12px;color:var(--ink)"><input id="payout-transfer-confirmed" type="checkbox" style="margin-top:2px"/><span>I confirm this payout was already sent and the reference above is its receipt or transaction ID.</span></label>
     </div>
     <div class="modal-footer">
       <button class="btn" id="payout-form-cancel" type="button">Cancel</button>
-      <button class="btn primary" id="payout-form-submit" type="button">Confirm &amp; Record Payout</button>
+      <button class="btn primary" id="payout-form-submit" type="button" disabled>Confirm Sent &amp; Record</button>
     </div>
   </div>
 </div>
