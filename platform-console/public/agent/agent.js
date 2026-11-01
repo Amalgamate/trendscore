@@ -3,6 +3,7 @@
 // ── State ─────────────────────────────────────────────────────────────────
 let currentAgent = null;
 let currentTab = 'dashboard';
+let walletReadiness = null;
 const TOKEN_KEY = 'trendscore_agent_jwt';
 
 // ── Utilities ─────────────────────────────────────────────────────────────
@@ -98,6 +99,7 @@ function showLoginView() {
     showAuthView('login');
   }
   currentAgent = null;
+  walletReadiness = null;
 }
 
 function showAppView() {
@@ -184,6 +186,7 @@ async function handleLogin(e) {
 
     if (data.token) setStoredToken(data.token);
     currentAgent = data.agent;
+    walletReadiness = null;
     showAppView();
     if (data.agent.status === 'pending') {
       showToast('Your account is awaiting approval.');
@@ -256,6 +259,7 @@ async function handleRegister(e) {
 
     if (data.token) setStoredToken(data.token);
     currentAgent = data.agent;
+    walletReadiness = null;
     showAppView();
     if (data.agent.status === 'pending') {
       showToast('Registration successful! Your application is under review.');
@@ -481,6 +485,8 @@ function renderAgent() {
 
   // Render Earnings Ledger
   renderEarningsList();
+  renderWallet();
+  loadWalletReadiness();
 
   // Render Profile
   renderProfile();
@@ -584,8 +590,7 @@ function renderProfile() {
 
   const mpesaInput = document.getElementById('profMpesa');
   if (mpesaInput) mpesaInput.value = currentAgent.mpesa_number || currentAgent.phone || '';
-
-  // Render Payouts
+}
 
 // ── Marketplace Functions ───────────────────────────────────────────────────────
 let marketCatalog = [
@@ -753,32 +758,86 @@ function onTabChange(tab) {
   marketCurrentView = 'browse';
 }
 
-  const payouts = currentAgent.payouts || [];
-  const payoutsContainer = document.getElementById('profPayoutsList');
+function renderWallet() {
+  if (!currentAgent) return;
+  const financials = currentAgent.financials || {};
+  const available = Number(financials.balanceDueKsh || 0);
+  const minimum = Number(walletReadiness?.minimumWithdrawalKsh || 500);
+  const destination = walletReadiness?.mpesaNumber || currentAgent.mpesa_number || currentAgent.phone || '';
+  const setText = (id, value) => { const el = document.getElementById(id); if (el) el.textContent = value; };
+  setText('walletAvailable', formatKsh(available));
+  setText('walletLifetime', `KES ${formatKsh(financials.totalEarnedKsh)}`);
+  setText('walletPaid', `KES ${formatKsh(financials.totalPaidKsh)}`);
+  setText('walletPending', `KES ${formatKsh(financials.pendingPayoutsKsh)}`);
+  setText('walletPayoutPhone', destination ? `M-Pesa · ${destination}` : 'M-Pesa number not set');
+  setText('withdrawPhoneDisplay', destination || 'None set');
+  setText('walletFirstRate', `${Number(currentAgent.first_payment_commission_rate ?? 25)}%`);
+  setText('walletRecurringRate', `${Number(currentAgent.recurring_payment_commission_rate ?? 10)}%`);
+  const enabled = Boolean(walletReadiness?.withdrawalsEnabled);
+  const button = document.getElementById('walletWithdrawBtn');
+  if (button) button.disabled = !enabled || available < minimum || !destination;
+  const hint = document.getElementById('walletActionHint');
+  if (hint) hint.textContent = !enabled
+    ? 'M-Pesa payouts are not enabled yet. You can still review your wallet and update your payout number.'
+    : available < minimum
+      ? `At least KES ${formatKsh(minimum)} must be available before you can request a settlement.`
+      : 'Choose an amount, confirm the destination, and authorize with your PIN.';
+  const readiness = document.getElementById('walletProviderNotice');
+  if (readiness) {
+    const checking = walletReadiness === null;
+    const ready = Boolean(walletReadiness?.withdrawalsEnabled);
+    readiness.className = `wallet-provider-notice ${checking ? 'checking' : ready ? 'ready' : 'setup'}`;
+    readiness.innerHTML = `<span class="wallet-notice-icon">${checking ? '…' : ready ? '✓' : '!'}</span><div><strong>${checking ? 'Checking M-Pesa settlement status' : ready ? 'M-Pesa settlements are ready' : 'M-Pesa setup is pending'}</strong><p>${escapeHtml(checking ? 'Checking payout availability for this account.' : walletReadiness.message)}</p></div>`;
+  }
+  const payouts = Array.isArray(walletReadiness?.payouts) ? walletReadiness.payouts : (currentAgent.payouts || []);
+  const payoutContainer = document.getElementById('walletPayoutsList');
+  setText('walletPayoutCount', `${payouts.length} ${payouts.length === 1 ? 'transfer' : 'transfers'}`);
+  if (payoutContainer) {
+    if (!payouts.length) {
+      payoutContainer.innerHTML = `<div class="wallet-empty-activity"><span class="wallet-empty-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H20a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5.5A2.5 2.5 0 0 1 3 16.5z"/><path d="M3 8h15a2 2 0 0 1 2 2v1h-4a2 2 0 0 0 0 4h4v1"/></svg></span><div><strong>No M-Pesa settlements yet</strong><p>When your available commission reaches KES ${formatKsh(minimum)}, you can request your first payout here.</p></div></div>`;
+    } else {
+      payoutContainer.innerHTML = payouts.map(p => {
+        const state = ['pending', 'completed', 'failed'].includes(p.status) ? p.status : 'pending';
+        const title = state === 'completed'
+          ? p.provider_transaction_id ? 'Safaricom confirmed M-Pesa transfer' : `Payout recorded · ${(p.payout_method || 'other').replaceAll('_', ' ')}`
+          : state === 'failed' ? 'Transfer failed · funds released' : 'Awaiting Safaricom confirmation';
+        const reference = p.provider_transaction_id || p.reference || p.id;
+        const date = String(p.payout_date || p.created_at || '').slice(0, 10) || 'Date pending';
+        return `<article class="wallet-transfer-item"><span class="wallet-transfer-icon ${state}">${state === 'completed' ? '✓' : state === 'failed' ? '!' : '◷'}</span><div class="wallet-transfer-main"><strong>${escapeHtml(title)}</strong><span>${escapeHtml(date)} · ${escapeHtml(reference)}</span>${state === 'failed' ? `<button class="wallet-retry-btn" type="button" onclick="openWithdrawModal(${Number(p.amount_ksh) || 0})">Request this amount again</button>` : ''}</div><div class="wallet-transfer-amount"><strong>KES ${formatKsh(p.amount_ksh)}</strong><span class="wallet-status-pill ${state}">${state === 'completed' ? 'Paid' : state === 'failed' ? 'Failed' : 'Pending'}</span></div></article>`;
+      }).join('');
+    }
+  }
+}
 
-  if (payouts.length === 0) {
-    payoutsContainer.innerHTML = `
-      <div class="empty-state" style="padding: 20px;">
-        <div class="empty-desc">No disbursements recorded yet.</div>
-      </div>
-    `;
-  } else {
-    payoutsContainer.innerHTML = payouts.map(p => `
-      <div class="ledger-item">
-        <div class="ledger-info">
-          <div class="ledger-title">Disbursed via ${escapeHtml(p.payout_method || 'mpesa').toUpperCase()}</div>
-          <div class="ledger-sub">
-            <span>Ref: ${escapeHtml(p.reference || '-')}</span>
-            <span>·</span>
-            <span>${escapeHtml(String(p.payout_date || p.created_at || '').slice(0, 10))}</span>
-          </div>
-        </div>
-        <div class="ledger-amount">
-          <div class="ledger-val" style="color: var(--text-main);">KES ${formatKsh(p.amount_ksh)}</div>
-          <div class="ledger-status approved">${escapeHtml(p.status || 'completed')}</div>
-        </div>
-      </div>
-    `).join('');
+async function loadWalletReadiness() {
+  try {
+    const data = await api('/api/agent/wallet');
+    walletReadiness = data.wallet || null;
+    renderWallet();
+  } catch (error) {
+    walletReadiness = { withdrawalsEnabled: false, message: 'Could not check M-Pesa readiness. Refresh this page to try again.', minimumWithdrawalKsh: 500 };
+    renderWallet();
+  }
+}
+
+async function refreshWallet() {
+  const button = document.getElementById('walletRefreshBtn');
+  if (button) button.disabled = true;
+  try {
+    const data = await api('/api/agent/wallet');
+    walletReadiness = data.wallet || null;
+    if (currentAgent && data.wallet) {
+      currentAgent.financials = data.wallet.financials;
+      currentAgent.earnings = data.wallet.earnings;
+      currentAgent.payouts = data.wallet.payouts;
+      currentAgent.mpesa_number = data.wallet.mpesaNumber;
+      renderAgent();
+    }
+    showToast('Wallet updated');
+  } catch (error) {
+    showToast(error.message || 'Could not refresh wallet', true);
+  } finally {
+    if (button) button.disabled = false;
   }
 }
 
@@ -845,6 +904,8 @@ async function saveProfileMpesa() {
       body: JSON.stringify({ mpesa_number }),
     });
     currentAgent = data.agent;
+    walletReadiness = { ...(walletReadiness || {}), mpesaNumber: currentAgent.mpesa_number || currentAgent.phone || '' };
+    renderWallet();
     showToast('Payment phone updated successfully');
   } catch (err) {
     showToast(err.message, true);
@@ -920,15 +981,26 @@ function renderNotifications() {
 }
 
 // ── Transfer to M-Pesa ───────────────────────────────────────────────────
-function openWithdrawModal() {
+function openWithdrawModal(requestedAmount = 0) {
   if (!currentAgent) return;
+  if (!walletReadiness?.withdrawalsEnabled) {
+    showToast(walletReadiness?.message || 'M-Pesa withdrawals are still being configured.', true);
+    return;
+  }
   const avail = Number(currentAgent.financials?.balanceDueKsh || 0);
+  if (avail < 500) {
+    showToast('At least KES 500 must be available before you can request a settlement.', true);
+    return;
+  }
   document.getElementById('withdrawAvailBal').textContent = formatKsh(avail);
   document.getElementById('withdrawPhoneDisplay').textContent = currentAgent.mpesa_number || currentAgent.phone || 'None set';
-  
+  const phoneStatus = document.getElementById('withdrawPhoneStatus');
+  if (phoneStatus) phoneStatus.textContent = 'Saved on profile';
   const amountInput = document.getElementById('withdrawAmount');
-  amountInput.value = '';
+  amountInput.max = String(avail);
+  amountInput.value = requestedAmount > 0 ? String(Math.min(requestedAmount, avail)) : '';
   document.getElementById('withdrawPin').value = '';
+  document.getElementById('withdrawConfirm').checked = false;
 
   document.getElementById('modalWithdraw').classList.add('active');
   setTimeout(() => amountInput.focus(), 150);
@@ -941,13 +1013,13 @@ function closeWithdrawModal() {
 function setWithdrawAmount(val) {
   const avail = Number(currentAgent?.financials?.balanceDueKsh || 0);
   const input = document.getElementById('withdrawAmount');
-  input.value = Math.min(val, avail);
+  input.value = Math.floor(Math.min(val, avail));
 }
 
 function setWithdrawMax() {
   const avail = Number(currentAgent?.financials?.balanceDueKsh || 0);
   const input = document.getElementById('withdrawAmount');
-  input.value = avail;
+  input.value = Math.floor(avail);
 }
 
 async function handleWithdraw(e) {
@@ -956,8 +1028,20 @@ async function handleWithdraw(e) {
   const pin = document.getElementById('withdrawPin').value.trim();
   const btn = document.getElementById('btnSubmitWithdraw');
 
-  if (isNaN(amount) || amount < 500) {
+  if (!Number.isSafeInteger(amount) || amount < 500) {
     showToast('Minimum transfer amount is KES 500', true);
+    return;
+  }
+  if (amount > Number(currentAgent?.financials?.balanceDueKsh || 0)) {
+    showToast('The requested amount is above your available wallet balance.', true);
+    return;
+  }
+  if (!walletReadiness?.withdrawalsEnabled) {
+    showToast(walletReadiness?.message || 'M-Pesa withdrawals are not available yet.', true);
+    return;
+  }
+  if (!document.getElementById('withdrawConfirm')?.checked) {
+    showToast('Confirm the payout amount and M-Pesa destination before continuing.', true);
     return;
   }
 
@@ -976,14 +1060,14 @@ async function handleWithdraw(e) {
     });
 
     closeWithdrawModal();
-    showToast(data.message || `Transferred KES ${formatKsh(amount)} to M-Pesa!`);
+    showToast(data.message || `Settlement request for KES ${formatKsh(amount)} submitted.`);
     await fetchAgentData();
     await fetchNotifications();
   } catch (err) {
     showToast(err.message || 'Transfer failed', true);
   } finally {
     btn.disabled = false;
-    btn.innerHTML = '<span>Authorize &amp; Transfer to M-Pesa</span>';
+    btn.innerHTML = '<span>Authorize Settlement Request</span>';
   }
 }
 

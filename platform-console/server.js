@@ -2167,6 +2167,27 @@ app.get('/api/agent/me', requireAgentAuth, (req, res) => {
   return res.json({ ok: true, agent: fresh || req.agent });
 });
 
+app.get('/api/agent/wallet', requireAgentAuth, (req, res) => {
+  const agent = agentsStore.getAgent(req.agent.id);
+  if (!agent) return res.status(404).json({ ok: false, error: 'Agent account not found' });
+  const provider = daraja.configurationStatus();
+  const withdrawalsEnabled = Boolean(provider.b2cReady && provider.b2cEnabled);
+  const message = withdrawalsEnabled
+    ? 'M-Pesa withdrawals are ready. New requests remain pending until Safaricom confirms the result.'
+    : provider.b2cReady
+      ? 'Your wallet is ready, but the platform operator has not enabled Daraja B2C payouts yet.'
+      : 'M-Pesa settlements are temporarily unavailable while the platform operator completes Daraja B2C setup.';
+  return res.json({ ok: true, wallet: {
+    financials: agent.financials,
+    earnings: agent.earnings,
+    payouts: agent.payouts,
+    mpesaNumber: agent.mpesa_number || agent.phone || '',
+    minimumWithdrawalKsh: 500,
+    withdrawalsEnabled,
+    message,
+  } });
+});
+
 app.post('/api/agent/schools', requireAgentAuth, (req, res) => {
   const body = req.body || {};
   const schoolName = String(body.school_name || '').trim();
