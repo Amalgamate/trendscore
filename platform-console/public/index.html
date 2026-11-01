@@ -1407,7 +1407,7 @@
     <div class="drawer-body">
       <!-- Quick Action Buttons inside Drawer -->
       <div class="drawer-action-bar">
-        <button class="btn primary" id="btn-agent-record-payout" type="button">💸 Record Payout</button>
+        <button class="btn primary" id="btn-agent-record-payout" type="button">💸 Record External Payout</button>
         <button class="btn" id="btn-agent-approve" type="button" style="display:none;background:rgba(5,150,105,.12);color:#059669;border-color:rgba(5,150,105,.3)">✓ Approve Application</button>
         <button class="btn" id="btn-agent-reject" type="button" style="display:none;background:rgba(220,38,38,.08);color:#dc2626;border-color:rgba(220,38,38,.2)">✗ Reject Application</button>
         <button class="btn" id="btn-agent-add-school" type="button">+ Assign School</button>
@@ -1416,6 +1416,10 @@
         <button class="btn" id="btn-agent-reset-pin" data-super-admin-only type="button">🔐 Reset Agent PIN</button>
         <button class="btn danger-outline" id="btn-agent-delete" type="button">🗑️ Delete Agent</button>
       </div>
+      <section class="agent-drawer-operation" id="agent-drawer-operation" hidden aria-live="polite">
+        <div class="agent-drawer-operation-toolbar"><strong id="agent-drawer-operation-title">Agent operation</strong><button class="btn sm" id="agent-drawer-operation-back" type="button">← Back to agent</button></div>
+        <div id="agent-drawer-operation-content"></div>
+      </section>
       <div id="agent-pin-reset-request" hidden style="margin:0 0 14px;padding:10px 12px;border:1px solid rgba(217,119,6,.28);background:rgba(217,119,6,.08);border-radius:8px;color:#92400e;font-size:12px"></div>
 
       <!-- Financial Performance Stats -->

@@ -4116,38 +4116,124 @@ function renderAgentsTable() {
   }).join('');
 }
 
-async function approveAgent(agentId) {
-  if (!confirm('Approve this agent and give them access to the Field Agent Portal?')) return;
+async function approveAgent(agentId, confirmed = false) {
+  if (!confirmed) {
+    openAgentOperationContent('Approve agent application', `<div class="modal"><div class="modal-body"><p>Approve <strong>${esc(CURRENT_AGENT?.full_name || 'this agent')}</strong> and give them access to the Field Agent Portal?</p></div><div class="modal-footer"><button class="btn" id="agent-approve-cancel" type="button">Cancel</button><button class="btn primary" id="agent-approve-confirm" type="button">Approve agent</button></div></div>`);
+    $('agent-approve-cancel')?.addEventListener('click', closeAgentOperation);
+    $('agent-approve-confirm')?.addEventListener('click', () => approveAgent(agentId, true));
+    return;
+  }
   try {
-    await fetch(`/api/agents/${agentId}/approve`, { method: 'POST', credentials: 'same-origin' });
+    const response = await fetch(`/api/agents/${agentId}/approve`, { method: 'POST', credentials: 'same-origin' });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || 'Failed to approve agent');
     toast('Agent approved — they can now sign in to the portal');
+    closeAgentOperation();
     loadAgentsData();
     if (CURRENT_AGENT && CURRENT_AGENT.id === agentId) {
       openAgentDetailModal(agentId);
     }
   } catch (err) {
-    toast('Failed to approve agent: ' + err.message, true);
+    setAgentOperationFeedback('Failed to approve agent: ' + err.message);
   }
 }
 
-async function rejectAgent(agentId) {
-  if (!confirm('Reject this agent application? Their account will be set to inactive.')) return;
+async function rejectAgent(agentId, confirmed = false) {
+  if (!confirmed) {
+    openAgentOperationContent('Reject agent application', `<div class="modal"><div class="modal-body"><p>Reject <strong>${esc(CURRENT_AGENT?.full_name || 'this agent')}</strong>? Their account will be set to inactive.</p></div><div class="modal-footer"><button class="btn" id="agent-reject-cancel" type="button">Cancel</button><button class="btn danger-outline" id="agent-reject-confirm" type="button">Reject application</button></div></div>`);
+    $('agent-reject-cancel')?.addEventListener('click', closeAgentOperation);
+    $('agent-reject-confirm')?.addEventListener('click', () => rejectAgent(agentId, true));
+    return;
+  }
   try {
-    await fetch(`/api/agents/${agentId}/reject`, { method: 'POST', credentials: 'same-origin' });
+    const response = await fetch(`/api/agents/${agentId}/reject`, { method: 'POST', credentials: 'same-origin' });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || 'Failed to reject agent');
     toast('Agent application rejected');
+    closeAgentOperation();
     loadAgentsData();
     if (CURRENT_AGENT && CURRENT_AGENT.id === agentId) {
       openAgentDetailModal(agentId);
     }
   } catch (err) {
-    toast('Failed to reject agent: ' + err.message, true);
+    setAgentOperationFeedback('Failed to reject agent: ' + err.message);
   }
 }
 
 window.approveAgent = approveAgent;
 window.rejectAgent = rejectAgent;
 
+function closeAgentOperation() {
+  const panel = $('agent-drawer-operation');
+  const content = $('agent-drawer-operation-content');
+  const modal = content?.querySelector('.modal');
+  if (modal) {
+    const overlay = $(modal.dataset.operationOverlay || '');
+    const originalStyle = modal.dataset.operationOriginalStyle;
+    if (originalStyle !== undefined) modal.setAttribute('style', originalStyle);
+    delete modal.dataset.operationOverlay;
+    delete modal.dataset.operationOriginalStyle;
+    if (overlay) overlay.appendChild(modal);
+  }
+  if (content) content.replaceChildren();
+  if (panel) panel.hidden = true;
+  if ($('agent-detail-drawer')) $('agent-detail-drawer').scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function openAgentOperationFromOverlay(overlayId, title) {
+  const panel = $('agent-drawer-operation');
+  const content = $('agent-drawer-operation-content');
+  if (panel && !panel.hidden) closeAgentOperation();
+  const overlay = $(overlayId);
+  const modal = overlay?.querySelector('.modal');
+  if (!panel || !content || !overlay || !modal) return false;
+  modal.dataset.operationOverlay = overlayId;
+  modal.dataset.operationOriginalStyle = modal.getAttribute('style') || '';
+  modal.setAttribute('aria-label', title);
+  modal.querySelectorAll('.agent-drawer-operation-feedback').forEach(node => node.remove());
+  content.appendChild(modal);
+  overlay.style.display = 'none';
+  $('agent-drawer-operation-title').textContent = title;
+  panel.hidden = false;
+  const body = modal.querySelector('.modal-body');
+  const feedback = document.createElement('div');
+  feedback.className = 'agent-drawer-operation-feedback';
+  feedback.id = 'agent-drawer-operation-feedback';
+  body?.after(feedback);
+  panel.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  const firstInput = modal.querySelector('input:not([type="hidden"]):not([disabled]),select,textarea');
+  firstInput?.focus({ preventScroll: true });
+  return true;
+}
+
+function openAgentOperationContent(title, markup) {
+  closeAgentOperation();
+  const panel = $('agent-drawer-operation');
+  if (!panel) return null;
+  $('agent-drawer-operation-title').textContent = title;
+  $('agent-drawer-operation-content').innerHTML = markup;
+  panel.hidden = false;
+  panel.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  return $('agent-drawer-operation-content');
+}
+
+function setAgentOperationFeedback(message, type = 'error') {
+  const content = $('agent-drawer-operation-content');
+  if (!content) return;
+  let feedback = content.querySelector('#agent-drawer-operation-feedback');
+  if (!feedback) {
+    feedback = document.createElement('div');
+    feedback.id = 'agent-drawer-operation-feedback';
+    feedback.className = 'agent-drawer-operation-feedback';
+    const footer = content.querySelector('.modal-footer');
+    if (footer) footer.before(feedback); else content.appendChild(feedback);
+  }
+  feedback.textContent = message || '';
+  feedback.className = `agent-drawer-operation-feedback${message ? ` visible ${type}` : ''}`;
+}
+
 function openNewAgentModal() {
+  closeAgentOperation();
   $('agent-form-id').value = '';
   $('agent-modal-title').textContent = 'Register Field Agent';
   if ($('agent-form-delete')) $('agent-form-delete').style.display = 'none';
@@ -4169,7 +4255,7 @@ function openNewAgentModal() {
 }
 
 function openEditAgentModal(agentId) {
-  const agent = AGENTS.find(a => a.id === agentId);
+  const agent = CURRENT_AGENT?.id === agentId ? CURRENT_AGENT : AGENTS.find(a => a.id === agentId);
   if (!agent) return;
   $('agent-form-id').value = agent.id;
   $('agent-modal-title').textContent = `Edit Agent — ${agent.agent_code}`;
@@ -4188,19 +4274,19 @@ function openEditAgentModal(agentId) {
   $('agent-form-bank-account').value = agent.bank_account || '';
   $('agent-form-pin').value = '';
   $('agent-form-notes').value = agent.notes || '';
-  $('agent-modal-overlay').style.display = 'grid';
+  if ($('agent-detail-overlay')?.classList.contains('open')) openAgentOperationFromOverlay('agent-modal-overlay', 'Edit agent profile');
+  else $('agent-modal-overlay').style.display = 'grid';
 }
 
-async function deleteAgent(agentId) {
+async function deleteAgent(agentId, confirmed = false) {
   const agent = AGENTS.find(a => a.id === agentId) || CURRENT_AGENT;
   const name = agent ? `${agent.full_name} (${agent.agent_code})` : 'this agent';
-
-  const confirmed = confirm(
-    `Are you sure you want to delete ${name}?\n\n` +
-    `This will permanently remove the agent and all associated school assignments, commissions, and payout records.\n\n` +
-    `This action cannot be undone.`
-  );
-  if (!confirmed) return;
+  if (!confirmed) {
+    const content = openAgentOperationContent('Delete agent', `<div class="modal"><div class="modal-body"><p><strong>Delete ${esc(name)}?</strong></p><p>This permanently removes the agent, school assignments, commissions, and payout records. This cannot be undone.</p></div><div class="modal-footer"><button class="btn" id="agent-delete-cancel" type="button">Keep agent</button><button class="btn danger-outline" id="agent-delete-confirm" type="button">Delete permanently</button></div></div>`);
+    $('agent-delete-cancel')?.addEventListener('click', closeAgentOperation);
+    $('agent-delete-confirm')?.addEventListener('click', () => deleteAgent(agentId, true));
+    return;
+  }
 
   try {
     const res = await fetch(`/api/agents/${agentId}`, {
@@ -4218,7 +4304,7 @@ async function deleteAgent(agentId) {
     CURRENT_AGENT = null;
     loadAgentsData();
   } catch (err) {
-    alert('Error deleting agent: ' + err.message);
+    setAgentOperationFeedback('Error deleting agent: ' + err.message);
   }
 }
 
@@ -4226,8 +4312,8 @@ async function saveAgentForm() {
   const id = $('agent-form-id').value.trim();
   const full_name = $('agent-form-name').value.trim();
   const phone = $('agent-form-phone').value.trim();
-  if (!full_name) return alert('Full Name is required');
-  if (!phone) return alert('Primary Phone number is required');
+  if (!full_name) return id && !$('agent-drawer-operation').hidden ? setAgentOperationFeedback('Full Name is required') : alert('Full Name is required');
+  if (!phone) return id && !$('agent-drawer-operation').hidden ? setAgentOperationFeedback('Primary Phone number is required') : alert('Primary Phone number is required');
 
   const payload = {
     full_name,
@@ -4260,10 +4346,14 @@ async function saveAgentForm() {
       window.alert(`Temporary PIN for ${result.agent?.full_name || full_name}: ${result.tempPin}\n\nExpires: ${result.tempPinExpiresAt || 'in 24 hours'}\n\nShare this PIN securely. It is shown only once and must be changed at first sign-in.`);
     }
     toast(id ? 'Agent updated successfully' : `Agent ${result.agent?.agent_code || ''} registered`);
-    $('agent-modal-overlay').style.display = 'none';
+    if (id && !$('agent-drawer-operation').hidden) {
+      closeAgentOperation();
+      await openAgentDetailModal(id);
+    } else $('agent-modal-overlay').style.display = 'none';
     loadAgentsData();
   } catch (err) {
-    alert('Error: ' + err.message);
+    if (id && !$('agent-drawer-operation').hidden) setAgentOperationFeedback('Error: ' + err.message);
+    else alert('Error: ' + err.message);
   }
 }
 
@@ -4283,6 +4373,7 @@ function openAgentDrawer() {
 }
 
 function closeAgentDrawer() {
+  closeAgentOperation();
   const el = $('agent-detail-overlay');
   if (!el) return;
   el.classList.remove('open');
@@ -4293,23 +4384,38 @@ function closeAgentDrawer() {
 }
 
 async function resetAgentPin(agentId) {
-  if (window.consoleUserRole !== 'super_admin') return alert('Only a super admin can reset agent PINs.');
+  if (window.consoleUserRole !== 'super_admin') return toast('Only a super admin can reset agent PINs.', true);
   const agent = CURRENT_AGENT;
   if (!agent || agent.id !== agentId) return;
-  if (!window.confirm(`Issue a temporary PIN for ${agent.full_name}? Their current sessions will be signed out.`)) return;
+  const content = openAgentOperationContent('Reset agent PIN', `<div class="modal"><div class="modal-body"><p>Issue a one-time temporary PIN for <strong>${esc(agent.full_name)}</strong>?</p><p>This signs out their current sessions. The agent must choose a new PIN at first sign-in.</p></div><div class="modal-footer"><button class="btn" id="agent-pin-reset-cancel" type="button">Cancel</button><button class="btn primary" id="agent-pin-reset-confirm" type="button">Issue temporary PIN</button></div></div>`);
+  $('agent-pin-reset-cancel')?.addEventListener('click', closeAgentOperation);
+  $('agent-pin-reset-confirm')?.addEventListener('click', async event => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    button.textContent = 'Issuing…';
   try {
     const response = await fetch(`/api/agents/${encodeURIComponent(agentId)}/reset-pin`, {
       method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: '{}',
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result.ok) throw new Error(result.error || 'Could not reset PIN');
-    window.alert(`Temporary PIN for ${agent.full_name}: ${result.tempPin}\n\nExpires: ${result.expiresAt}\n\nShare this PIN securely. It is shown only once and must be changed at first sign-in.`);
     CURRENT_AGENT = result.agent || CURRENT_AGENT;
     toast('Temporary PIN issued. Share it securely with the agent.');
-    await openAgentDetailModal(agentId);
+    const resultContent = $('agent-drawer-operation-content');
+    resultContent.innerHTML = `<div class="modal"><div class="modal-body"><p><strong>Temporary PIN issued</strong></p><p>Share it securely with ${esc(agent.full_name)}. It is shown only in this view and expires at <span id="agent-pin-reset-expiry"></span>.</p><div class="form-row"><label class="form-label" for="agent-pin-reset-value">Temporary PIN</label><input class="form-input" id="agent-pin-reset-value" readonly/></div><div class="agent-drawer-operation-feedback visible success">The agent must change this PIN at first sign-in. Their previous sessions have been signed out.</div></div><div class="modal-footer"><button class="btn" id="agent-pin-reset-copy" type="button">Copy PIN</button><button class="btn primary" id="agent-pin-reset-done" type="button">Done</button></div></div>`;
+    $('agent-pin-reset-value').value = result.tempPin;
+    $('agent-pin-reset-expiry').textContent = result.expiresAt || 'in 24 hours';
+    $('agent-pin-reset-copy')?.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(result.tempPin); toast('Temporary PIN copied'); }
+      catch { $('agent-pin-reset-value').select(); document.execCommand('copy'); toast('Temporary PIN selected for copying'); }
+    });
+    $('agent-pin-reset-done')?.addEventListener('click', closeAgentOperation);
   } catch (error) {
-    alert(error.message || 'Could not reset agent PIN');
-  }
+      button.disabled = false;
+      button.textContent = 'Issue temporary PIN';
+      setAgentOperationFeedback(error.message || 'Could not reset agent PIN');
+    }
+  });
 }
 
 async function openAgentDetailModal(agentId) {
@@ -4500,16 +4606,16 @@ function openPayoutModal(agentId) {
   $('payout-form-date').value = new Date().toISOString().slice(0, 10);
   $('payout-transfer-confirmed').checked = false;
   $('payout-form-submit').disabled = true;
-  $('agent-payout-overlay').style.display = 'grid';
+  openAgentOperationFromOverlay('agent-payout-overlay', 'Record a payout already sent');
 }
 
 async function submitPayout() {
   if (!CURRENT_AGENT) return;
   const amount_ksh = parseFloat($('payout-form-amount').value);
   const reference = $('payout-form-ref').value.trim();
-  if (isNaN(amount_ksh) || amount_ksh <= 0) return alert('Please enter a valid payout amount');
-  if (!reference) return alert('Transaction reference (e.g. M-Pesa receipt code) is required');
-  if (!$('payout-transfer-confirmed').checked) return alert('Confirm that you already sent this payout outside the console.');
+  if (!Number.isSafeInteger(amount_ksh) || amount_ksh <= 0) return setAgentOperationFeedback('Enter a whole KSh amount greater than zero.');
+  if (!reference) return setAgentOperationFeedback('Transaction reference (for example, the M-Pesa receipt code) is required.');
+  if (!$('payout-transfer-confirmed').checked) return setAgentOperationFeedback('Confirm that you already sent this payout outside the console.');
 
   try {
     const res = await fetch(`/api/agents/${CURRENT_AGENT.id}/payouts`, {
@@ -4528,13 +4634,13 @@ async function submitPayout() {
     const result = await res.json();
     if (!res.ok) throw new Error(result.error || 'Failed to record payout');
     toast(`Payout of KES ${amount_ksh.toLocaleString()} recorded`);
-    $('agent-payout-overlay').style.display = 'none';
+    closeAgentOperation();
     if ($('agent-detail-overlay') && ($('agent-detail-overlay').classList.contains('open') || $('agent-detail-overlay').style.display !== 'none')) {
       openAgentDetailModal(CURRENT_AGENT.id);
     }
     loadAgentsData();
   } catch (err) {
-    alert('Error: ' + err.message);
+    setAgentOperationFeedback('Error: ' + err.message);
   }
 }
 
@@ -4548,15 +4654,15 @@ function openEarningModal(agentId) {
   $('earning-form-invoice').value = '';
   $('earning-form-desc').value = '';
   $('earning-form-status').value = 'approved';
-  $('agent-earning-overlay').style.display = 'grid';
+  openAgentOperationFromOverlay('agent-earning-overlay', 'Record commission earning');
 }
 
 async function submitEarning() {
   if (!CURRENT_AGENT) return;
   const school_name = $('earning-form-school').value.trim();
   const earned_amount_ksh = parseFloat($('earning-form-earned').value);
-  if (!school_name) return alert('School name is required');
-  if (isNaN(earned_amount_ksh) || earned_amount_ksh <= 0) return alert('Valid commission amount is required');
+  if (!school_name) return setAgentOperationFeedback('School name is required.');
+  if (!Number.isSafeInteger(earned_amount_ksh) || earned_amount_ksh <= 0) return setAgentOperationFeedback('Enter a whole KSh commission amount greater than zero.');
 
   try {
     const res = await fetch(`/api/agents/${CURRENT_AGENT.id}/earnings`, {
@@ -4575,13 +4681,13 @@ async function submitEarning() {
     const result = await res.json();
     if (!res.ok) throw new Error(result.error || 'Failed to record commission');
     toast(`Commission of KES ${earned_amount_ksh.toLocaleString()} recorded`);
-    $('agent-earning-overlay').style.display = 'none';
+    closeAgentOperation();
     if ($('agent-detail-overlay') && ($('agent-detail-overlay').classList.contains('open') || $('agent-detail-overlay').style.display !== 'none')) {
       openAgentDetailModal(CURRENT_AGENT.id);
     }
     loadAgentsData();
   } catch (err) {
-    alert('Error: ' + err.message);
+    setAgentOperationFeedback('Error: ' + err.message);
   }
 }
 
@@ -4593,13 +4699,13 @@ function openAssignSchoolModal(agentId) {
   $('school-form-contact').value = '';
   $('school-form-phone').value = '';
   $('school-form-status').value = 'pitching';
-  $('agent-school-overlay').style.display = 'grid';
+  openAgentOperationFromOverlay('agent-school-overlay', 'Assign a school');
 }
 
 async function submitAssignSchool() {
   if (!CURRENT_AGENT) return;
   const school_name = $('school-form-name').value.trim();
-  if (!school_name) return alert('School name is required');
+  if (!school_name) return setAgentOperationFeedback('School name is required.');
 
   try {
     const res = await fetch(`/api/agents/${CURRENT_AGENT.id}/schools`, {
@@ -4616,29 +4722,37 @@ async function submitAssignSchool() {
     const result = await res.json();
     if (!res.ok) throw new Error(result.error || 'Failed to assign school');
     toast(`School ${school_name} assigned to agent`);
-    $('agent-school-overlay').style.display = 'none';
+    closeAgentOperation();
     if ($('agent-detail-overlay') && ($('agent-detail-overlay').classList.contains('open') || $('agent-detail-overlay').style.display !== 'none')) {
       openAgentDetailModal(CURRENT_AGENT.id);
     }
     loadAgentsData();
   } catch (err) {
-    alert('Error: ' + err.message);
+    setAgentOperationFeedback('Error: ' + err.message);
   }
 }
 
-async function deleteSchoolAssignment(schoolId) {
-  if (!confirm('Remove this school from the agent?')) return;
+async function deleteSchoolAssignment(schoolId, confirmed = false) {
+  if (!confirmed) {
+    const school = CURRENT_AGENT?.schools?.find(item => item.id === schoolId);
+    openAgentOperationContent('Remove school assignment', `<div class="modal"><div class="modal-body"><p>Remove <strong>${esc(school?.school_name || 'this school')}</strong> from ${esc(CURRENT_AGENT?.full_name || 'this agent')}?</p><p>This removes the agent-to-school assignment. It does not delete the CRM lead or school billing records.</p></div><div class="modal-footer"><button class="btn" id="agent-school-remove-cancel" type="button">Cancel</button><button class="btn danger-outline" id="agent-school-remove-confirm" type="button">Remove assignment</button></div></div>`);
+    $('agent-school-remove-cancel')?.addEventListener('click', closeAgentOperation);
+    $('agent-school-remove-confirm')?.addEventListener('click', () => deleteSchoolAssignment(schoolId, true));
+    return;
+  }
   try {
     const res = await fetch(`/api/agents/schools/${schoolId}`, {
       method: 'DELETE',
       credentials: 'same-origin',
     });
-    if (!res.ok) throw new Error('Failed to remove school assignment');
+    const result = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(result.error || 'Failed to remove school assignment');
     toast('School removed');
-    if (CURRENT_AGENT) openAgentDetailModal(CURRENT_AGENT.id);
+    closeAgentOperation();
+    if (CURRENT_AGENT) await openAgentDetailModal(CURRENT_AGENT.id);
     loadAgentsData();
   } catch (err) {
-    alert('Error: ' + err.message);
+    setAgentOperationFeedback('Error: ' + err.message);
   }
 }
 
@@ -4652,8 +4766,14 @@ function bindAgentEvents() {
   $('agent-filter-status')?.addEventListener('change', loadAgentsData);
 
   // Agent form
-  $('agent-modal-close')?.addEventListener('click', () => { $('agent-modal-overlay').style.display = 'none'; });
-  $('agent-form-cancel')?.addEventListener('click', () => { $('agent-modal-overlay').style.display = 'none'; });
+  $('agent-modal-close')?.addEventListener('click', () => {
+    if (!$('agent-drawer-operation').hidden) closeAgentOperation();
+    else $('agent-modal-overlay').style.display = 'none';
+  });
+  $('agent-form-cancel')?.addEventListener('click', () => {
+    if (!$('agent-drawer-operation').hidden) closeAgentOperation();
+    else $('agent-modal-overlay').style.display = 'none';
+  });
   $('agent-form-save')?.addEventListener('click', saveAgentForm);
   $('agent-form-delete')?.addEventListener('click', () => {
     const id = $('agent-form-id')?.value;
@@ -4675,6 +4795,7 @@ function bindAgentEvents() {
   $('tab-btn-schools')?.addEventListener('click', () => switchAgentDetailTab('schools'));
   $('tab-btn-earnings')?.addEventListener('click', () => switchAgentDetailTab('earnings'));
   $('tab-btn-payouts')?.addEventListener('click', () => switchAgentDetailTab('payouts'));
+  $('agent-drawer-operation-back')?.addEventListener('click', closeAgentOperation);
 
   $('btn-agent-record-payout')?.addEventListener('click', () => { if (CURRENT_AGENT) openPayoutModal(CURRENT_AGENT.id); });
   $('btn-agent-approve')?.addEventListener('click', () => { if (CURRENT_AGENT) approveAgent(CURRENT_AGENT.id); });
@@ -4682,10 +4803,7 @@ function bindAgentEvents() {
   $('btn-agent-add-earning')?.addEventListener('click', () => { if (CURRENT_AGENT) openEarningModal(CURRENT_AGENT.id); });
   $('btn-agent-add-school')?.addEventListener('click', () => { if (CURRENT_AGENT) openAssignSchoolModal(CURRENT_AGENT.id); });
   $('btn-agent-edit-profile')?.addEventListener('click', () => {
-    if (CURRENT_AGENT) {
-      closeAgentDrawer();
-      openEditAgentModal(CURRENT_AGENT.id);
-    }
+    if (CURRENT_AGENT) openEditAgentModal(CURRENT_AGENT.id);
   });
   $('btn-agent-reset-pin')?.addEventListener('click', () => {
     if (CURRENT_AGENT) resetAgentPin(CURRENT_AGENT.id);
@@ -4695,21 +4813,21 @@ function bindAgentEvents() {
   });
 
   // Payout modal
-  $('agent-payout-close')?.addEventListener('click', () => { $('agent-payout-overlay').style.display = 'none'; });
-  $('payout-form-cancel')?.addEventListener('click', () => { $('agent-payout-overlay').style.display = 'none'; });
+  $('agent-payout-close')?.addEventListener('click', closeAgentOperation);
+  $('payout-form-cancel')?.addEventListener('click', closeAgentOperation);
   $('payout-form-submit')?.addEventListener('click', submitPayout);
   $('payout-transfer-confirmed')?.addEventListener('change', event => {
     $('payout-form-submit').disabled = !event.target.checked;
   });
 
   // Earning modal
-  $('agent-earning-close')?.addEventListener('click', () => { $('agent-earning-overlay').style.display = 'none'; });
-  $('earning-form-cancel')?.addEventListener('click', () => { $('agent-earning-overlay').style.display = 'none'; });
+  $('agent-earning-close')?.addEventListener('click', closeAgentOperation);
+  $('earning-form-cancel')?.addEventListener('click', closeAgentOperation);
   $('earning-form-submit')?.addEventListener('click', submitEarning);
 
   // School modal
-  $('agent-school-close')?.addEventListener('click', () => { $('agent-school-overlay').style.display = 'none'; });
-  $('school-form-cancel')?.addEventListener('click', () => { $('agent-school-overlay').style.display = 'none'; });
+  $('agent-school-close')?.addEventListener('click', closeAgentOperation);
+  $('school-form-cancel')?.addEventListener('click', closeAgentOperation);
   $('school-form-submit')?.addEventListener('click', submitAssignSchool);
 }
 
