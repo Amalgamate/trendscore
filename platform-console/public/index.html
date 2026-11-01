@@ -9,7 +9,7 @@
 <title>Trends CORE ERP</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
-<link rel="stylesheet" href="./styles.css"/>
+<link rel="stylesheet" href="./styles.css?v=20261101-ringtone-picker"/>
 <link rel="stylesheet" href="./login.css"/>
 <link rel="stylesheet" href="./kanban-crm.css"/>
 </head>
@@ -176,9 +176,25 @@
           <div class="topbar-notif-dropdown" id="admin-notif-dropdown" style="display:none">
             <div class="notif-dropdown-header">
               <span class="notif-dropdown-title">Notifications</span>
-              <button class="notif-sound-btn" id="btn-notif-sound" type="button" title="Toggle audio chime">
-                <span id="notif-sound-icon">🔔</span> <span id="notif-sound-text">Beep On</span>
-              </button>
+              <span class="notif-dropdown-hint">Agent approvals</span>
+            </div>
+            <div class="notification-sound-controls">
+              <label for="notif-sound-select">Registration alert sound</label>
+              <div class="notification-sound-picker">
+                <select id="notif-sound-select" aria-label="Choose registration alert sound">
+                  <option value="gentle">Gentle chime</option>
+                  <option value="classic">Classic bell</option>
+                  <option value="bright">Bright</option>
+                  <option value="soft">Soft tones</option>
+                  <option value="urgent">Triple alert</option>
+                </select>
+                <button class="notification-preview-btn" id="btn-preview-notif-sound" type="button">Preview</button>
+              </div>
+              <label class="notification-sound-toggle"><input id="notif-sound-enabled" type="checkbox" checked/> Play sound in console</label>
+            </div>
+            <div class="desktop-notification-controls">
+              <span id="desktop-notification-state">Desktop alerts are off</span>
+              <button class="desktop-notification-enable" id="btn-enable-desktop-notifications" type="button">Enable</button>
             </div>
             <div class="notif-dropdown-list" id="admin-notif-list">
               <div class="notif-dropdown-empty">No unread notifications</div>
@@ -692,12 +708,26 @@
         </section>
 
         <section class="billing-tab-panel" id="billing-panel-settings" role="tabpanel" aria-labelledby="billing-tab-settings" tabindex="0" hidden>
-          <div class="panel">
-            <div class="panel-header"><div><div class="panel-title">Billing configuration readiness</div><div class="panel-sub">Configuration values are shown as readiness only; credentials are never displayed.</div></div></div>
+          <div class="panel billing-config-panel">
+            <div class="panel-header"><div><div class="panel-title">Billing configuration readiness</div><div class="panel-sub">Review invoice, payment, and renewal settings. Credentials are never displayed here.</div></div></div>
             <div id="billing-settings-email-status" class="billing-email-status" role="status">Checking email configuration…</div>
-            <div class="billing-setting-row" data-super-admin-only style="margin:12px 0"><span><strong>Automatic term renewal drafts</strong><br><small>On each configured billing date, create draft invoices from active termly contracts. Invoices are never automatically issued or emailed.</small></span><label><input id="billing-auto-term-renewals" type="checkbox"/> Enabled</label></div>
-             <div class="billing-setting-row" data-super-admin-only style="margin:12px 0"><span><strong>Reset billing to zero</strong><br><small>Deletes all customers, contracts, quotes, invoices, payments and delivery logs. A backup file is saved first.</small></span><span><input class="form-input" id="billing-reset-confirm" placeholder="Type RESET BILLING" aria-label="Type RESET BILLING to confirm"> <button class="btn" id="billing-reset-btn" type="button">Reset billing</button></span></div>
-            <div class="billing-settings-grid"><div class="billing-setting-row"><span>Invoice status</span><strong>Commercial invoice issuance enabled</strong></div><div class="billing-setting-row"><span>Invoice numbering</span><strong>Sequential INV-YYYY-NNNNNN</strong></div><div class="billing-setting-row"><span>Payments</span><strong>Manual ledger and optional Daraja C2B callbacks</strong></div><div class="billing-setting-row"><span>Tax invoice / eTIMS integration</span><strong>Not configured</strong></div><div class="billing-setting-row"><span>Seller legal identity and tax details</span><strong>Confirm before tax invoice use</strong></div><div class="billing-setting-row"><span>Payment instructions</span><strong>Use customer-approved terms and verified references</strong></div></div><div class="billing-register-note">The issue action creates a commercial invoice and does not certify tax compliance or submit anything to eTIMS. Configure seller tax identity and an approved eTIMS route before treating these as tax invoices. Email sender credentials are managed in Communications.</div>
+            <section class="billing-config-section" data-super-admin-only aria-labelledby="billing-renewals-heading">
+              <div class="billing-config-copy"><h3 id="billing-renewals-heading">Automatic term renewal drafts</h3><p>On each configured billing date, create draft invoices from active termly contracts. Invoices are never issued or emailed automatically.</p></div>
+              <label class="billing-toggle"><input id="billing-auto-term-renewals" type="checkbox"/><span class="billing-toggle-track" aria-hidden="true"></span><span>Enabled</span></label>
+            </section>
+            <section class="billing-config-section billing-config-danger" data-super-admin-only aria-labelledby="billing-reset-heading">
+              <div class="billing-config-copy"><h3 id="billing-reset-heading">Reset billing data</h3><p>Deletes all customers, contracts, quotes, invoices, payments, and delivery logs. A backup is saved first.</p></div>
+              <div class="billing-reset-controls"><input class="form-input" id="billing-reset-confirm" placeholder="Type RESET BILLING" aria-label="Type RESET BILLING to confirm"><button class="btn danger-btn" id="billing-reset-btn" type="button">Reset billing</button></div>
+            </section>
+            <div class="billing-settings-grid" aria-label="Billing system status">
+              <div class="billing-setting-row"><span>Invoice status</span><strong>Commercial issuance enabled</strong></div>
+              <div class="billing-setting-row"><span>Invoice numbering</span><strong>Sequential INV-YYYY-NNNNNN</strong></div>
+              <div class="billing-setting-row"><span>Payments</span><strong>Manual ledger · optional Daraja C2B</strong></div>
+              <div class="billing-setting-row"><span>Tax invoice / eTIMS integration</span><strong class="status-unconfigured">Not configured</strong></div>
+              <div class="billing-setting-row"><span>Seller legal identity and tax details</span><strong class="status-review">Confirm before tax invoice use</strong></div>
+              <div class="billing-setting-row"><span>Payment instructions</span><strong>Customer-approved terms and verified references</strong></div>
+            </div>
+            <div class="billing-register-note billing-config-note">Invoices issued here are commercial invoices. This console does not submit tax invoices to eTIMS. Confirm seller tax details and an approved eTIMS route before using these as tax invoices. Manage email sender credentials under Platform → Communications.</div>
           </div>
         </section>
       </div>
@@ -1696,7 +1726,7 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
-<script src="./app.js"></script>
+<script src="./app.js?v=20261101-ringtone-picker"></script>
 <script src="./login.js"></script>
 </body>
 </html>

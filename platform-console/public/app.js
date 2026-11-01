@@ -4943,7 +4943,8 @@ window.deleteAgent = deleteAgent;
 
 // ── Admin Notifications & Audio Beep ───────────────────────────────────────
 let audioCtx = null;
-let notifSoundEnabled = true;
+let notifSoundEnabled = localStorage.getItem('consoleRegistrationSound') !== 'disabled';
+let notifRingtone = localStorage.getItem('consoleRegistrationRingtone') || 'gentle';
 let lastSeenPendingAgents = null;
 let lastSeenTotalAgents = null;
 let lastSeenTotalSchools = null;
@@ -4951,6 +4952,48 @@ let lastSeenTotalEarned = null;
 let lastSeenTotalBalance = null;
 let lastSeenLatestSchoolName = null;
 let adminNotifications = [];
+let desktopAlertsEnabled = localStorage.getItem('consoleDesktopAlerts') === 'enabled';
+
+function updateDesktopNotificationControl() {
+  const button = $('btn-enable-desktop-notifications');
+  const state = $('desktop-notification-state');
+  if (!button || !state) return;
+  if (!('Notification' in window)) {
+    state.textContent = 'Desktop notifications are not supported in this browser';
+    button.hidden = true;
+    return;
+  }
+  if (Notification.permission === 'denied') {
+    state.textContent = 'Blocked by browser settings';
+    button.textContent = 'Blocked';
+    button.disabled = true;
+    return;
+  }
+  const enabled = desktopAlertsEnabled && Notification.permission === 'granted';
+  state.textContent = enabled ? 'Desktop alerts are on' : 'Get alerts when an agent registers';
+  button.textContent = enabled ? 'Turn off' : 'Enable';
+  button.disabled = false;
+}
+
+function sendAgentDesktopNotification(agent) {
+  if (!desktopAlertsEnabled || !('Notification' in window) || Notification.permission !== 'granted') return;
+  const name = agent?.full_name || 'A new field agent';
+  const notification = new Notification('Agent registration needs approval', {
+    body: name + ' just registered. Click to review and approve.',
+    tag: 'agent-registration-' + (agent?.id || Date.now()),
+    icon: './favicon-32x32.png',
+    renotify: false,
+  });
+  notification.onclick = async () => {
+    window.focus();
+    showSection('agents');
+    try {
+      await loadAgentsData();
+      if (agent?.id) await openAgentDetailModal(agent.id);
+    } catch (_) { /* The Agents tab remains available if details fail to load. */ }
+    notification.close();
+  };
+}
 
 function initAudioContext() {
   if (!audioCtx) {
@@ -4965,37 +5008,37 @@ function initAudioContext() {
 document.addEventListener('click', initAudioContext, { once: true });
 document.addEventListener('keydown', initAudioContext, { once: true });
 
-function playNotificationBeep() {
-  if (!notifSoundEnabled) return;
+function playNotificationBeep(force = false) {
+  if (!notifSoundEnabled && !force) return;
+  const rings = {
+    gentle: { notes: [587.33, 880], spacing: 0.17, duration: 0.27, wave: 'sine', volume: 0.18 },
+    classic: { notes: [1046.5, 880, 1046.5], spacing: 0.2, duration: 0.16, wave: 'sine', volume: 0.15 },
+    bright: { notes: [784, 1046.5, 1318.5], spacing: 0.13, duration: 0.12, wave: 'triangle', volume: 0.16 },
+    soft: { notes: [523.25, 659.25, 783.99], spacing: 0.22, duration: 0.2, wave: 'sine', volume: 0.12 },
+    urgent: { notes: [880, 880, 1174.66], spacing: 0.12, duration: 0.1, wave: 'square', volume: 0.09 },
+  };
+  const ring = rings[notifRingtone] || rings.gentle;
   try {
     initAudioContext();
     if (!audioCtx) return;
-    const now = audioCtx.currentTime;
-
-    // Friendly 2-tone melodic chime: D5 (587.33Hz) then A5 (880Hz)
-    const osc1 = audioCtx.createOscillator();
-    const gain1 = audioCtx.createGain();
-    osc1.type = 'sine';
-    osc1.frequency.setValueAtTime(587.33, now);
-    gain1.gain.setValueAtTime(0.2, now);
-    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
-    osc1.connect(gain1);
-    gain1.connect(audioCtx.destination);
-    osc1.start(now);
-    osc1.stop(now + 0.18);
-
-    const osc2 = audioCtx.createOscillator();
-    const gain2 = audioCtx.createGain();
-    osc2.type = 'sine';
-    osc2.frequency.setValueAtTime(880, now + 0.12);
-    gain2.gain.setValueAtTime(0.25, now + 0.12);
-    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
-    osc2.connect(gain2);
-    gain2.connect(audioCtx.destination);
-    osc2.start(now + 0.12);
-    osc2.stop(now + 0.45);
+    const startAt = audioCtx.currentTime + 0.015;
+    ring.notes.forEach((frequency, index) => {
+      const start = startAt + index * ring.spacing;
+      const end = start + ring.duration;
+      const oscillator = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      oscillator.type = ring.wave;
+      oscillator.frequency.setValueAtTime(frequency, start);
+      gain.gain.setValueAtTime(0.001, start);
+      gain.gain.linearRampToValueAtTime(ring.volume, start + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.001, end);
+      oscillator.connect(gain);
+      gain.connect(audioCtx.destination);
+      oscillator.start(start);
+      oscillator.stop(end + 0.01);
+    });
   } catch (err) {
-    console.warn('Audio chime error:', err);
+    console.warn('Registration alert sound error:', err);
   }
 }
 
@@ -5042,6 +5085,9 @@ async function checkAdminNotifications() {
       // Event 1: New agent registered or awaiting approval
       if (totalCount > lastSeenTotalAgents || pendingCount > lastSeenPendingAgents) {
         playNotificationBeep();
+        if (pendingCount > lastSeenPendingAgents && latestAgent?.status === 'pending') {
+          sendAgentDesktopNotification(latestAgent);
+        }
         const agentName = latestAgent?.full_name || 'New Field Agent';
         const agentCode = latestAgent?.agent_code ? ` (${latestAgent.agent_code})` : '';
         adminNotifications.unshift({
@@ -5142,7 +5188,9 @@ function renderAdminNotificationsList() {
 function bindNotificationEvents() {
   const notifBtn = $('btn-admin-notif');
   const dropdown = $('admin-notif-dropdown');
-  const soundBtn = $('btn-notif-sound');
+  const soundSelect = $('notif-sound-select');
+  const soundEnabled = $('notif-sound-enabled');
+  const previewSound = $('btn-preview-notif-sound');
 
   notifBtn?.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -5159,16 +5207,50 @@ function bindNotificationEvents() {
     }
   });
 
-  soundBtn?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    notifSoundEnabled = !notifSoundEnabled;
-    const icon = $('notif-sound-icon');
-    const text = $('notif-sound-text');
-    if (icon) icon.textContent = notifSoundEnabled ? '🔔' : '🔕';
-    if (text) text.textContent = notifSoundEnabled ? 'Beep On' : 'Muted';
-    if (notifSoundEnabled) {
-      playNotificationBeep();
+  const desktopButton = $('btn-enable-desktop-notifications');
+  desktopButton?.addEventListener('click', async event => {
+    event.stopPropagation();
+    if (!('Notification' in window)) return;
+    if (desktopAlertsEnabled && Notification.permission === 'granted') {
+      desktopAlertsEnabled = false;
+      localStorage.setItem('consoleDesktopAlerts', 'disabled');
+      updateDesktopNotificationControl();
+      return;
     }
+    try {
+      const permission = await Notification.requestPermission();
+      desktopAlertsEnabled = permission === 'granted';
+      localStorage.setItem('consoleDesktopAlerts', desktopAlertsEnabled ? 'enabled' : 'disabled');
+      updateDesktopNotificationControl();
+      if (desktopAlertsEnabled) {
+        const confirmation = new Notification('Desktop alerts enabled', { body: 'You will be alerted when an agent registers and needs approval.', icon: './favicon-32x32.png' });
+        setTimeout(() => confirmation.close(), 5000);
+      }
+    } catch (error) {
+      console.warn('Could not enable desktop notifications:', error);
+      updateDesktopNotificationControl();
+    }
+  });
+  updateDesktopNotificationControl();
+
+  if (soundSelect) {
+    if (['gentle', 'classic', 'bright', 'soft', 'urgent'].includes(notifRingtone)) soundSelect.value = notifRingtone;
+    soundSelect.addEventListener('change', () => {
+      notifRingtone = soundSelect.value;
+      localStorage.setItem('consoleRegistrationRingtone', notifRingtone);
+    });
+  }
+  if (soundEnabled) {
+    soundEnabled.checked = notifSoundEnabled;
+    soundEnabled.addEventListener('change', () => {
+      notifSoundEnabled = soundEnabled.checked;
+      localStorage.setItem('consoleRegistrationSound', notifSoundEnabled ? 'enabled' : 'disabled');
+      if (notifSoundEnabled) playNotificationBeep();
+    });
+  }
+  previewSound?.addEventListener('click', () => {
+    initAudioContext();
+    playNotificationBeep(true);
   });
 }
 
