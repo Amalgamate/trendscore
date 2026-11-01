@@ -186,14 +186,29 @@
           </div>
         </div>
 
-        <div class="topbar-user" id="user-chip">
-          <span class="topbar-user-avatar" id="user-chip-avatar" aria-hidden="true">—</span>
-          <span class="topbar-user-text">
-            <span class="topbar-user-name" id="user-chip-label">—</span>
-            <span class="topbar-user-role" id="user-chip-role"></span>
-          </span>
+        <div class="topbar-account-wrap" id="topbar-account-wrap">
+          <button class="topbar-user" id="user-chip" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Open account menu">
+            <span class="topbar-user-avatar" id="user-chip-avatar" aria-hidden="true">—</span>
+            <span class="topbar-user-text">
+              <span class="topbar-user-name" id="user-chip-label">—</span>
+              <span class="topbar-user-role" id="user-chip-role"></span>
+            </span>
+            <svg class="topbar-user-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div class="topbar-account-menu" id="topbar-account-menu" role="menu" aria-label="Account menu" hidden>
+            <div class="topbar-account-menu-heading">Account</div>
+            <button class="topbar-account-menu-item" id="btn-open-profile" type="button" role="menuitem">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M5 21a7 7 0 0 1 14 0"/></svg>
+              <span>My profile</span>
+            </button>
+            <div class="topbar-account-menu-divider"></div>
+            <button class="topbar-account-menu-item topbar-account-signout" id="btn-menu-logout" type="button" role="menuitem">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6"/></svg>
+              <span>Sign out</span>
+            </button>
+          </div>
         </div>
-        <button class="topbar-btn topbar-btn--logout" id="btn-logout" type="button">Sign out</button>
+        <button class="topbar-btn topbar-btn--logout" id="btn-logout" type="button" hidden>Sign out</button>
       </div>
     </header>
     <div class="install-progress" id="install-progress" aria-live="polite" aria-hidden="true">
@@ -998,6 +1013,25 @@
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<!-- PROFILE MENU -->
+<div class="overlay" id="profile-overlay" aria-modal="true" role="dialog" aria-labelledby="profile-modal-title">
+  <div class="modal profile-modal">
+    <div class="modal-header">
+      <div class="modal-title" id="profile-modal-title">My profile</div>
+      <button class="modal-close" id="profile-close-btn" type="button" aria-label="Close profile">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="profile-modal-identity">
+        <div class="profile-modal-avatar" id="profile-modal-avatar" aria-hidden="true">—</div>
+        <div><div class="profile-modal-name" id="profile-modal-name">—</div><div class="profile-modal-role" id="profile-modal-role">—</div></div>
+      </div>
+      <div class="profile-modal-detail"><span>Email address</span><strong id="profile-modal-email">—</strong></div>
+      <p class="profile-modal-note">Profile details are managed by the platform administrator.</p>
+    </div>
+    <div class="modal-footer"><button class="btn primary" id="profile-done-btn" type="button">Done</button></div>
+  </div>
+</div>
 
 <!-- LOGOUT CONFIRMATION MODAL -->
 <div class="overlay" id="logout-overlay" aria-modal="true" role="dialog">
