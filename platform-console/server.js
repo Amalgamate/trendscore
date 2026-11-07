@@ -2530,6 +2530,14 @@ app.get('/api/agent/notifications', requireAgentAuth, (req, res) => {
 const BILLING_CADENCES = new Set(['one_off', 'monthly', 'termly', 'annual', 'custom']);
 const CONTRACT_STATUSES = new Set(['draft', 'active', 'ended', 'cancelled']);
 
+function nairobiCalendarDate() {
+  const parts = new Intl.DateTimeFormat('en', {
+    timeZone: 'Africa/Nairobi', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date());
+  const dateParts = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  return `${dateParts.year}-${dateParts.month}-${dateParts.day}`;
+}
+
 function billingText(value, maxLength = 500) {
   return String(value ?? '').trim().slice(0, maxLength);
 }
@@ -3377,7 +3385,7 @@ app.post('/api/billing/payments', requireAuth, requireRole('super_admin'), (req,
   if (!Number.isSafeInteger(amountKsh) || amountKsh <= 0) return res.status(400).json({ ok: false, error: 'Enter a whole amount in KSh greater than zero' });
   const parsedPaymentDate = new Date(`${paymentDate}T00:00:00.000Z`);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(paymentDate) || !Number.isFinite(parsedPaymentDate.getTime()) || parsedPaymentDate.toISOString().slice(0, 10) !== paymentDate) return res.status(400).json({ ok: false, error: 'Enter a valid payment date' });
-  const todayNairobi = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Nairobi' }).format(new Date());
+  const todayNairobi = nairobiCalendarDate();
   if (paymentDate > todayNairobi) return res.status(400).json({ ok: false, error: 'Payment date cannot be in the future.' });
   if (!['mpesa', 'bank_transfer', 'cash', 'cheque', 'other'].includes(method)) return res.status(400).json({ ok: false, error: 'Choose a supported payment method' });
   const selectedInvoice = billingStore.getInvoice(invoiceId);
@@ -3527,7 +3535,7 @@ app.post('/api/billing/mpesa-c2b-events/:transactionId/allocate', requireAuth, r
   if (!['issued', 'sent'].includes(invoice.status)) return res.status(409).json({ ok: false, error: 'C2B payments can only be allocated to an issued invoice.' });
   const eventDate = billingText(req.body?.paymentDate || event.transaction_date, 10);
   const invoiceIssueDate = String(invoice.invoiceSnapshot?.issuedAt || '').slice(0, 10);
-  const todayNairobi = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Nairobi' }).format(new Date());
+  const todayNairobi = nairobiCalendarDate();
   const parsedEventDate = new Date(`${eventDate}T00:00:00.000Z`);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(eventDate) || !Number.isFinite(parsedEventDate.getTime())
       || parsedEventDate.toISOString().slice(0, 10) !== eventDate || eventDate > todayNairobi
@@ -3732,7 +3740,7 @@ app.post('/api/term-calendar', requireAuth, requireRole('super_admin'), (req, re
 let lastAutomaticRenewalDate = '';
 function runAutomaticTermRenewals() {
   if (!getFlag(billingStore._getDb(), 'AUTO_TERM_RENEWAL_INVOICES')) return;
-  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Nairobi' }).format(new Date());
+  const today = nairobiCalendarDate();
   if (lastAutomaticRenewalDate === today) return;
   lastAutomaticRenewalDate = today;
   for (const term of listTerms(billingStore._getDb())) {
