@@ -64,6 +64,11 @@ jest.mock('../src/services/redis-cache.service', () => {
     redisCacheService: {
       getSecurityValue: get,
       setSecurityValue: set,
+      setSecurityValueIfAbsent: async (key: string, value: any, ttlSeconds?: number) => {
+        if (await get(key) !== null) return false;
+        await set(key, value, ttlSeconds);
+        return true;
+      },
       incrementSecurityCounter: async () => 1,
       get,
       set,
