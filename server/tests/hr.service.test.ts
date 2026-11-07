@@ -36,8 +36,8 @@ jest.mock('../src/services/redis-cache.service', () => {
     const now = () => Date.now();
     return {
         redisCacheService: {
-            getSecurityValue: get,
-            setSecurityValue: set,
+            getSecurityValue: async () => null,
+            setSecurityValue: async () => undefined,
             incrementSecurityCounter: async () => 1,
             get: async (key: string) => {
                 const e = store.get(key);
