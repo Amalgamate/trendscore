@@ -71,12 +71,14 @@ const PAGE_APP_REQUIREMENTS = {
   'lms-progress': 'lms',
   'lms-reports': 'lms',
   'student-courses': 'lms',
+  'student-diary': 'lms',
   'student-assignments': 'lms',
   'student-progress': 'lms',
   'student-quizzes': 'lms',
   'student-course-view': 'lms',
 
   'learning-dashboard':   'lms-professional',
+  'digital-diary':        'lms-professional',
   'learning-assignments': 'lms-professional',
   'learning-assignment-create': 'lms-professional',
   'learning-assignment-edit': 'lms-professional',
@@ -172,6 +174,7 @@ const ROLE_PAGE_ALLOWLIST = {
   STUDENT: new Set([
     'dashboard',
     'student-courses',
+    'student-diary',
     'student-assignments',
     'learning-assignment-detail',
     'student-progress',
@@ -285,6 +288,12 @@ export const resolveDashboardPage = (user) => {
   if (userHasParentPortalAccess(user)) return 'parent-portal-home';
   if (STUDENT_ROLES.has(role)) return 'dashboard';
   if (FINANCE_ROLES.has(role)) return 'finance-dashboard';
+  if (role === 'TEACHER') {
+    const enabledApps = getEnabledAppsForUser(user);
+    if (!enabledApps.length || enabledApps.includes('lms-professional') || enabledApps.includes('lms')) {
+      return 'digital-diary';
+    }
+  }
   return 'dashboard';
 };
 

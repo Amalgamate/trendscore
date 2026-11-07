@@ -9,10 +9,12 @@ COPY package*.json ./
 RUN npm ci --omit=dev
 
 COPY *.js ./
+COPY services/ ./services/
 COPY public/ ./public/
 COPY deploy/deploy-release.sh ./deploy/deploy-release.sh
 COPY deploy/instances.manifest.json ./deploy/instances.manifest.json
-RUN chmod +x ./deploy/deploy-release.sh
+COPY scripts/provision-instance.sh ./scripts/provision-instance.sh
+RUN chmod +x ./deploy/deploy-release.sh ./scripts/provision-instance.sh
 
 EXPOSE 3100
 

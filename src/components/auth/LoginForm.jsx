@@ -433,7 +433,7 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
       // If SMS is not configured and autofill isn't allowed (i.e., not super-admin), show clear message and stop
       if (result.smsConfigured === false && !result.autofillAllowed) {
         setPhoneOtpCooldown(result.resendAfterSeconds || 60);
-        setPhonePasswordFallback(true);
+        setPhonePasswordFallback(false);
         setErrors({ form: result.message || 'SMS Not Configured. Contact Admin.' });
         toast.error(result.message || 'SMS Not Configured. Contact Admin.');
         return;
@@ -511,6 +511,10 @@ export default function LoginForm({ onSwitchToForgotPassword, onLoginSuccess, br
         password: formData.password,
         rememberMe: formData.rememberMe === true,
       });
+
+      if (credentialsData?.requiresOtp === true) {
+        throw new Error('This school requires phone verification. Request an OTP to continue. If a code cannot be sent, ask the school administrator to configure SMS or turn off OTP.');
+      }
 
       if (credentialsData?.user?.role === 'SUPER_ADMIN' && credentialsData?.user?.requiresInstitutionSetup) {
         setPendingCredentialsData(credentialsData);

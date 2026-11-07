@@ -138,6 +138,13 @@ export class AuthController {
       requestSchool: (req as any).school || null,
     });
 
+    if (result.requiresOtp) {
+      throw new ApiError(
+        409,
+        'This school requires phone verification. Request and verify an OTP before signing in.',
+      );
+    }
+
     authTokenService.setTokenCookies(res, result.token, result.refreshToken, req.body.rememberMe === true);
     res.json(result);
   }
@@ -146,7 +153,7 @@ export class AuthController {
     const config = await prisma.communicationConfig.findFirst({
       select: { emailTemplates: true },
     });
-    // Schools without an explicit, working SMS setup use password login.
+    // OTP is opt-in, matching the phone challenge and password login policies.
     const otpEnabled = (config?.emailTemplates as any)?.__security?.otpEnabled === true;
 
     res.json({ otpEnabled });

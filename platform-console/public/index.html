@@ -9,7 +9,7 @@
 <title>Trends CORE ERP</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
-<link rel="stylesheet" href="./styles.css"/>
+<link rel="stylesheet" href="./styles.css?v=20261101-ringtone-picker"/>
 <link rel="stylesheet" href="./login.css"/>
 <link rel="stylesheet" href="./kanban-crm.css"/>
 </head>
@@ -176,9 +176,25 @@
           <div class="topbar-notif-dropdown" id="admin-notif-dropdown" style="display:none">
             <div class="notif-dropdown-header">
               <span class="notif-dropdown-title">Notifications</span>
-              <button class="notif-sound-btn" id="btn-notif-sound" type="button" title="Toggle audio chime">
-                <span id="notif-sound-icon">🔔</span> <span id="notif-sound-text">Beep On</span>
-              </button>
+              <span class="notif-dropdown-hint">Agent approvals</span>
+            </div>
+            <div class="notification-sound-controls">
+              <label for="notif-sound-select">Registration alert sound</label>
+              <div class="notification-sound-picker">
+                <select id="notif-sound-select" aria-label="Choose registration alert sound">
+                  <option value="gentle">Gentle chime</option>
+                  <option value="classic">Classic bell</option>
+                  <option value="bright">Bright</option>
+                  <option value="soft">Soft tones</option>
+                  <option value="urgent">Triple alert</option>
+                </select>
+                <button class="notification-preview-btn" id="btn-preview-notif-sound" type="button">Preview</button>
+              </div>
+              <label class="notification-sound-toggle"><input id="notif-sound-enabled" type="checkbox" checked/> Play sound in console</label>
+            </div>
+            <div class="desktop-notification-controls">
+              <span id="desktop-notification-state">Desktop alerts are off</span>
+              <button class="desktop-notification-enable" id="btn-enable-desktop-notifications" type="button">Enable</button>
             </div>
             <div class="notif-dropdown-list" id="admin-notif-list">
               <div class="notif-dropdown-empty">No unread notifications</div>
@@ -186,14 +202,29 @@
           </div>
         </div>
 
-        <div class="topbar-user" id="user-chip">
-          <span class="topbar-user-avatar" id="user-chip-avatar" aria-hidden="true">—</span>
-          <span class="topbar-user-text">
-            <span class="topbar-user-name" id="user-chip-label">—</span>
-            <span class="topbar-user-role" id="user-chip-role"></span>
-          </span>
+        <div class="topbar-account-wrap" id="topbar-account-wrap">
+          <button class="topbar-user" id="user-chip" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Open account menu">
+            <span class="topbar-user-avatar" id="user-chip-avatar" aria-hidden="true">—</span>
+            <span class="topbar-user-text">
+              <span class="topbar-user-name" id="user-chip-label">—</span>
+              <span class="topbar-user-role" id="user-chip-role"></span>
+            </span>
+            <svg class="topbar-user-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div class="topbar-account-menu" id="topbar-account-menu" role="menu" aria-label="Account menu" hidden>
+            <div class="topbar-account-menu-heading">Account</div>
+            <button class="topbar-account-menu-item" id="btn-open-profile" type="button" role="menuitem">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M5 21a7 7 0 0 1 14 0"/></svg>
+              <span>My profile</span>
+            </button>
+            <div class="topbar-account-menu-divider"></div>
+            <button class="topbar-account-menu-item topbar-account-signout" id="btn-menu-logout" type="button" role="menuitem">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6"/></svg>
+              <span>Sign out</span>
+            </button>
+          </div>
         </div>
-        <button class="topbar-btn topbar-btn--logout" id="btn-logout" type="button">Sign out</button>
+        <button class="topbar-btn topbar-btn--logout" id="btn-logout" type="button" hidden>Sign out</button>
       </div>
     </header>
     <div class="install-progress" id="install-progress" aria-live="polite" aria-hidden="true">
@@ -631,11 +662,11 @@
         <section class="billing-tab-panel" id="billing-panel-customers" role="tabpanel" aria-labelledby="billing-tab-customers" tabindex="0" hidden>
           <div class="panel">
             <div class="panel-header"><div><div class="panel-title">Customers</div><div class="panel-sub">Billing contacts linked to provisioned schools where available.</div></div><input class="form-input billing-filter" id="billing-customer-search" type="search" placeholder="Search customers, schools, email" aria-label="Search billing customers"></div>
-            <div class="table-wrap"><table><thead><tr><th>Customer</th><th>Tenant key</th><th>Billing contact</th><th>Currency</th><th>Status</th><th>Contracts</th><th>Actions</th></tr></thead>
-              <tbody id="billing-customers-table"><tr><td colspan="7">Loading customers…</td></tr></tbody></table></div>
+            <div class="table-wrap"><table><thead><tr><th>Customer</th><th>Paybill account name</th><th>Tenant key</th><th>Billing contact</th><th>Currency</th><th>Status</th><th>Contracts</th><th>Actions</th></tr></thead>
+              <tbody id="billing-customers-table"><tr><td colspan="8">Loading customers…</td></tr></tbody></table></div>
           </div>
           <div class="panel billing-subpanel">
-            <div class="panel-header"><div><div class="panel-title">Service contracts</div><div class="panel-sub">Signed service terms and cadence. Contract prices and recurring schedules are not yet configured.</div></div></div>
+            <div class="panel-header"><div><div class="panel-title">Service contracts</div><div class="panel-sub">Signed service terms, saved per-term price lines, and renewal schedules.</div></div><span style="display:flex;gap:8px;align-items:center"><select class="form-select" id="billing-renewal-term" aria-label="Choose renewal term"><option value="">Choose term</option></select><button class="btn" id="billing-generate-term-invoices" data-super-admin-only type="button">Prepare renewal drafts</button></span></div>
             <div class="table-wrap"><table><thead><tr><th>Customer</th><th>Reference</th><th>Service</th><th>Cadence</th><th>Term</th><th>Status</th><th>Actions</th></tr></thead>
               <tbody id="billing-contracts-table"><tr><td colspan="7">Loading contracts…</td></tr></tbody></table></div>
           </div>
@@ -661,7 +692,10 @@
 
         <section class="billing-tab-panel" id="billing-panel-payments" role="tabpanel" aria-labelledby="billing-tab-payments" tabindex="0" hidden>
           <div class="billing-kpis" aria-label="Payment totals"><div class="billing-kpi"><span>Payments recorded</span><strong id="billing-kpi-payment-count">—</strong><small>Manual entries in the ledger</small></div><div class="billing-kpi"><span>Collected</span><strong id="billing-kpi-collected">—</strong><small>Payments allocated to invoices</small></div><div class="billing-kpi"><span>Outstanding</span><strong id="billing-kpi-outstanding">—</strong><small>Issued invoices less payments</small></div></div>
-          <div class="panel"><div class="panel-header"><div><div class="panel-title">Payment history</div><div class="panel-sub">Record verified bank, M-Pesa, cheque, or cash payments against issued invoices. Entries are kept in the ledger.</div></div><button class="btn primary" id="billing-payment-add" data-super-admin-only type="button">+ Record payment</button></div><div class="billing-register-note">Record a payment only after confirming receipt in your bank or payment provider. This does not initiate or verify a transfer.</div><div class="table-wrap"><table><thead><tr><th>Payment date</th><th>Invoice</th><th>Customer</th><th>Method</th><th>Reference</th><th>Amount</th><th>Recorded by</th><th>Receipt</th></tr></thead><tbody id="billing-payments-table"><tr><td colspan="8">Loading payments…</td></tr></tbody></table></div></div>
+          <div class="panel"><div class="panel-header"><div><div class="panel-title">Payment history</div><div class="panel-sub">Record verified bank, M-Pesa, cheque, or cash payments against issued invoices. Entries are kept in the ledger.</div></div><button class="btn primary" id="billing-payment-add" data-super-admin-only type="button">+ Record payment</button></div><div class="billing-register-note">Record a payment only after confirming receipt in your bank or payment provider. This does not initiate or verify a transfer.</div><div class="table-wrap"><table><thead><tr><th>Payment date</th><th>Invoice</th><th>Customer</th><th>Method</th><th>Reference</th><th>Amount</th><th>Recorded by</th><th>Receipt</th></tr></thead><tbody id="billing-payments-table"><tr><td colspan="8">Loading payments…</td></tr></tbody></table></div>
+            <div class="billing-subpanel"><div class="panel-header"><div><div class="panel-title">Commission reconciliation</div><div class="panel-sub">Payment records stay saved if agent commission attribution fails. Retry after correcting the agent or school link.</div></div></div><div class="table-wrap"><table><thead><tr><th>Payment</th><th>School</th><th>Invoice</th><th>Amount</th><th>Issue</th><th>Attempts</th><th></th></tr></thead><tbody id="billing-commission-reconciliation"><tr><td colspan="7">Loading reconciliation queue…</td></tr></tbody></table></div></div>
+            <div class="billing-subpanel"><div class="panel-header"><div><div class="panel-title">Daraja C2B</div><div class="panel-sub">Ask each school to enter its exact Paybill account name shown on the invoice, not the invoice number. Payments auto-allocate only when the school and its single outstanding invoice are uniquely matched; other receipts go to finance review.</div></div><button class="btn" id="billing-mpesa-c2b-register" data-super-admin-only type="button">Register C2B callbacks</button></div><div id="billing-mpesa-c2b-status" class="billing-register-note">Checking Daraja configuration…</div><div class="table-wrap"><table><thead><tr><th>Receipt</th><th>School name entered</th><th>Matched school / review reason</th><th>Sender</th><th>Date</th><th>Amount</th><th>Allocate to invoice</th></tr></thead><tbody id="billing-mpesa-c2b-events"><tr><td colspan="7">No unallocated C2B payments.</td></tr></tbody></table></div></div>
+          </div>
           <div class="panel billing-subpanel"><div class="panel-header"><div><div class="panel-title">Open invoice balances</div><div class="panel-sub">Only issued invoices can receive payment allocations.</div></div></div><div class="table-wrap"><table><thead><tr><th>Invoice</th><th>Customer</th><th>Issued</th><th>Due</th><th>Amount</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead><tbody id="billing-open-invoices-table"><tr><td colspan="8">Loading invoices…</td></tr></tbody></table></div></div>
         </section>
 
@@ -674,11 +708,26 @@
         </section>
 
         <section class="billing-tab-panel" id="billing-panel-settings" role="tabpanel" aria-labelledby="billing-tab-settings" tabindex="0" hidden>
-          <div class="panel">
-            <div class="panel-header"><div><div class="panel-title">Billing configuration readiness</div><div class="panel-sub">Configuration values are shown as readiness only; credentials are never displayed.</div></div></div>
+          <div class="panel billing-config-panel">
+            <div class="panel-header"><div><div class="panel-title">Billing configuration readiness</div><div class="panel-sub">Review invoice, payment, and renewal settings. Credentials are never displayed here.</div></div></div>
             <div id="billing-settings-email-status" class="billing-email-status" role="status">Checking email configuration…</div>
-             <div class="billing-setting-row" data-super-admin-only style="margin:12px 0"><span><strong>Reset billing to zero</strong><br><small>Deletes all customers, contracts, quotes, invoices, payments and delivery logs. A backup file is saved first.</small></span><span><input class="form-input" id="billing-reset-confirm" placeholder="Type RESET BILLING" aria-label="Type RESET BILLING to confirm"> <button class="btn" id="billing-reset-btn" type="button">Reset billing</button></span></div>
-            <div class="billing-settings-grid"><div class="billing-setting-row"><span>Invoice status</span><strong>Commercial invoice issuance enabled</strong></div><div class="billing-setting-row"><span>Invoice numbering</span><strong>INV- prefix · based on quote reference</strong></div><div class="billing-setting-row"><span>Payments</span><strong>Manual recording · allocation to issued invoices</strong></div><div class="billing-setting-row"><span>Tax invoice / eTIMS integration</span><strong>Not configured</strong></div><div class="billing-setting-row"><span>Seller legal identity and tax details</span><strong>Confirm before tax invoice use</strong></div><div class="billing-setting-row"><span>Payment instructions</span><strong>Use customer-approved terms and verified references</strong></div></div><div class="billing-register-note">The issue action creates a commercial invoice and does not certify tax compliance or submit anything to eTIMS. Configure seller tax identity and an approved eTIMS route before treating these as tax invoices. Email sender credentials are managed in Communications.</div>
+            <section class="billing-config-section" data-super-admin-only aria-labelledby="billing-renewals-heading">
+              <div class="billing-config-copy"><h3 id="billing-renewals-heading">Automatic term renewal drafts</h3><p>On each configured billing date, create draft invoices from active termly contracts. Invoices are never issued or emailed automatically.</p></div>
+              <label class="billing-toggle"><input id="billing-auto-term-renewals" type="checkbox"/><span class="billing-toggle-track" aria-hidden="true"></span><span>Enabled</span></label>
+            </section>
+            <section class="billing-config-section billing-config-danger" data-super-admin-only aria-labelledby="billing-reset-heading">
+              <div class="billing-config-copy"><h3 id="billing-reset-heading">Reset billing data</h3><p>Deletes all customers, contracts, quotes, invoices, payments, and delivery logs. A backup is saved first.</p></div>
+              <div class="billing-reset-controls"><input class="form-input" id="billing-reset-confirm" placeholder="Type RESET BILLING" aria-label="Type RESET BILLING to confirm"><button class="btn danger-btn" id="billing-reset-btn" type="button">Reset billing</button></div>
+            </section>
+            <div class="billing-settings-grid" aria-label="Billing system status">
+              <div class="billing-setting-row"><span>Invoice status</span><strong>Commercial issuance enabled</strong></div>
+              <div class="billing-setting-row"><span>Invoice numbering</span><strong>Sequential INV-YYYY-NNNNNN</strong></div>
+              <div class="billing-setting-row"><span>Payments</span><strong>Manual ledger · optional Daraja C2B</strong></div>
+              <div class="billing-setting-row"><span>Tax invoice / eTIMS integration</span><strong class="status-unconfigured">Not configured</strong></div>
+              <div class="billing-setting-row"><span>Seller legal identity and tax details</span><strong class="status-review">Confirm before tax invoice use</strong></div>
+              <div class="billing-setting-row"><span>Payment instructions</span><strong>Customer-approved terms and verified references</strong></div>
+            </div>
+            <div class="billing-register-note billing-config-note">Invoices issued here are commercial invoices. This console does not submit tax invoices to eTIMS. Confirm seller tax details and an approved eTIMS route before using these as tax invoices. Manage email sender credentials under Platform → Communications.</div>
           </div>
         </section>
       </div>
@@ -995,6 +1044,25 @@
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
+<!-- PROFILE MENU -->
+<div class="overlay" id="profile-overlay" aria-modal="true" role="dialog" aria-labelledby="profile-modal-title">
+  <div class="modal profile-modal">
+    <div class="modal-header">
+      <div class="modal-title" id="profile-modal-title">My profile</div>
+      <button class="modal-close" id="profile-close-btn" type="button" aria-label="Close profile">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="profile-modal-identity">
+        <div class="profile-modal-avatar" id="profile-modal-avatar" aria-hidden="true">—</div>
+        <div><div class="profile-modal-name" id="profile-modal-name">—</div><div class="profile-modal-role" id="profile-modal-role">—</div></div>
+      </div>
+      <div class="profile-modal-detail"><span>Email address</span><strong id="profile-modal-email">—</strong></div>
+      <p class="profile-modal-note">Profile details are managed by the platform administrator.</p>
+    </div>
+    <div class="modal-footer"><button class="btn primary" id="profile-done-btn" type="button">Done</button></div>
+  </div>
+</div>
+
 <!-- LOGOUT CONFIRMATION MODAL -->
 <div class="overlay" id="logout-overlay" aria-modal="true" role="dialog">
   <div class="modal logout-modal">
@@ -1058,7 +1126,7 @@
             <option value="new">New</option>
             <option value="contacted">Contacted</option>
             <option value="interested">Interested</option>
-            <option value="converted">Converted</option>
+            <option value="converted" disabled>Converted — use acceptance workflow</option>
             <option value="lost">Lost</option>
           </select>
         </div>
@@ -1115,6 +1183,44 @@
 </div>
 <!-- END LEAD MODAL -->
 
+<div class="overlay" id="lead-assign-agent-overlay" aria-modal="true" role="dialog" style="display:none">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header"><div class="modal-title">Assign CRM Lead to Agent</div><button class="modal-close" id="lead-assign-agent-close" type="button" aria-label="Close">×</button></div>
+    <div class="modal-body">
+      <input id="lead-assign-agent-id" type="hidden"/>
+      <p class="form-help" id="lead-assign-agent-school"></p>
+      <div class="form-row" style="margin-bottom:0"><label class="form-label" for="lead-assign-agent-select">Active field agent *</label><select class="form-select" id="lead-assign-agent-select"><option value="">Loading agents…</option></select></div>
+      <p class="form-help">This links the CRM lead to the agent’s school portfolio for explicit commission attribution.</p>
+    </div>
+    <div class="modal-footer"><button class="btn" id="lead-assign-agent-cancel" type="button">Cancel</button><button class="btn primary" id="lead-assign-agent-submit" type="button">Assign Lead</button></div>
+  </div>
+</div>
+
+<!-- LEAD CUSTOMER CONVERSION -->
+<div class="overlay" id="lead-convert-overlay" aria-modal="true" role="dialog">
+  <div class="modal" style="max-width:680px">
+    <div class="modal-header"><div class="modal-title">Convert accepted lead</div><button class="modal-close" id="lead-convert-close" type="button" aria-label="Close">×</button></div>
+    <div class="modal-body">
+      <input id="lc-lead-id" type="hidden"/>
+      <p id="lc-school-label" class="form-help">Creates the billing customer, active contract, accepted quote, and draft onboarding invoice.</p>
+      <div class="billing-quote-grid">
+        <div class="form-row"><label class="form-label" for="lc-email">Billing email</label><input class="form-input" id="lc-email" type="email" maxlength="254"/></div>
+        <div class="form-row"><label class="form-label" for="lc-phone">Billing phone</label><input class="form-input" id="lc-phone" type="tel" maxlength="40"/></div>
+        <div class="form-row"><label class="form-label" for="lc-school-type">School type *</label><select class="form-select" id="lc-school-type"><option value="private">Private school</option><option value="public_primary">Public primary school</option></select></div>
+        <div class="form-row"><label class="form-label" for="lc-students">Student count</label><input class="form-input" id="lc-students" type="number" min="0" max="100000" step="1"/></div>
+        <div class="form-row"><label class="form-label" for="lc-modules">Add-on modules</label><input class="form-input" id="lc-modules" placeholder="Comma-separated (optional)"/></div>
+        <div class="form-row"><label class="form-label" for="lc-accepted-by">Accepted by *</label><input class="form-input" id="lc-accepted-by" maxlength="160"/></div>
+        <div class="form-row"><label class="form-label" for="lc-acceptance-method">Acceptance method *</label><select class="form-select" id="lc-acceptance-method"><option value="signed_contract">Signed contract</option><option value="email">Email</option><option value="in_person">In person</option><option value="phone">Phone</option></select></div>
+        <div class="form-row"><label class="form-label" for="lc-start-date">Contract start date *</label><input class="form-input" id="lc-start-date" type="date"/></div>
+      </div>
+      <div class="form-row"><label class="form-label" for="lc-evidence">Acceptance evidence reference *</label><textarea class="form-input" id="lc-evidence" rows="2" maxlength="1200" placeholder="Document filename, email subject/date, or call record reference" style="resize:vertical;font-family:var(--sans)"></textarea></div>
+      <label class="form-help"><input id="lc-comms" type="checkbox"/> Include the communications module</label>
+      <p class="form-help">The invoice is created as a draft. Add a durable reference to the signed document or customer communication; conversion does not issue or email an invoice.</p>
+    </div>
+    <div class="modal-footer"><button class="btn" id="lead-convert-cancel" type="button">Cancel</button><button class="btn primary" id="lead-convert-submit" type="button">Create customer &amp; draft invoice</button></div>
+  </div>
+</div>
+
 <!-- BILLING CUSTOMER MODAL -->
 <div class="overlay" id="billing-customer-overlay" aria-modal="true" role="dialog">
   <div class="modal" style="max-width:650px">
@@ -1124,6 +1230,7 @@
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
           <div class="form-row billing-customer-picker"><label class="form-label" for="bc-name">Customer name *</label><input class="form-input" id="bc-name" maxlength="160" autocomplete="off" aria-autocomplete="list" aria-controls="bc-customer-suggestions" aria-expanded="false" placeholder="Search customers or provisioned schools"/><div id="bc-customer-suggestions" class="billing-customer-suggestions" role="listbox" hidden></div><small class="form-help">Choose a saved billing customer or a provisioned school, or type a new customer name.</small></div>
         <div class="form-row"><label class="form-label" for="bc-legal-name">Legal name</label><input class="form-input" id="bc-legal-name" maxlength="200"/></div>
+        <div class="form-row"><label class="form-label" for="bc-paybill-name">Paybill account name *</label><input class="form-input" id="bc-paybill-name" maxlength="160"/><small class="form-help">Tell the school to enter this exact name in the Paybill account field. It defaults to the customer name.</small></div>
         <div class="form-row"><label class="form-label" for="bc-tenant-key">Tenant key (optional)</label><input class="form-input" id="bc-tenant-key" maxlength="160" placeholder="Stable tenant ID or school slug"/></div>
         <div class="form-row"><label class="form-label" for="bc-email">Billing email</label><input class="form-input" id="bc-email" type="email" maxlength="254"/></div>
         <div class="form-row"><label class="form-label" for="bc-phone">Billing phone</label><input class="form-input" id="bc-phone" type="tel" maxlength="40"/></div>
@@ -1156,13 +1263,28 @@
       <label class="billing-option"><input id="bq-own-sms" type="checkbox"/><span><strong>School uses its own SMS provider</strong><small>Communication is then quoted at no charge.</small></span></label>
       <div class="billing-quote-grid billing-extra-row">
         <div class="form-row"><label class="form-label" for="bq-extras">Extra modules</label><textarea class="form-input" id="bq-extras" rows="2" placeholder="One module name per line; KSh 5,000 each"></textarea><small class="form-help">Each entered module is quoted at KSh 5,000.</small></div>
-        <div class="form-row"><label class="billing-option"><input id="bq-discount-approval" type="checkbox"/><span><strong>Flag discount for approval</strong><small>Marks the quote as needing sign-off</small></span></label></div>
+        <div class="form-row"><label class="billing-option"><input id="bq-discount-approval" type="checkbox"/><span><strong>Require finance approval</strong><small>Acceptance and invoice creation are blocked until a finance approver signs off.</small></span></label></div>
       </div>
       <div class="form-row"><label class="form-label" for="bq-notes">Quote notes / commercial terms</label><textarea class="form-input" id="bq-notes" rows="3" maxlength="3000" placeholder="Optional customer-specific terms"></textarea></div>
       <div class="billing-quote-preview" id="billing-quote-preview" aria-live="polite">Choose the school type to calculate a quote preview.</div>
       <div class="form-help">The total adds all listed lines; recurring periods are shown per line. Each quote stores the selected pricing rule and enrollment snapshot. Tax is not added to this quote.</div>
     </div>
     <div class="modal-footer"><button class="btn" id="billing-quote-cancel" type="button">Cancel</button><button class="btn primary" id="billing-quote-save" data-super-admin-only type="button">Save draft quote</button></div>
+  </div>
+</div>
+
+<div class="overlay" id="billing-acceptance-overlay" aria-modal="true" role="dialog">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header"><div class="modal-title">Record customer acceptance</div><button class="modal-close" id="billing-acceptance-close" type="button" aria-label="Close">×</button></div>
+    <div class="modal-body">
+      <input id="ba-quote-id" type="hidden"/>
+      <p id="ba-quote-label" class="form-help"></p>
+      <div class="form-row"><label class="form-label" for="ba-accepted-by">Accepted by *</label><input class="form-input" id="ba-accepted-by" maxlength="160"/></div>
+      <div class="form-row"><label class="form-label" for="ba-method">Acceptance method *</label><select class="form-select" id="ba-method"><option value="signed_contract">Signed contract</option><option value="email">Email</option><option value="in_person">In person</option><option value="phone">Phone</option></select></div>
+      <div class="form-row"><label class="form-label" for="ba-evidence">Evidence reference *</label><textarea class="form-input" id="ba-evidence" rows="3" maxlength="1200" placeholder="Signed agreement file, email subject/date, or CRM call record reference"></textarea></div>
+      <p class="form-help">This records your evidence reference and admin identity in the quote history. It does not replace keeping the signed document or original customer communication.</p>
+    </div>
+    <div class="modal-footer"><button class="btn" id="billing-acceptance-cancel" type="button">Cancel</button><button class="btn primary" id="billing-acceptance-submit" type="button">Save acceptance</button></div>
   </div>
 </div>
 
@@ -1186,7 +1308,7 @@
     <div class="modal-body">
       <div class="form-row"><label class="form-label" for="bp-invoice">Issued invoice *</label><select class="form-select" id="bp-invoice" required><option value="">Choose invoice</option></select><small class="form-help" id="bp-balance-help">Only issued invoices with an outstanding balance are shown.</small></div>
       <div class="billing-quote-grid"><div class="form-row"><label class="form-label" for="bp-amount">Amount received (KSh) *</label><input class="form-input" id="bp-amount" type="number" min="1" step="1" required/></div><div class="form-row"><label class="form-label" for="bp-date">Payment date *</label><input class="form-input" id="bp-date" type="date" required/></div></div>
-      <div class="billing-quote-grid"><div class="form-row"><label class="form-label" for="bp-method">Payment method *</label><select class="form-select" id="bp-method" required><option value="mpesa">M-Pesa</option><option value="bank_transfer">Bank transfer</option><option value="cash">Cash</option><option value="cheque">Cheque</option><option value="other">Other</option></select></div><div class="form-row"><label class="form-label" for="bp-reference">Provider / bank reference</label><input class="form-input" id="bp-reference" maxlength="120" placeholder="e.g. M-Pesa receipt code"/></div></div>
+      <div class="billing-quote-grid"><div class="form-row"><label class="form-label" for="bp-method">Payment method *</label><select class="form-select" id="bp-method" required><option value="mpesa">M-Pesa</option><option value="bank_transfer">Bank transfer</option><option value="cash">Cash</option><option value="cheque">Cheque</option><option value="other">Other</option></select></div><div class="form-row"><label class="form-label" for="bp-reference">Payment / receipt reference *</label><input class="form-input" id="bp-reference" maxlength="120" placeholder="Enter the provider code or cash receipt number" required/></div></div>
       <div class="form-row"><label class="form-label" for="bp-notes">Notes</label><textarea class="form-input" id="bp-notes" rows="2" maxlength="500"></textarea></div>
       <div class="billing-register-note">This records a payment you have already verified. The ledger entry cannot currently be edited or deleted; check the invoice, amount, date, and reference before saving.</div>
     </div>
@@ -1280,16 +1402,12 @@
           <input class="form-input" id="agent-form-base" placeholder="e.g. Thika Town" maxlength="80"/>
         </div>
         <div class="form-row">
-          <label class="form-label" for="agent-form-commission-type">Commission Model</label>
-          <select class="form-select" id="agent-form-commission-type">
-            <option value="percentage">Percentage of Subscription (%)</option>
-            <option value="fixed_per_school">Fixed KES per School Onboarded</option>
-            <option value="fixed_per_student">Fixed KES per Enrolled Student</option>
-          </select>
+          <label class="form-label" for="agent-form-first-commission-rate">First school invoice commission (%) *</label>
+          <input class="form-input" id="agent-form-first-commission-rate" type="number" min="0" max="100" step="0.1" value="25" required/>
         </div>
         <div class="form-row">
-          <label class="form-label" for="agent-form-commission-rate">Commission Rate / Amount *</label>
-          <input class="form-input" id="agent-form-commission-rate" type="number" step="0.1" value="10.0" placeholder="10.0" required/>
+          <label class="form-label" for="agent-form-recurring-commission-rate">Recurring term commission (%) *</label>
+          <input class="form-input" id="agent-form-recurring-commission-rate" type="number" min="0" max="100" step="0.1" value="10" required/>
         </div>
         <div class="form-row">
           <label class="form-label" for="agent-form-mpesa">M-Pesa Payout Number</label>
@@ -1312,9 +1430,9 @@
           <input class="form-input" id="agent-form-bank-account" placeholder="e.g. 0123456789" maxlength="80"/>
         </div>
         <div class="form-row" style="grid-column:1/-1">
-          <label class="form-label" for="agent-form-pin">Agent App Access PIN (4-digit)</label>
-          <input class="form-input" id="agent-form-pin" type="password" maxlength="6" placeholder="Set a 4-6 digit numeric PIN for the agent mobile app"/>
-          <div class="form-hint" style="font-size:11px;color:var(--muted);margin-top:3px">The agent will use their phone number and this PIN to log in to their mobile earnings dashboard.</div>
+          <label class="form-label" for="agent-form-pin">Agent App Access PIN</label>
+          <input class="form-input" id="agent-form-pin" type="password" maxlength="6" placeholder="Generated after saving" disabled/>
+          <div class="form-hint" style="font-size:11px;color:var(--muted);margin-top:3px">A temporary 6-digit PIN is generated after creation or reset, shown once, and must be changed at first sign-in.</div>
         </div>
         <div class="form-row" style="grid-column:1/-1;margin-bottom:0">
           <label class="form-label" for="agent-form-notes">Internal Notes &amp; Terms Reference</label>
@@ -1354,14 +1472,20 @@
     <div class="drawer-body">
       <!-- Quick Action Buttons inside Drawer -->
       <div class="drawer-action-bar">
-        <button class="btn primary" id="btn-agent-record-payout" type="button">💸 Record Payout</button>
+        <button class="btn primary" id="btn-agent-record-payout" type="button">💸 Record External Payout</button>
         <button class="btn" id="btn-agent-approve" type="button" style="display:none;background:rgba(5,150,105,.12);color:#059669;border-color:rgba(5,150,105,.3)">✓ Approve Application</button>
         <button class="btn" id="btn-agent-reject" type="button" style="display:none;background:rgba(220,38,38,.08);color:#dc2626;border-color:rgba(220,38,38,.2)">✗ Reject Application</button>
         <button class="btn" id="btn-agent-add-school" type="button">+ Assign School</button>
         <button class="btn" id="btn-agent-add-earning" type="button">+ Record Commission</button>
         <button class="btn" id="btn-agent-edit-profile" type="button">✏️ Edit Profile</button>
+        <button class="btn" id="btn-agent-reset-pin" data-super-admin-only type="button">🔐 Reset Agent PIN</button>
         <button class="btn danger-outline" id="btn-agent-delete" type="button">🗑️ Delete Agent</button>
       </div>
+      <section class="agent-drawer-operation" id="agent-drawer-operation" hidden aria-live="polite">
+        <div class="agent-drawer-operation-toolbar"><strong id="agent-drawer-operation-title">Agent operation</strong><button class="btn sm" id="agent-drawer-operation-back" type="button">← Back to agent</button></div>
+        <div id="agent-drawer-operation-content"></div>
+      </section>
+      <div id="agent-pin-reset-request" hidden style="margin:0 0 14px;padding:10px 12px;border:1px solid rgba(217,119,6,.28);background:rgba(217,119,6,.08);border-radius:8px;color:#92400e;font-size:12px"></div>
 
       <!-- Financial Performance Stats -->
       <div class="drawer-kpi-grid">
@@ -1449,7 +1573,7 @@
         <div id="pane-agent-payouts" style="display:none">
           <div style="overflow-x:auto;max-height:280px">
             <table class="data-table" style="font-size:12px">
-              <thead><tr><th>Date</th><th>Method</th><th>Reference</th><th>Amount (KES)</th><th>Status</th><th>Processed By</th></tr></thead>
+              <thead><tr><th>Date</th><th>Method</th><th>Reference</th><th>Amount (KES)</th><th>Commission allocated</th><th>Status</th><th>Processed By</th></tr></thead>
               <tbody id="agent-payouts-body"></tbody>
             </table>
           </div>
@@ -1468,24 +1592,25 @@
 <div class="overlay" id="agent-payout-overlay" aria-modal="true" role="dialog" style="display:none">
   <div class="modal" style="max-width:480px">
     <div class="modal-header">
-      <div class="modal-title">Record Agent Payout</div>
+      <div class="modal-title">Record Manual Payout (Already Sent)</div>
       <button class="modal-close" id="agent-payout-close" type="button" aria-label="Close">×</button>
     </div>
     <div class="modal-body">
       <div style="padding:10px 12px;background:rgba(3,11,130,.05);border-radius:6px;margin-bottom:14px">
-        <div style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase">Disbursing To</div>
+        <div style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase">Recipient</div>
         <div id="payout-modal-agent-name" style="font-weight:700;font-size:14px;color:var(--ink)">-</div>
         <div id="payout-modal-agent-mpesa" style="font-size:12px;color:var(--muted)">M-Pesa: -</div>
         <div id="payout-modal-balance-hint" style="font-size:12px;font-weight:600;color:var(--brand);margin-top:4px">Current Outstanding Balance: KES 0</div>
       </div>
+      <div class="billing-register-note" style="margin-bottom:14px">This is a bookkeeping entry for a transfer already made outside this console. It does not send money.</div>
       <div class="form-row">
         <label class="form-label" for="payout-form-amount">Payout Amount (KES) *</label>
         <input class="form-input" id="payout-form-amount" type="number" step="1" required/>
       </div>
       <div class="form-row">
-        <label class="form-label" for="payout-form-method">Disbursement Method</label>
+        <label class="form-label" for="payout-form-method">Method already used</label>
         <select class="form-select" id="payout-form-method">
-          <option value="mpesa">M-Pesa B2C / Send Money</option>
+          <option value="mpesa">M-Pesa transfer (already sent)</option>
           <option value="bank_transfer">Bank Transfer (EFT / RTGS)</option>
           <option value="cash">Cash Voucher</option>
           <option value="other">Other / Cheque</option>
@@ -1503,10 +1628,11 @@
         <label class="form-label" for="payout-form-notes">Notes / Reason</label>
         <input class="form-input" id="payout-form-notes" placeholder="e.g. Term 1 settlement" maxlength="250"/>
       </div>
+      <label style="display:flex;gap:8px;align-items:flex-start;margin-top:14px;font-size:12px;color:var(--ink)"><input id="payout-transfer-confirmed" type="checkbox" style="margin-top:2px"/><span>I confirm this payout was already sent and the reference above is its receipt or transaction ID.</span></label>
     </div>
     <div class="modal-footer">
       <button class="btn" id="payout-form-cancel" type="button">Cancel</button>
-      <button class="btn primary" id="payout-form-submit" type="button">Confirm &amp; Record Payout</button>
+      <button class="btn primary" id="payout-form-submit" type="button" disabled>Confirm Sent &amp; Record</button>
     </div>
   </div>
 </div>
@@ -1521,11 +1647,19 @@
     <div class="modal-body">
       <div class="form-row">
         <label class="form-label" for="earning-form-school">School Name *</label>
-        <input class="form-input" id="earning-form-school" placeholder="e.g. Hillcrest Preparatory" required maxlength="120"/>
+        <select class="form-select" id="earning-form-school" required>
+          <option value="">Loading assigned schools…</option>
+        </select>
       </div>
       <div class="form-row">
-        <label class="form-label" for="earning-form-gross">School Invoice / Gross Amount (KES)</label>
-        <input class="form-input" id="earning-form-gross" type="number" step="1" placeholder="e.g. 50000"/>
+        <label class="form-label" for="earning-form-invoice-select">Existing School Invoice *</label>
+        <select class="form-select" id="earning-form-invoice-select" required disabled>
+          <option value="">Select a school first</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label class="form-label" for="earning-form-gross">School Invoice Amount (KES)</label>
+        <input class="form-input" id="earning-form-gross" type="number" step="1" placeholder="Selected invoice amount" readonly/>
       </div>
       <div class="form-row">
         <label class="form-label" for="earning-form-earned">Commission Amount (KES) *</label>
@@ -1533,7 +1667,7 @@
       </div>
       <div class="form-row">
         <label class="form-label" for="earning-form-invoice">Invoice / Payment Ref</label>
-        <input class="form-input" id="earning-form-invoice" placeholder="e.g. INV-2026-0042" maxlength="60"/>
+        <input class="form-input" id="earning-form-invoice" placeholder="Populated from selected invoice" maxlength="60" readonly/>
       </div>
       <div class="form-row">
         <label class="form-label" for="earning-form-desc">Description</label>
@@ -1592,7 +1726,7 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
-<script src="./app.js"></script>
+<script src="./app.js?v=20261101-ringtone-picker"></script>
 <script src="./login.js"></script>
 </body>
 </html>

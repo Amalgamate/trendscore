@@ -2,6 +2,7 @@
 
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const { DatabaseSync } = require('node:sqlite');
 const { DEFAULT_PRODUCTS } = require('./billing-pricing');
 const { runMigrations } = require('./billing-migrate');
@@ -125,6 +126,18 @@ function createBillingStore(dataDir) {
       updated_by TEXT NOT NULL DEFAULT '',
       updated_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS mpesa_c2b_events (
+      transaction_id TEXT PRIMARY KEY,
+      bill_reference TEXT NOT NULL DEFAULT '',
+      amount_ksh INTEGER NOT NULL DEFAULT 0,
+      sender_phone TEXT NOT NULL DEFAULT '',
+      transaction_date TEXT NOT NULL DEFAULT '',
+      invoice_id TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'needs_review',
+      payload TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
   `);
 
   // Seed the price list once; INSERT OR IGNORE keeps any edits made later in the admin UI.
@@ -148,8 +161,9 @@ function createBillingStore(dataDir) {
   ensureColumn('billing_quotes', 'cancel_reason', "TEXT NOT NULL DEFAULT ''");
   ensureColumn('billing_invoices', 'cancel_reason', "TEXT NOT NULL DEFAULT ''");
   ensureColumn('billing_invoices', 'cancelled_by', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn('billing_contract_lines', 'cadence', "TEXT NOT NULL DEFAULT 'termly'");
 
-  const customerColumns = `id, name, legal_name AS legalName, tenant_key AS tenantKey,
+  const customerColumns = `id, name, paybill_account_name AS paybillAccountName, legal_name AS legalName, tenant_key AS tenantKey,
     billing_email AS billingEmail, billing_phone AS billingPhone,
     billing_address AS billingAddress, tax_identifier AS taxIdentifier, currency,
     payment_terms AS paymentTerms, status, created_at AS createdAt, updated_at AS updatedAt`;
@@ -168,8 +182,10 @@ function createBillingStore(dataDir) {
     sent_at AS sentAt, email_message_id AS emailMessageId, cancelled_at AS cancelledAt,
     cancelled_by AS cancelledBy, cancel_reason AS cancelReason`;
   const invoiceColumns = `id, invoice_number AS invoiceNumber, quote_id AS quoteId,
+    contract_id AS contractId, invoice_type AS invoiceType, period_key AS periodKey,
     customer_id AS customerId, invoice_snapshot AS invoiceSnapshotJson, amount_ksh AS amountKsh,
-    status, created_by AS createdBy, created_at AS createdAt, updated_at AS updatedAt,
+    status, settlement_status AS settlementStatus, due_date AS dueDate, issued_at AS issuedAt,
+    created_by AS createdBy, created_at AS createdAt, updated_at AS updatedAt,
     cancel_reason AS cancelReason, cancelled_by AS cancelledBy`;
   const decodeQuote = row => row && ({ ...row, status: row.cancelledAt ? 'cancelled' : (row.status === 'sent' && row.expiresOn && row.expiresOn < todayNairobi() ? 'expired' : row.status), customerSnapshot: decodeJson(row.customerSnapshotJson), quoteSnapshot: decodeJson(row.quoteSnapshotJson), customerSnapshotJson: undefined, quoteSnapshotJson: undefined });
   const decodeInvoice = row => row && ({ ...row, invoiceSnapshot: decodeJson(row.invoiceSnapshotJson), invoiceSnapshotJson: undefined });
@@ -205,20 +221,26 @@ function createBillingStore(dataDir) {
     getCustomer(id) {
       return db.prepare(`SELECT ${customerColumns} FROM billing_customers WHERE id = ?`).get(id) || null;
     },
+    findCustomersByPaybillAccountName(name) {
+      const normalize = value => String(value || '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('en');
+      const target = normalize(name);
+      if (!target) return [];
+      return this.listCustomers().filter(customer => normalize(customer.paybillAccountName || customer.name) === target);
+    },
     createCustomer(customer) {
       const now = new Date().toISOString();
       db.prepare(`INSERT INTO billing_customers
-        (id,name,legal_name,tenant_key,billing_email,billing_phone,billing_address,tax_identifier,currency,payment_terms,status,created_at,updated_at)
-        VALUES (@id,@name,@legalName,@tenantKey,@billingEmail,@billingPhone,@billingAddress,@taxIdentifier,@currency,@paymentTerms,@status,@createdAt,@updatedAt)`)
-        .run({ ...customer, createdAt: now, updatedAt: now });
+        (id,name,paybill_account_name,legal_name,tenant_key,billing_email,billing_phone,billing_address,tax_identifier,currency,payment_terms,status,created_at,updated_at)
+        VALUES (@id,@name,@paybillAccountName,@legalName,@tenantKey,@billingEmail,@billingPhone,@billingAddress,@taxIdentifier,@currency,@paymentTerms,@status,@createdAt,@updatedAt)`)
+        .run({ ...customer, paybillAccountName: customer.paybillAccountName || customer.name, createdAt: now, updatedAt: now });
       return this.getCustomer(customer.id);
     },
     updateCustomer(id, customer) {
       const now = new Date().toISOString();
-      const result = db.prepare(`UPDATE billing_customers SET name=@name, legal_name=@legalName, tenant_key=@tenantKey,
+      const result = db.prepare(`UPDATE billing_customers SET name=@name, paybill_account_name=@paybillAccountName, legal_name=@legalName, tenant_key=@tenantKey,
         billing_email=@billingEmail, billing_phone=@billingPhone, billing_address=@billingAddress,
         tax_identifier=@taxIdentifier, currency=@currency, payment_terms=@paymentTerms,
-        status=@status, updated_at=@updatedAt WHERE id=@id`).run({ ...customer, id, updatedAt: now });
+        status=@status, updated_at=@updatedAt WHERE id=@id`).run({ ...customer, paybillAccountName: customer.paybillAccountName || customer.name, id, updatedAt: now });
       return result.changes ? this.getCustomer(id) : null;
     },
     listContracts(customerId = '') {
@@ -229,10 +251,26 @@ function createBillingStore(dataDir) {
     },
     createContract(contract) {
       const now = new Date().toISOString();
-      db.prepare(`INSERT INTO billing_contracts
-        (id,customer_id,reference,service_description,cadence,start_date,end_date,renewal_date,terms_note,status,created_at,updated_at)
-        VALUES (@id,@customerId,@reference,@serviceDescription,@cadence,@startDate,@endDate,@renewalDate,@termsNote,@status,@createdAt,@updatedAt)`)
-        .run({ ...contract, createdAt: now, updatedAt: now });
+      const { lines = [], ...contractValues } = contract;
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        db.prepare(`INSERT INTO billing_contracts
+          (id,customer_id,reference,service_description,cadence,start_date,end_date,renewal_date,terms_note,status,created_at,updated_at)
+          VALUES (@id,@customerId,@reference,@serviceDescription,@cadence,@startDate,@endDate,@renewalDate,@termsNote,@status,@createdAt,@updatedAt)`)
+          .run({ ...contractValues, createdAt: now, updatedAt: now });
+        const lineStmt = db.prepare(`INSERT INTO billing_contract_lines
+          (id,contract_id,product_code,quantity,unit_price_ksh,description,cadence,created_at)
+          VALUES (?,?,?,?,?,?,?,?)`);
+        for (const line of Array.isArray(lines) ? lines : []) {
+          lineStmt.run(crypto.randomUUID(), contract.id, String(line.productCode || 'custom'),
+            Math.max(1, Number(line.quantity || 1)), Number(line.unitPriceKsh || 0), String(line.description || '').slice(0, 500),
+            ['one_off', 'termly', 'monthly', 'annual'].includes(line.cadence) ? line.cadence : 'termly', now);
+        }
+        db.exec('COMMIT');
+      } catch (error) {
+        try { db.exec('ROLLBACK'); } catch {}
+        throw error;
+      }
       return db.prepare(`SELECT ${contractColumns} FROM billing_contracts WHERE id = ?`).get(contract.id);
     },
     updateContract(id, contract) {
@@ -242,6 +280,11 @@ function createBillingStore(dataDir) {
         terms_note=@termsNote, status=@status, updated_at=@updatedAt WHERE id=@id`).run({ ...contract, id, updatedAt: now });
       if (!result.changes) return null;
       return db.prepare(`SELECT ${contractColumns} FROM billing_contracts WHERE id = ?`).get(id);
+    },
+    linkContractOnboardingInvoice(contractId, invoiceId) {
+      db.prepare(`UPDATE billing_contracts SET onboarding_invoice_id=?,updated_at=? WHERE id=?`)
+        .run(invoiceId, new Date().toISOString(), contractId);
+      return true;
     },
     listQuotes() {
       return db.prepare(`SELECT ${quoteColumns} FROM billing_quotes ORDER BY created_at DESC`).all().map(decodeQuote);
@@ -284,6 +327,46 @@ function createBillingStore(dataDir) {
       const result = db.prepare(`UPDATE billing_quotes SET status=@status, updated_at=@updatedAt WHERE id=@id`).run({ id, status, updatedAt: now });
       return result.changes ? this.getQuote(id) : null;
     },
+    recordQuoteAcceptance(id, acceptance) {
+      const now = new Date().toISOString();
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        const row = db.prepare(`SELECT quote_snapshot AS snapshot,status,cancelled_at AS cancelledAt FROM billing_quotes WHERE id=?`).get(id);
+        if (!row || !['draft', 'sent'].includes(row.status) || row.cancelledAt) throw new Error('This quote is no longer awaiting customer acceptance');
+        const snapshot = decodeJson(row.snapshot) || {};
+        if (snapshot.discount?.requiresApproval === true && snapshot.discount.approvalStatus !== 'approved') throw new Error('A finance approver must approve this quote’s discount before acceptance');
+        snapshot.acceptance = { ...acceptance, acceptedAt: now };
+        const result = db.prepare(`UPDATE billing_quotes SET status='accepted',quote_snapshot=?,updated_at=? WHERE id=? AND status IN ('draft','sent') AND cancelled_at=''`)
+          .run(JSON.stringify(snapshot), now, id);
+        if (!result.changes) throw new Error('This quote changed before acceptance could be saved');
+        db.exec('COMMIT');
+      } catch (error) {
+        try { db.exec('ROLLBACK'); } catch {}
+        throw error;
+      }
+      return this.getQuote(id);
+    },
+    recordQuoteDiscountApproval(id, { approvedBy, approvedAt } = {}) {
+      const now = approvedAt || new Date().toISOString();
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        const row = db.prepare(`SELECT quote_snapshot AS snapshot,status,cancelled_at AS cancelledAt
+          FROM billing_quotes WHERE id=?`).get(id);
+        if (!row || !['draft', 'sent'].includes(row.status) || row.cancelledAt) throw new Error('Only an active draft or sent quote can receive discount approval');
+        const snapshot = decodeJson(row.snapshot) || {};
+        if (!snapshot.discount?.amountKsh || snapshot.discount.requiresApproval !== true) throw new Error('This quote does not require discount approval');
+        if (snapshot.discount.approvalStatus === 'approved') throw new Error('This discount has already been approved');
+        snapshot.discount = { ...snapshot.discount, approvalStatus: 'approved', approvedBy, approvedAt: now };
+        const result = db.prepare(`UPDATE billing_quotes SET quote_snapshot=?,updated_at=?
+          WHERE id=? AND status IN ('draft','sent') AND cancelled_at=''`).run(JSON.stringify(snapshot), now, id);
+        if (!result.changes) throw new Error('This quote changed before the discount approval could be saved');
+        db.exec('COMMIT');
+      } catch (error) {
+        try { db.exec('ROLLBACK'); } catch {}
+        throw error;
+      }
+      return this.getQuote(id);
+    },
     recordQuoteDelivery(delivery) {
       const now = new Date().toISOString();
       db.prepare(`INSERT INTO billing_quote_deliveries
@@ -306,15 +389,83 @@ function createBillingStore(dataDir) {
     getInvoice(id) {
       return withPaymentTotals(decodeInvoice(db.prepare(`SELECT ${invoiceColumns} FROM billing_invoices WHERE id=?`).get(id) || null));
     },
+    getInvoiceByNumber(invoiceNumber) {
+      return withPaymentTotals(decodeInvoice(db.prepare(`SELECT ${invoiceColumns} FROM billing_invoices WHERE invoice_number=?`).get(String(invoiceNumber || '')) || null));
+    },
     getInvoiceForQuote(quoteId) {
       return withPaymentTotals(decodeInvoice(db.prepare(`SELECT ${invoiceColumns} FROM billing_invoices WHERE quote_id=?`).get(quoteId) || null));
+    },
+    getInvoiceForContractPeriod(contractId, periodKey) {
+      return withPaymentTotals(decodeInvoice(db.prepare(`SELECT ${invoiceColumns} FROM billing_invoices WHERE contract_id=? AND period_key=?`).get(contractId, periodKey) || null));
+    },
+    createTermRenewalInvoices(term, actor) {
+      const periodKey = `${term.year}-T${term.term}`;
+      const contracts = db.prepare(`SELECT c.*, cu.name AS customer_name, cu.legal_name AS customer_legal_name,
+        cu.tenant_key, cu.billing_email, cu.billing_phone, cu.billing_address, cu.tax_identifier, cu.currency
+        FROM billing_contracts c JOIN billing_customers cu ON cu.id=c.customer_id
+        WHERE c.status='active' AND c.cadence='termly' AND cu.status='active'
+        AND (c.start_date='' OR c.start_date<=?) AND (c.end_date='' OR c.end_date>=?)
+        ORDER BY c.created_at`).all(term.endDate, term.startDate);
+      const created = [];
+      for (const contract of contracts) {
+        const existing = this.getInvoiceForContractPeriod(contract.id, periodKey);
+        if (existing) continue;
+        const lines = db.prepare(`SELECT product_code AS productCode,quantity,unit_price_ksh AS unitPriceKsh,description
+          FROM billing_contract_lines WHERE contract_id=? AND cadence='termly' AND description NOT LIKE 'Discount (%'`).all(contract.id);
+        if (!lines.length) continue;
+        const amountKsh = lines.reduce((sum, line) => sum + Number(line.quantity) * Number(line.unitPriceKsh), 0);
+        if (!Number.isSafeInteger(amountKsh) || amountKsh <= 0) continue;
+        const id = crypto.randomUUID();
+        const now = new Date().toISOString();
+        const onboarding = contract.onboarding_invoice_id
+          ? db.prepare('SELECT invoice_snapshot FROM billing_invoices WHERE id=?').get(contract.onboarding_invoice_id)
+          : null;
+        const onboardingSnapshot = onboarding ? decodeJson(onboarding.invoice_snapshot) : null;
+        const snapshot = {
+          source: 'term_renewal', contractId: contract.id, periodKey,
+          customerSnapshot: {
+            name: contract.customer_name, legalName: contract.customer_legal_name, tenantKey: contract.tenant_key,
+            billingEmail: contract.billing_email, billingPhone: contract.billing_phone,
+            billingAddress: contract.billing_address, taxIdentifier: contract.tax_identifier, currency: contract.currency,
+          },
+          quoteSnapshot: {
+            enrollmentCount: Number(onboardingSnapshot?.quoteSnapshot?.enrollmentCount || 0),
+            lines: lines.map(line => ({ ...line, cadence: 'termly', amountKsh: Number(line.quantity) * Number(line.unitPriceKsh) })),
+          },
+          dueDate: term.dueDate, term: { year: term.year, term: term.term, startDate: term.startDate, endDate: term.endDate },
+          taxNote: 'Tax treatment is not included; this commercial invoice is not an eTIMS tax invoice.',
+        };
+        try {
+          db.exec('BEGIN IMMEDIATE');
+          db.prepare(`INSERT INTO billing_invoices
+            (id,invoice_number,quote_id,contract_id,invoice_type,period_key,customer_id,invoice_snapshot,amount_ksh,status,settlement_status,due_date,created_by,created_at,updated_at)
+            VALUES (?, ?, NULL, ?, 'renewal', ?, ?, ?, ?, 'draft', 'unpaid', ?, ?, ?, ?)`)
+            .run(id, `DRAFT-${periodKey}-${id.slice(0, 8)}`, contract.id, periodKey, contract.customer_id,
+              JSON.stringify(snapshot), amountKsh, term.dueDate || '', actor || 'system', now, now);
+          const insertLine = db.prepare(`INSERT INTO billing_invoice_lines
+            (id,invoice_id,description,quantity,unit_price_ksh,amount_ksh,product_code,cadence,sort_order,created_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?)`);
+          lines.forEach((line, index) => insertLine.run(crypto.randomUUID(), id, line.description,
+            Number(line.quantity), Number(line.unitPriceKsh), Number(line.quantity) * Number(line.unitPriceKsh),
+            line.productCode, 'termly', index, now));
+          db.exec('COMMIT');
+          created.push(this.getInvoice(id));
+        } catch (error) {
+          try { db.exec('ROLLBACK'); } catch {}
+          if (String(error.message).includes('UNIQUE')) continue;
+          throw error;
+        }
+      }
+      return { periodKey, created };
     },
     createDraftInvoice(invoice) {
       const now = new Date().toISOString();
       db.prepare(`INSERT INTO billing_invoices
-        (id,invoice_number,quote_id,customer_id,invoice_snapshot,amount_ksh,status,created_by,created_at,updated_at)
-        VALUES (@id,@invoiceNumber,@quoteId,@customerId,@invoiceSnapshot,@amountKsh,'draft',@createdBy,@createdAt,@updatedAt)`)
-        .run({ ...invoice, invoiceSnapshot: JSON.stringify(invoice.invoiceSnapshot), createdAt: now, updatedAt: now });
+        (id,invoice_number,quote_id,contract_id,invoice_type,period_key,customer_id,invoice_snapshot,amount_ksh,status,due_date,created_by,created_at,updated_at)
+        VALUES (@id,@invoiceNumber,@quoteId,@contractId,@invoiceType,@periodKey,@customerId,@invoiceSnapshot,@amountKsh,'draft',@dueDate,@createdBy,@createdAt,@updatedAt)`)
+        .run({ ...invoice, contractId: invoice.contractId || null, invoiceType: invoice.invoiceType || 'onboarding',
+          periodKey: invoice.periodKey || null, dueDate: invoice.dueDate || '',
+          invoiceSnapshot: JSON.stringify(invoice.invoiceSnapshot), createdAt: now, updatedAt: now });
       return decodeInvoice(db.prepare(`SELECT ${invoiceColumns} FROM billing_invoices WHERE id=?`).get(invoice.id));
     },
     updateDraftInvoice(id, details) {
@@ -361,6 +512,92 @@ function createBillingStore(dataDir) {
       return db.prepare(`SELECT id,invoice_id AS invoiceId,amount_ksh AS amountKsh,payment_date AS paymentDate,
         method,reference,notes,recorded_by AS recordedBy,created_at AS createdAt FROM billing_payments WHERE id=?`).get(id) || null;
     },
+    getPaymentByReference(method, reference) {
+      return db.prepare(`SELECT id,invoice_id AS invoiceId,amount_ksh AS amountKsh,payment_date AS paymentDate,
+        method,reference,notes,recorded_by AS recordedBy,created_at AS createdAt
+        FROM billing_payments WHERE method=? AND lower(reference)=lower(?) LIMIT 1`).get(method, reference) || null;
+    },
+    recordMpesaC2BEvent(event) {
+      const now = new Date().toISOString();
+      db.prepare(`INSERT INTO mpesa_c2b_events
+        (transaction_id,bill_reference,amount_ksh,sender_phone,transaction_date,invoice_id,status,payload,created_at,updated_at)
+        VALUES (@transactionId,@billReference,@amountKsh,@senderPhone,@transactionDate,@invoiceId,@status,@payload,@createdAt,@updatedAt)
+        ON CONFLICT(transaction_id) DO NOTHING`).run({
+          transactionId: event.transactionId, billReference: event.billReference || '',
+          amountKsh: Number(event.amountKsh || 0), senderPhone: event.senderPhone || '',
+          transactionDate: event.transactionDate || '', invoiceId: event.invoiceId || '',
+          status: event.status || 'needs_review', payload: JSON.stringify(event.payload || {}),
+          createdAt: now, updatedAt: now,
+        });
+      db.prepare(`UPDATE mpesa_c2b_events SET matched_customer_id=?,matched_customer_name=?,review_reason=?
+        WHERE transaction_id=?`).run(event.matchedCustomerId || '', event.matchedCustomerName || '', event.reviewReason || '', event.transactionId);
+      return db.prepare('SELECT * FROM mpesa_c2b_events WHERE transaction_id=?').get(event.transactionId);
+    },
+    listMpesaC2BEvents({ status = '' } = {}) {
+      const rows = status
+        ? db.prepare('SELECT * FROM mpesa_c2b_events WHERE status=? ORDER BY created_at DESC').all(status)
+        : db.prepare('SELECT * FROM mpesa_c2b_events ORDER BY created_at DESC').all();
+      return rows.map(row => ({ ...row, payload: decodeJson(row.payload) }));
+    },
+    recordCommissionAttributionFailure({ paymentId, invoiceId, error }) {
+      const now = new Date().toISOString();
+      db.prepare(`INSERT INTO billing_commission_attribution_failures
+        (payment_id,invoice_id,status,error,attempts,last_attempt_at,resolved_at,created_at,updated_at)
+        VALUES (@paymentId,@invoiceId,'pending',@error,0,'','',@now,@now)
+        ON CONFLICT(payment_id) DO UPDATE SET invoice_id=excluded.invoice_id,status='pending',error=excluded.error,updated_at=excluded.updated_at`)
+        .run({ paymentId, invoiceId, error: String(error || 'Commission attribution failed').slice(0, 500), now });
+      return this.getCommissionAttributionFailure(paymentId);
+    },
+    getCommissionAttributionFailure(paymentId) {
+      return db.prepare(`SELECT payment_id AS paymentId,invoice_id AS invoiceId,status,error,attempts,
+        last_attempt_at AS lastAttemptAt,resolved_at AS resolvedAt,created_at AS createdAt,updated_at AS updatedAt
+        FROM billing_commission_attribution_failures WHERE payment_id=?`).get(paymentId) || null;
+    },
+    listCommissionAttributionFailures({ status = 'pending' } = {}) {
+      const rows = status
+        ? db.prepare(`SELECT f.payment_id AS paymentId,f.invoice_id AS invoiceId,f.status,f.error,f.attempts,
+            f.last_attempt_at AS lastAttemptAt,f.resolved_at AS resolvedAt,f.created_at AS createdAt,
+            p.amount_ksh AS amountKsh,p.payment_date AS paymentDate,p.method,p.reference,
+            i.invoice_number AS invoiceNumber,c.name AS customerName
+          FROM billing_commission_attribution_failures f
+          JOIN billing_payments p ON p.id=f.payment_id
+          JOIN billing_invoices i ON i.id=f.invoice_id
+          JOIN billing_customers c ON c.id=i.customer_id
+          WHERE f.status=? ORDER BY f.created_at DESC`).all(status)
+        : db.prepare(`SELECT f.payment_id AS paymentId,f.invoice_id AS invoiceId,f.status,f.error,f.attempts,
+            f.last_attempt_at AS lastAttemptAt,f.resolved_at AS resolvedAt,f.created_at AS createdAt,
+            p.amount_ksh AS amountKsh,p.payment_date AS paymentDate,p.method,p.reference,
+            i.invoice_number AS invoiceNumber,c.name AS customerName
+          FROM billing_commission_attribution_failures f
+          JOIN billing_payments p ON p.id=f.payment_id
+          JOIN billing_invoices i ON i.id=f.invoice_id
+          JOIN billing_customers c ON c.id=i.customer_id
+          ORDER BY f.created_at DESC`).all();
+      return rows;
+    },
+    noteCommissionAttributionAttempt(paymentId, error) {
+      const now = new Date().toISOString();
+      db.prepare(`UPDATE billing_commission_attribution_failures SET attempts=attempts+1,error=?,last_attempt_at=?,updated_at=?
+        WHERE payment_id=? AND status='pending'`).run(String(error || '').slice(0, 500), now, now, paymentId);
+      return this.getCommissionAttributionFailure(paymentId);
+    },
+    updateCommissionAttributionError(paymentId, error) {
+      const now = new Date().toISOString();
+      db.prepare(`UPDATE billing_commission_attribution_failures SET error=?,updated_at=? WHERE payment_id=? AND status='pending'`)
+        .run(String(error || '').slice(0, 500), now, paymentId);
+      return this.getCommissionAttributionFailure(paymentId);
+    },
+    resolveCommissionAttributionFailure(paymentId, note = '') {
+      const now = new Date().toISOString();
+      const result = db.prepare(`UPDATE billing_commission_attribution_failures SET status='resolved',error=?,resolved_at=?,updated_at=?
+        WHERE payment_id=? AND status='pending'`).run(String(note || '').slice(0, 500), now, now, paymentId);
+      return result.changes ? this.getCommissionAttributionFailure(paymentId) : null;
+    },
+    resolveMpesaC2BEvent(transactionId, invoiceId, status = 'allocated') {
+      const result = db.prepare(`UPDATE mpesa_c2b_events SET invoice_id=?,status=?,updated_at=? WHERE transaction_id=? AND status='needs_review'`)
+        .run(invoiceId || '', status, new Date().toISOString(), transactionId);
+      return result.changes > 0 ? db.prepare('SELECT * FROM mpesa_c2b_events WHERE transaction_id=?').get(transactionId) : null;
+    },
     recordPayment(payment) {
       db.exec('BEGIN IMMEDIATE');
       try {
@@ -391,7 +628,7 @@ function createBillingStore(dataDir) {
     },
     counts() {
       const n = t => Number(db.prepare(`SELECT COUNT(*) AS c FROM ${t}`).get().c);
-      return { customers: n('billing_customers'), contracts: n('billing_contracts'), quotes: n('billing_quotes'), invoices: n('billing_invoices'), payments: n('billing_payments') };
+      return { customers: n('billing_customers'), contracts: n('billing_contracts'), quotes: n('billing_quotes'), invoices: n('billing_invoices'), payments: n('billing_payments'), commissionFailures: n('billing_commission_attribution_failures') };
     },
     // Writes a consistent copy of the billing database into billing-backups/ and returns its path.
     backupNow(prefix = 'platform-billing') {
@@ -418,7 +655,7 @@ function createBillingStore(dataDir) {
       const backupPath = this.backupNow();
       db.exec('BEGIN IMMEDIATE');
       try {
-        for (const t of ['billing_payments', 'billing_invoice_deliveries', 'billing_invoices', 'billing_quote_deliveries', 'billing_quotes', 'billing_contracts', 'billing_customers']) db.exec(`DELETE FROM ${t}`);
+        for (const t of ['billing_commission_attribution_failures', 'billing_payments', 'billing_invoice_deliveries', 'billing_invoices', 'billing_quote_deliveries', 'billing_quotes', 'billing_contracts', 'billing_customers']) db.exec(`DELETE FROM ${t}`);
         db.exec('COMMIT');
       } catch (error) {
         try { db.exec('ROLLBACK'); } catch {}

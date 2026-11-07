@@ -169,6 +169,7 @@ const PREFETCH_MAP = {
   'settings-users':       () => import('../pages/settings/UserManagement'),
   'planner-duty-roster':  () => import('../pages/planner/DutyRosterPage'),
   'learning-dashboard':   () => import('../pages/lms/analytics/LearningAnalyticsPage'),
+  'digital-diary':        () => import('../pages/lms/DigitalDiaryTeacherPage'),
   'learning-assignments': () => import('../pages/lms/assignments/AssignmentsPage'),
   'learning-lessons':     () => import('../pages/lms/lessons/LessonList'),
   'learning-lesson-builder': () => import('../pages/lms/lessons/LessonBuilderPage'),

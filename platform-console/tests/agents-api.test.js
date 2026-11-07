@@ -23,7 +23,7 @@ test('Field Agent Mobile App & Billing Auto-Attribution Integration', async (t) 
       county: 'Machakos',
       commission_type: 'percentage',
       commission_rate: 15.0,
-      pin: '9876',
+      pin: '987631',
     });
 
     assert.ok(agent);
@@ -33,12 +33,12 @@ test('Field Agent Mobile App & Billing Auto-Attribution Integration', async (t) 
   });
 
   await t.test('2. Agent logs into Mobile App with Phone + PIN', () => {
-    const authAgent = agentsStore.authenticateAgent('0712345678', '9876');
+    const authAgent = agentsStore.authenticateAgent('0712345678', '987631');
     assert.ok(authAgent);
     assert.equal(authAgent.id, agent.id);
     assert.equal(authAgent.financials.balanceDueKsh, 0);
 
-    const badAuth = agentsStore.authenticateAgent('0712345678', '0000');
+    const badAuth = agentsStore.authenticateAgent('0712345678', '000000');
     assert.equal(badAuth, null);
   });
 
@@ -129,32 +129,32 @@ test('Field Agent Mobile App & Billing Auto-Attribution Integration', async (t) 
 
     assert.ok(autoEarning);
     assert.equal(autoEarning.agent_id, agent.id);
-    assert.equal(autoEarning.earned_amount_ksh, 12000); // 15% of 80,000 = 12,000 KES!
+    assert.equal(autoEarning.earned_amount_ksh, 20000); // first-school-invoice rate is 25% of 80,000
     assert.equal(autoEarning.status, 'approved');
     assert.equal(autoEarning.payment_id, payment.id);
 
     // 4. Verify agent's statement in Mobile App
     const updatedAgent = agentsStore.getAgent(agent.id);
-    assert.equal(updatedAgent.financials.totalEarnedKsh, 12000);
+    assert.equal(updatedAgent.financials.totalEarnedKsh, 20000);
     assert.equal(updatedAgent.financials.totalPaidKsh, 0);
-    assert.equal(updatedAgent.financials.balanceDueKsh, 12000);
+    assert.equal(updatedAgent.financials.balanceDueKsh, 20000);
     assert.equal(updatedAgent.earnings.length, 1);
   });
 
   await t.test('5. Admin disburses M-Pesa commission payout to agent', () => {
     const payout = agentsStore.recordPayout(agent.id, {
-      amount_ksh: 12000,
+      amount_ksh: 20000,
       payout_method: 'mpesa',
       reference: 'RKJ77881122',
       notes: 'Commission for Machakos Academy Term 1 payment',
     }, 'super_admin');
 
     assert.ok(payout);
-    assert.equal(payout.amount_ksh, 12000);
+    assert.equal(payout.amount_ksh, 20000);
 
     const afterPayout = agentsStore.getAgent(agent.id);
-    assert.equal(afterPayout.financials.totalEarnedKsh, 12000);
-    assert.equal(afterPayout.financials.totalPaidKsh, 12000);
+    assert.equal(afterPayout.financials.totalEarnedKsh, 20000);
+    assert.equal(afterPayout.financials.totalPaidKsh, 20000);
     assert.equal(afterPayout.financials.balanceDueKsh, 0);
   });
 
@@ -172,9 +172,9 @@ test('Field Agent Mobile App & Billing Auto-Attribution Integration', async (t) 
     assert.equal(refreshed.financials.balanceDueKsh, 5000);
 
     // 2. PIN check
-    const authOk = agentsStore.authenticateAgent(agent.phone, '9876');
+    const authOk = agentsStore.authenticateAgent(agent.phone, '987631');
     assert.ok(authOk);
-    const authFail = agentsStore.authenticateAgent(agent.phone, '0000');
+    const authFail = agentsStore.authenticateAgent(agent.phone, '000000');
     assert.equal(authFail, null);
 
     // 3. Self-service payout of KES 2,500
@@ -190,8 +190,8 @@ test('Field Agent Mobile App & Billing Auto-Attribution Integration', async (t) 
     assert.equal(mpesaPayout.amount_ksh, 2500);
 
     const postWithdraw = agentsStore.getAgent(agent.id);
-    assert.equal(postWithdraw.financials.totalEarnedKsh, 17000);
-    assert.equal(postWithdraw.financials.totalPaidKsh, 14500);
+    assert.equal(postWithdraw.financials.totalEarnedKsh, 25000);
+    assert.equal(postWithdraw.financials.totalPaidKsh, 22500);
     assert.equal(postWithdraw.financials.balanceDueKsh, 2500); // 5000 - 2500 = 2500 remaining!
   });
 
@@ -208,7 +208,7 @@ test('Field Agent Mobile App & Billing Auto-Attribution Integration', async (t) 
       county: 'Kisumu',
       base_location: 'Kisumu Central',
       mpesa_number: '0799887766',
-      pin: '1234',
+      pin: '739142',
       status: 'active',
       commission_type: 'percentage',
       commission_rate: 10.0,
@@ -225,7 +225,7 @@ test('Field Agent Mobile App & Billing Auto-Attribution Integration', async (t) 
     assert.equal(foundByPhone.id, newSelfAgent.id);
 
     // Can immediately authenticate with PIN
-    const authSelf = agentsStore.authenticateAgent('0799887766', '1234');
+    const authSelf = agentsStore.authenticateAgent('0799887766', '739142');
     assert.ok(authSelf);
     assert.equal(authSelf.id, newSelfAgent.id);
   });

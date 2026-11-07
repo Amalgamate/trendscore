@@ -95,6 +95,18 @@ function createLeadsStore(dataDir, options = {}) {
     CREATE INDEX IF NOT EXISTS leads_school_idx ON leads(school);
   `);
 
+  const ensureLeadColumn = (name, definition) => {
+    const columns = db.prepare('PRAGMA table_info(leads)').all();
+    if (!columns.some(column => column.name === name)) db.exec(`ALTER TABLE leads ADD COLUMN ${name} ${definition}`);
+  };
+  for (const [name, definition] of [
+    ['school_type', 'TEXT'], ['county', 'TEXT'], ['billing_email', 'TEXT'], ['billing_phone', 'TEXT'],
+    ['principal_name', 'TEXT'], ['modules', 'TEXT'], ['own_sms_provider', 'INTEGER NOT NULL DEFAULT 0'],
+    ['acceptance_method', 'TEXT'], ['acceptance_evidence_file', 'TEXT'], ['accepted_at', 'TEXT'],
+    ['accepted_by', 'TEXT'], ['converted_at', 'TEXT'], ['converted_customer_id', 'TEXT'],
+    ['converted_contract_id', 'TEXT'], ['converted_invoice_id', 'TEXT'],
+  ]) ensureLeadColumn(name, definition);
+
   function formatLeadRow(row) {
     if (!row) return null;
     let tags = [];
@@ -123,6 +135,17 @@ function createLeadsStore(dataDir, options = {}) {
       agentSchoolId: row.agent_school_id || null,
       agent_school_id: row.agent_school_id || null,
       agentName: row.agent_name || null,
+      schoolType: row.school_type || '',
+      billingEmail: row.billing_email || '',
+      billingPhone: row.billing_phone || '',
+      acceptanceMethod: row.acceptance_method || '',
+      acceptanceEvidence: row.acceptance_evidence_file || '',
+      acceptedAt: row.accepted_at || '',
+      acceptedBy: row.accepted_by || '',
+      convertedAt: row.converted_at || '',
+      convertedCustomerId: row.converted_customer_id || '',
+      convertedContractId: row.converted_contract_id || '',
+      convertedInvoiceId: row.converted_invoice_id || '',
       created: row.created_at ? row.created_at.slice(0, 10) : new Date().toISOString().slice(0, 10),
       created_at: row.created_at,
       updated_at: row.updated_at,
@@ -454,6 +477,30 @@ function createLeadsStore(dataDir, options = {}) {
       return formatLeadRow(row);
     },
 
+    recordLeadConversion(id, conversion) {
+      const now = new Date().toISOString();
+      const existing = db.prepare('SELECT id, agent_school_id FROM leads WHERE id=?').get(String(id));
+      if (!existing) return null;
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        db.prepare(`UPDATE leads SET stage='converted', accepted_at=?, accepted_by=?, acceptance_method=?,
+          acceptance_evidence_file=?, converted_at=?, converted_customer_id=?, converted_contract_id=?,
+          converted_invoice_id=?, next_activity='Onboarding invoice ready', updated_at=? WHERE id=?`)
+          .run(now, conversion.acceptedBy, conversion.acceptanceMethod, conversion.acceptanceEvidence,
+            now, conversion.customerId, conversion.contractId, conversion.invoiceId, now, String(id));
+        if (existing.agent_school_id) {
+          db.prepare(`UPDATE agent_schools SET status='onboarded', updated_at=? WHERE id=?`).run(now, existing.agent_school_id);
+        } else {
+          db.prepare(`UPDATE agent_schools SET status='onboarded', updated_at=? WHERE lead_id=?`).run(now, String(id));
+        }
+        db.exec('COMMIT');
+      } catch (error) {
+        try { db.exec('ROLLBACK'); } catch {}
+        throw error;
+      }
+      return this.getLead(id);
+    },
+
     createLead(data) {
       const now = new Date().toISOString();
       const id = data.id || `L${Date.now()}`;
@@ -500,6 +547,54 @@ function createLeadsStore(dataDir, options = {}) {
       return store.getLead(id);
     },
 
+    assignLeadToAgent(leadId, agentId, actor = '') {
+      const now = new Date().toISOString();
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        const lead = db.prepare('SELECT * FROM leads WHERE id=?').get(String(leadId));
+        if (!lead) throw new Error('Lead not found');
+        const agent = db.prepare(`SELECT id,agent_code,full_name,county,status FROM agents WHERE id=?`).get(String(agentId));
+        if (!agent) throw new Error('Agent not found');
+        if (agent.status !== 'active') throw new Error('Assign leads only to active agents');
+        if (['converted', 'lost'].includes(lead.stage)) throw new Error('Converted or lost leads cannot be assigned to an agent');
+
+        if (lead.agent_school_id) {
+          const existingSchool = db.prepare('SELECT * FROM agent_schools WHERE id=?').get(lead.agent_school_id);
+          if (existingSchool?.agent_id === agent.id) {
+            db.exec('COMMIT');
+            return { lead: store.getLead(leadId), school: existingSchool, agent, alreadyAssigned: true };
+          }
+          throw new Error('This lead is already linked to another agent school');
+        }
+        if (lead.agent_id && lead.agent_id !== agent.id) throw new Error('This lead is already attributed to another agent');
+
+        const duplicate = store.checkDuplicate({ schoolName: lead.school, phone: lead.phone, excludeAgentId: agent.id });
+        if (duplicate) throw new Error(`School is already claimed by ${duplicate.claimedByAgentName} (${duplicate.claimedByAgentCode}) based on ${duplicate.reason}.`);
+
+        const schoolId = 'ags_' + crypto.randomBytes(8).toString('hex');
+        const finalStatus = lead.stage === 'lost' ? 'churned' : 'pitching';
+        db.prepare(`INSERT INTO agent_schools
+          (id,agent_id,school_name,tenant_key,lead_id,contact_person,contact_phone,status,notes,created_at,updated_at)
+          VALUES (?,?,?, '', ?,?,?,?, ?,?,?)`)
+          .run(schoolId, agent.id, String(lead.school || '').trim(), String(leadId),
+            String(lead.name || 'Principal / Administrator').trim(), String(lead.phone || '').trim(),
+            finalStatus, `Assigned from CRM by ${actor || 'admin'}`, now, now);
+
+        let tags = [];
+        try { tags = JSON.parse(lead.tags || '[]'); } catch {}
+        if (!Array.isArray(tags)) tags = [];
+        if (agent.agent_code && !tags.includes(agent.agent_code)) tags.push(agent.agent_code);
+        if (!tags.includes('field_agent')) tags.push('field_agent');
+        db.prepare(`UPDATE leads SET agent_id=?,agent_code=?,agent_school_id=?,tags=?,updated_at=? WHERE id=?`)
+          .run(agent.id, agent.agent_code, schoolId, JSON.stringify(tags), now, String(leadId));
+        db.exec('COMMIT');
+        return { lead: store.getLead(leadId), school: db.prepare('SELECT * FROM agent_schools WHERE id=?').get(schoolId), agent };
+      } catch (error) {
+        try { db.exec('ROLLBACK'); } catch {}
+        throw error;
+      }
+    },
+
     updateLead(id, data) {
       const existing = db.prepare(`SELECT * FROM leads WHERE id = ?`).get(String(id));
       if (!existing) return null;
@@ -507,6 +602,9 @@ function createLeadsStore(dataDir, options = {}) {
       const now = new Date().toISOString();
       const validStages = ['new', 'contacted', 'interested', 'converted', 'lost'];
       const nextStage = data.stage && validStages.includes(data.stage) ? data.stage : existing.stage;
+      if (nextStage === 'converted' && existing.stage !== 'converted') {
+        throw new Error('Convert the lead through the acceptance workflow so customer, contract, and invoice records are created together.');
+      }
 
       // Two-way sync: Sync stage changes to agent_schools
       if (nextStage !== existing.stage) {
@@ -579,22 +677,15 @@ function createLeadsStore(dataDir, options = {}) {
       return true;
     },
 
-    syncProvisionedTenant({ schoolName, tenantKey }) {
-      if (!tenantKey) return;
-      const cleanSchool = normalizeSchoolName(schoolName);
+    syncProvisionedTenant({ leadId, tenantKey }) {
+      if (!tenantKey || !leadId) return false;
       const now = new Date().toISOString();
-
-      // Find all agent_schools matching school_name
-      const schools = db.prepare(`SELECT id, lead_id, school_name FROM agent_schools`).all();
-      for (const s of schools) {
-        const norm = normalizeSchoolName(s.school_name);
-        if (norm === cleanSchool || (cleanSchool && (norm.includes(cleanSchool) || cleanSchool.includes(norm)))) {
-          db.prepare(`UPDATE agent_schools SET tenant_key = ?, status = 'onboarded', updated_at = ? WHERE id = ?`).run(tenantKey, now, s.id);
-          if (s.lead_id) {
-            db.prepare(`UPDATE leads SET stage = 'converted', next_activity = 'Instance provisioned', updated_at = ? WHERE id = ?`).run(now, s.lead_id);
-          }
-        }
-      }
+      const lead = db.prepare(`SELECT id, agent_school_id FROM leads WHERE id=?`).get(String(leadId));
+      if (!lead) return false;
+      if (lead.agent_school_id) db.prepare(`UPDATE agent_schools SET tenant_key=?,status='onboarded',updated_at=? WHERE id=?`).run(tenantKey, now, lead.agent_school_id);
+      else db.prepare(`UPDATE agent_schools SET tenant_key=?,status='onboarded',updated_at=? WHERE lead_id=?`).run(tenantKey, now, String(leadId));
+      db.prepare(`UPDATE leads SET next_activity='Instance provisioned',updated_at=? WHERE id=?`).run(now, String(leadId));
+      return true;
     },
 
     close() {

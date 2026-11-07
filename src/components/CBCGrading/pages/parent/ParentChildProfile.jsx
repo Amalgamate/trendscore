@@ -6,15 +6,17 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  ArrowLeft, MoreVertical,
+  ArrowLeft, BookOpen, CalendarDays, ChevronRight, ClipboardList, CreditCard, FileText,
+  GraduationCap, MessageCircle, MoreVertical, Bus, Headphones,
   CheckCircle2, Loader2,
-  ChevronRight, Receipt,
+  Receipt, Wallet,
 } from 'lucide-react';
 import api from '../../../../services/api';
 import { cn } from '../../../../utils/cn';
 import { useModuleAccess } from '../../../../contexts/ModuleAccessContext';
 import { hasPageAccess } from '../../utils/appAccess';
 import ParentReportCards from './ParentReportCards';
+import { ParentChildDiaryWork } from '../parent-portal/ParentPortalHomework';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -211,85 +213,108 @@ function FeesTab({ learnerId }) {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 const TABS = [
-  { id: 'results',     label: 'Results',     icon: null          },
-  { id: 'attendance',  label: 'Attendance',  icon: null          },
-  { id: 'fees',        label: 'Fees',        icon: null          },
+  { id: 'diary',       label: 'Diary',       icon: BookOpen,       color: 'bg-blue-700' },
+  { id: 'fees',        label: 'Fees',        icon: Wallet,         color: 'bg-emerald-700' },
+  { id: 'attendance',  label: 'Attendance',  icon: CalendarDays,   color: 'bg-violet-700' },
+  { id: 'results',     label: 'Learning',    icon: GraduationCap,  color: 'bg-amber-600' },
+  { id: 'more',        label: 'More',        icon: ClipboardList,  color: 'bg-slate-700' },
 ];
 
 function resolveInitialTab(initialTab, showFees) {
-  if (initialTab === 'overview' || initialTab === 'info' || (initialTab === 'fees' && !showFees)) return 'results';
+  if (initialTab === 'overview' || initialTab === 'info') return 'diary';
+  if (initialTab === 'homework') return 'diary';
+  if (initialTab === 'fees' && !showFees) return 'diary';
   return initialTab;
 }
 
-export default function ParentChildProfile({ child, onBack, initialTab = 'results' }) {
+const MORE_LINKS = [
+  { id: 'parent-portal-school-today', label: 'Check today’s schedule', detail: 'School day and attendance updates', icon: CalendarDays, color: 'bg-blue-700' },
+  { id: 'parent-portal-communication', label: 'Message the school', detail: 'Open your school inbox', icon: MessageCircle, color: 'bg-violet-700' },
+  { id: 'parent-portal-transport', label: 'Check transport', detail: 'View available transport information', icon: Bus, color: 'bg-orange-600' },
+  { id: 'parent-portal-documents', label: 'Open school documents', detail: 'View documents shared with your family', icon: FileText, color: 'bg-teal-700' },
+  { id: 'parent-portal-support', label: 'Get help', detail: 'Contact school support', icon: Headphones, color: 'bg-slate-700' },
+];
+
+function MoreTab({ onNavigate, activeSlugs }) {
+  const links = MORE_LINKS.filter(item => hasPageAccess({ enabledApps: activeSlugs }, item.id));
+  return (
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white divide-y divide-slate-100">
+      {links.map(({ id, label, detail, icon: Icon, color }) => (
+        <button key={id} type="button" onClick={() => onNavigate?.(id)} className="flex min-h-[60px] w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-700">
+          <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-white ${color}`}><Icon size={18} /></span>
+          <span className="min-w-0 flex-1"><span className="block text-sm font-bold text-slate-950">{label}</span><span className="block text-xs text-slate-600">{detail}</span></span>
+          <ChevronRight size={17} className="shrink-0 text-slate-500" />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export default function ParentChildProfile({ child, siblings = [], onSelectChild, onNavigate, onBack, initialTab = 'diary' }) {
   const { activeSlugs } = useModuleAccess();
   const showFees = hasPageAccess({ enabledApps: activeSlugs }, 'parent-portal-fees');
   const visibleTabs = showFees ? TABS : TABS.filter((item) => item.id !== 'fees');
   const [tab, setTab] = useState(() => resolveInitialTab(initialTab, showFees));
+  const [diaryDate, setDiaryDate] = useState(() => new Date());
   useEffect(() => {
-    if (!showFees && tab === 'fees') setTab('results');
-    if (tab === 'overview' || tab === 'info') setTab('results');
+    if (!showFees && tab === 'fees') setTab('diary');
+    if (tab === 'overview' || tab === 'info') setTab('diary');
   }, [showFees, tab]);
   if (!child) return null;
 
   const isPresent = child.todayStatus === 'PRESENT' || child.isPresent;
+  const shiftDiaryDate = (amount) => setDiaryDate(current => new Date(current.getFullYear(), current.getMonth(), current.getDate() + amount));
 
   return (
     <div className="min-h-screen bg-[var(--app-page-bg)] pb-24">
-      <div className="px-4 pt-4 space-y-4">
-
-      {/* Purple header card */}
-      <div className="bg-[#3B1FA3] rounded-2xl px-4 pt-4 pb-0 overflow-hidden">
-        {/* Back + menu row */}
-        <div className="flex items-center justify-between mb-4">
-          <button onClick={onBack} className="w-8 h-8 flex items-center justify-center rounded-full bg-white/20 text-white hover:bg-white/30 transition-colors">
-            <ArrowLeft size={16} />
-          </button>
-          <h1 className="text-sm font-bold text-white">Results</h1>
-          <button className="w-8 h-8 flex items-center justify-center rounded-full bg-white/20 text-white hover:bg-white/30 transition-colors">
-            <MoreVertical size={16} />
-          </button>
+      <div className="mx-auto max-w-4xl px-3 pt-3 space-y-3">
+        <div className="flex items-center gap-2">
+          <button onClick={onBack} aria-label="Back to family overview" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-800 hover:bg-slate-50"><ArrowLeft size={18} /></button>
+          <div className="flex min-w-0 flex-1 items-center gap-2.5">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-sm font-extrabold text-indigo-900">{child.name?.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase() || '?'}</div>
+            <div className="min-w-0"><h1 className="truncate text-base font-extrabold text-slate-950">{child.name}</h1><p className="truncate text-xs font-medium text-slate-600">{child.grade} · {child.className || 'Class'}{isPresent ? ' · Present today' : ''}</p></div>
+          </div>
+          {siblings.length > 1 && <label className="sr-only" htmlFor="parent-child-switcher">Choose child</label>}
+          {siblings.length > 1 && <select id="parent-child-switcher" value={child.id} onChange={e => onSelectChild?.(siblings.find(s => String(s.id) === e.target.value))} className="max-w-28 rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs font-bold text-slate-800"><option value={child.id}>{child.name?.split(' ')[0]}</option>{siblings.filter(s => String(s.id) !== String(child.id)).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select>}
         </div>
 
-        {/* Child identity */}
-        <div className="flex items-center gap-4 mb-4">
-          <div className="w-16 h-16 rounded-full bg-white/20 border-2 border-white/40 flex items-center justify-center text-2xl font-bold text-white flex-shrink-0">
-            {child.name?.[0] || '?'}
-          </div>
-          <div>
-            <h2 className="text-lg font-bold text-white leading-tight">{child.name}</h2>
-            <p className="text-white/70 text-xs mt-0.5">{child.grade} · {child.className || 'Class'}</p>
-            <span className={`inline-flex items-center gap-1 mt-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold ${isPresent ? 'bg-emerald-500/30 text-emerald-200' : 'bg-white/20 text-white/70'}`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${isPresent ? 'bg-emerald-400' : 'bg-gray-400'}`} />
-              {isPresent ? 'Present today' : 'Current Term'}
-            </span>
-          </div>
-        </div>
-
-        {/* Tabs row */}
-        <div className="flex overflow-x-auto scrollbar-none">
-            {visibleTabs.map(({ id, label }) => (
+        <nav aria-label="Child activities" className="overflow-hidden rounded-xl border border-slate-200 bg-white divide-y divide-slate-100">
+            {visibleTabs.map(({ id, label, icon: Icon, color }) => (
             <button
               key={id}
               onClick={() => setTab(id)}
               className={cn(
-                'flex-shrink-0 px-3 py-2.5 text-xs font-semibold border-b-2 whitespace-nowrap transition-colors',
+                'flex min-h-12 w-full items-center gap-3 px-3 py-2.5 text-left text-sm font-bold transition-colors',
                 tab === id
-                  ? 'text-white border-white'
-                  : 'text-white/50 border-transparent hover:text-white/80',
+                  ? 'bg-indigo-50 text-indigo-950'
+                  : 'bg-white text-slate-800 hover:bg-slate-50',
               )}
             >
-              {label}
+              <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-white ${color}`}><Icon size={18} /></span>
+              <span className="flex-1">{label}</span>
+              {tab === id && <span className="text-[10px] font-bold uppercase tracking-wide text-indigo-800">Open</span>}
+              <ChevronRight size={17} className="shrink-0 text-slate-500" />
             </button>
           ))}
-        </div>
-      </div>
+        </nav>
 
       {/* Tab content */}
-      <div>
+      <div className="min-w-0">
+        {tab === 'diary' && <div className="space-y-3">
+          <div className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
+            <div><p className="text-[10px] font-bold uppercase tracking-wide text-slate-600">Diary date</p><p className="text-xs font-extrabold text-slate-950">{diaryDate.toLocaleDateString('en-KE', { weekday: 'long', day: 'numeric', month: 'long' })}</p></div>
+            <div className="flex items-center gap-1"><button type="button" onClick={() => shiftDiaryDate(-1)} aria-label="Previous diary day" className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50"><ArrowLeft size={16} /></button><button type="button" onClick={() => setDiaryDate(new Date())} className="min-h-9 rounded-lg px-2 text-xs font-bold text-indigo-800 hover:bg-indigo-50">Today</button><button type="button" onClick={() => shiftDiaryDate(1)} aria-label="Next diary day" className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50"><ChevronRight size={16} /></button></div>
+          </div>
+          <section className="rounded-xl border border-slate-200 bg-white p-3">
+            <div className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-700 text-white"><BookOpen size={17} /></span><div><h2 className="text-sm font-extrabold text-slate-950">Class diary</h2><p className="text-xs text-slate-600">Notes shared by the teacher will appear here.</p></div></div>
+            <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2.5 text-xs text-slate-700">Class notes shared with your family for this date will appear here.</div>
+          </section>
+          <section className="space-y-2"><div className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-700 text-white"><ClipboardList size={17} /></span><div><h2 className="text-sm font-extrabold text-slate-950">Homework</h2><p className="text-xs text-slate-600">Check work, due dates and teacher feedback.</p></div></div><ParentChildDiaryWork child={child} /></section>
+        </div>}
         {tab === 'results'    && <ResultsTab    child={child} />}
         {tab === 'attendance' && <AttendanceTab learnerId={child.id} />}
         {showFees && tab === 'fees' && <FeesTab learnerId={child.id} />}
+        {tab === 'more' && <MoreTab onNavigate={onNavigate} activeSlugs={activeSlugs} />}
       </div>
 
       </div>

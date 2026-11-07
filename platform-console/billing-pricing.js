@@ -106,7 +106,13 @@ function calculateCatalogueQuote(body = {}, products = []) {
     if (amountKsh > grossKsh) throw new Error(`Discount cannot exceed the quote total of ${money(grossKsh)}`);
     const reason = text(discountInput.reason, 300);
     if (reason.length < 3) throw new Error('A discount needs a reason (for example, the old CORE price or a negotiated deal)');
-    discount = { amountKsh, reason, requiresApproval: discountInput.requiresApproval === true };
+    const requiresApproval = discountInput.requiresApproval === true;
+    discount = {
+      amountKsh,
+      reason,
+      requiresApproval,
+      approvalStatus: requiresApproval ? 'pending' : 'not_required',
+    };
     addLine(`Discount (one-off): ${reason}`, 1, -amountKsh, 'one_off', null);
   }
 

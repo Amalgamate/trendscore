@@ -36,6 +36,9 @@ jest.mock('../src/services/redis-cache.service', () => {
     const now = () => Date.now();
     return {
         redisCacheService: {
+            getSecurityValue: async () => null,
+            setSecurityValue: async () => undefined,
+            incrementSecurityCounter: async () => 1,
             get: async (key: string) => {
                 const e = store.get(key);
                 if (!e) return null;
@@ -1443,6 +1446,14 @@ describe('HR Routes — API smoke tests', () => {
 
         // Mint a valid JWT for ADMIN
         jwtToken = jwt.sign(ADMIN_USER, process.env.JWT_SECRET!, { expiresIn: '1h' });
+        (mockPrisma.user.findUnique as Mock).mockResolvedValue({
+            id: ADMIN_USER.userId,
+            email: ADMIN_USER.email,
+            role: 'ADMIN',
+            status: 'ACTIVE',
+            archived: false,
+            authVersion: 0,
+        });
 
         app = express();
         app.use(express.json());
@@ -1451,8 +1462,17 @@ describe('HR Routes — API smoke tests', () => {
     });
 
     // Helper — creates request with auth header
-    const authReq = (method: 'get' | 'post' | 'put' | 'delete', url: string) =>
-        (request(app) as any)[method](url).set('Authorization', `Bearer ${jwtToken}`);
+    const authReq = (method: 'get' | 'post' | 'put' | 'delete', url: string) => {
+        (mockPrisma.user.findUnique as Mock).mockResolvedValueOnce({
+            id: ADMIN_USER.userId,
+            email: ADMIN_USER.email,
+            role: 'ADMIN',
+            status: 'ACTIVE',
+            archived: false,
+            authVersion: 0,
+        });
+        return (request(app) as any)[method](url).set('Authorization', `Bearer ${jwtToken}`);
+    };
 
     describe('GET /api/hr/dashboard', () => {
         it('returns 200 with live stats shape', async () => {

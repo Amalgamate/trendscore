@@ -6,6 +6,7 @@ interface WidgetProps {
   user?: any;
   config?: any;
   onNavigate?: (path: string) => void;
+  variant?: 'default' | 'compact';
 }
 
 type WidgetMode =
@@ -60,7 +61,7 @@ type AttendanceRecord = {
   metadata?: any;
 };
 
-const ClockInStatusWidget: React.FC<WidgetProps> = ({ user }) => {
+const ClockInStatusWidget: React.FC<WidgetProps> = ({ user, variant = 'default' }) => {
   const [mode, setMode] = useState<WidgetMode>('loading_status');
   const [attendance, setAttendance] = useState<AttendanceRecord | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -279,6 +280,40 @@ const ClockInStatusWidget: React.FC<WidgetProps> = ({ user }) => {
     if (mode === 'clock_in_success' || mode === 'clock_out_success') return 'success';
     return null;
   }, [mode]);
+
+  if (variant === 'compact') {
+    const compactLabel = dayComplete
+      ? 'Done today'
+      : busy
+        ? (isClockedIn ? 'Clocking out…' : 'Clocking in…')
+        : canReturnFromErrand
+          ? 'Clock in again'
+          : isClockedIn
+            ? 'Clock out'
+            : 'Clock in';
+    const compactTime = attendance?.clockInAt
+      ? new Date(attendance.clockInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : null;
+
+    return (
+      <div className="flex shrink-0 items-center gap-2">
+        <div className="hidden min-w-0 text-right sm:block">
+          <p className="text-[10px] font-bold text-slate-700">{isClockedIn ? `Clocked in${compactTime ? ` · ${compactTime}` : ''}` : dayComplete ? 'Day complete' : 'Use school Wi-Fi'}</p>
+          {message && <p className={`max-w-44 truncate text-[10px] ${feedbackTone === 'denied' ? 'text-rose-800' : 'text-slate-600'}`}>{message}</p>}
+        </div>
+        <button
+          type="button"
+          onClick={primaryButton.onClick}
+          disabled={primaryButton.disabled || mode === 'loading_status'}
+          aria-label={compactLabel}
+          className={`inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-extrabold text-white transition focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-700 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-300 ${dayComplete ? 'bg-slate-400' : isClockedIn ? 'bg-rose-700 hover:bg-rose-800' : 'bg-emerald-700 hover:bg-emerald-800'}`}
+        >
+          {busy ? <Loader2 size={15} className="animate-spin" /> : isClockedIn ? <Clock size={15} /> : <CheckCircle size={15} />}
+          {compactLabel}
+        </button>
+      </div>
+    );
+  }
 
   if (isClockedIn && minimized) {
     return (

@@ -24,11 +24,18 @@ let BILLING_SCHOOL_TYPES = {};
 let BILLING_QUOTES = [];
 let BILLING_INVOICES = [];
 let BILLING_PAYMENTS = [];
+let BILLING_MPESA_STATUS = null;
+let BILLING_C2B_EVENTS = [];
+let BILLING_TERMS = [];
+let BILLING_FEATURE_FLAGS = [];
 let BILLING_PAYMENTS_STATUS = 'loading';
 let BILLING_DELIVERIES = [];
 let BILLING_INVOICE_DELIVERIES = [];
 let BILLING_EMAIL_STATUS = 'unknown';
 let BILLING_MAIL_DRAFT = null;
+let CURRENT_AGENT_COMMISSION_SCHOOLS = [];
+let BILLING_COMMISSION_FAILURES = [];
+let BILLING_COMMISSION_FAILURES_STATUS = 'loading';
 const BILLING_DATA_STATUS = { customers: 'loading', contracts: 'loading', quotes: 'loading', invoices: 'loading' };
 const BILLING_FILTERS = { customers: '', quotes: '', quoteStatus: '', invoices: '', invoiceStatus: '' };
 let billingQuotePreviewTimer = null;
@@ -670,7 +677,7 @@ function containerRows(instance) {
 
 async function loadBillingData() {
   try {
-    const [customersResponse, contractsResponse, schoolsResponse, quotesResponse, invoicesResponse, paymentsResponse, emailStatusResponse] = await Promise.all([
+    const [customersResponse, contractsResponse, schoolsResponse, quotesResponse, invoicesResponse, paymentsResponse, emailStatusResponse, mpesaResponse, c2bEventsResponse, termsResponse, flagsResponse, commissionFailuresResponse] = await Promise.all([
       fetch('/api/billing/customers', { credentials: 'same-origin' }).catch(() => null),
       fetch('/api/billing/contracts', { credentials: 'same-origin' }).catch(() => null),
       fetch('/api/billing/schools', { credentials: 'same-origin' }).catch(() => null),
@@ -678,6 +685,11 @@ async function loadBillingData() {
       fetch('/api/billing/invoices', { credentials: 'same-origin' }).catch(() => null),
       fetch('/api/billing/payments', { credentials: 'same-origin' }).catch(() => null),
       fetch('/api/billing/email-status', { credentials: 'same-origin' }).catch(() => null),
+      fetch('/api/settings/integrations/mpesa', { credentials: 'same-origin' }).catch(() => null),
+      fetch('/api/billing/mpesa-c2b-events', { credentials: 'same-origin' }).catch(() => null),
+      fetch('/api/term-calendar', { credentials: 'same-origin' }).catch(() => null),
+      fetch('/api/feature-flags', { credentials: 'same-origin' }).catch(() => null),
+      fetch('/api/billing/commission-reconciliation', { credentials: 'same-origin' }).catch(() => null),
     ]);
     const [customersData, contractsData] = await Promise.all([
       customersResponse?.ok ? customersResponse.json().catch(() => ({})) : {},
@@ -693,6 +705,16 @@ async function loadBillingData() {
     const invoicesData = invoicesResponse?.ok ? await invoicesResponse.json().catch(() => ({})) : {};
     const paymentsData = paymentsResponse?.ok ? await paymentsResponse.json().catch(() => ({})) : {};
     const emailData = emailStatusResponse?.ok ? await emailStatusResponse.json().catch(() => ({})) : {};
+    BILLING_MPESA_STATUS = mpesaResponse?.ok ? await mpesaResponse.json().catch(() => null) : null;
+    const c2bEventsData = c2bEventsResponse?.ok ? await c2bEventsResponse.json().catch(() => ({})) : {};
+    BILLING_C2B_EVENTS = Array.isArray(c2bEventsData.events) ? c2bEventsData.events : [];
+    const termsData = termsResponse?.ok ? await termsResponse.json().catch(() => ({})) : {};
+    BILLING_TERMS = Array.isArray(termsData.terms) ? termsData.terms : [];
+    const flagsData = flagsResponse?.ok ? await flagsResponse.json().catch(() => ({})) : {};
+    const commissionFailuresData = commissionFailuresResponse?.ok ? await commissionFailuresResponse.json().catch(() => ({})) : {};
+    BILLING_COMMISSION_FAILURES = Array.isArray(commissionFailuresData.failures) ? commissionFailuresData.failures : [];
+    BILLING_COMMISSION_FAILURES_STATUS = commissionFailuresResponse?.ok && Array.isArray(commissionFailuresData.failures) ? 'ready' : 'unavailable';
+    BILLING_FEATURE_FLAGS = Array.isArray(flagsData.flags) ? flagsData.flags : [];
     BILLING_DATA_STATUS.quotes = quotesResponse?.ok && Array.isArray(quotesData.quotes) ? 'ready' : 'unavailable';
     BILLING_DATA_STATUS.invoices = invoicesResponse?.ok && Array.isArray(invoicesData.invoices) ? 'ready' : 'unavailable';
     BILLING_QUOTES = quotesData.quotes || [];
@@ -709,10 +731,13 @@ async function loadBillingData() {
       BILLING_SCHOOL_TYPES = productsData.schoolTypes || {};
     } catch { BILLING_PRODUCTS = []; }
     renderBillingRegistry();
+    renderBillingRenewalTerms();
+    renderAutomaticRenewalSetting();
   } catch (error) {
     Object.keys(BILLING_DATA_STATUS).forEach(key => { BILLING_DATA_STATUS[key] = 'unavailable'; });
     BILLING_EMAIL_STATUS = 'unavailable';
     BILLING_PAYMENTS_STATUS = 'unavailable';
+    BILLING_COMMISSION_FAILURES_STATUS = 'unavailable';
     if ($('billing-customers-table')) $('billing-customers-table').innerHTML = `<tr><td colspan="7">${esc(error.message || 'Billing data is unavailable.')}</td></tr>`;
     if ($('billing-contracts-table')) $('billing-contracts-table').innerHTML = '<tr><td colspan="7">Billing contracts are unavailable.</td></tr>';
     ['billing-kpi-customers', 'billing-kpi-open-quotes', 'billing-kpi-accepted', 'billing-kpi-drafts'].forEach(id => { if ($(id)) $(id).textContent = 'Unavailable'; });
@@ -721,9 +746,20 @@ async function loadBillingData() {
     if ($('billing-attention-list')) $('billing-attention-list').innerHTML = '<div class="billing-empty">Billing records could not be loaded. Refresh to try again.</div>';
     if ($('billing-recent-list')) $('billing-recent-list').innerHTML = '<div class="billing-empty">Recent billing records are unavailable.</div>';
     renderBillingSettings();
+    renderAutomaticRenewalSetting();
     renderBillingPayments();
+    renderCommissionAttributionFailures();
+    renderDarajaC2B();
     renderBillingReports();
   }
+}
+
+function renderAutomaticRenewalSetting() {
+  const input = $('billing-auto-term-renewals');
+  if (!input) return;
+  const flag = BILLING_FEATURE_FLAGS.find(item => item.name === 'AUTO_TERM_RENEWAL_INVOICES');
+  input.checked = Boolean(flag?.enabled);
+  input.disabled = !flag;
 }
 
 function renderBillingRegistry() {
@@ -731,18 +767,18 @@ function renderBillingRegistry() {
   const contractsBody = $('billing-contracts-table');
   if (!customersBody || !contractsBody) return;
   const customerNeedle = BILLING_FILTERS.customers.trim().toLowerCase();
-  const customers = BILLING_CUSTOMERS.filter(customer => !customerNeedle || [customer.name, customer.legalName, customer.tenantKey, customer.billingEmail, customer.billingPhone].some(value => String(value || '').toLowerCase().includes(customerNeedle)));
+  const customers = BILLING_CUSTOMERS.filter(customer => !customerNeedle || [customer.name, customer.paybillAccountName, customer.legalName, customer.tenantKey, customer.billingEmail, customer.billingPhone].some(value => String(value || '').toLowerCase().includes(customerNeedle)));
   if (BILLING_DATA_STATUS.customers === 'unavailable') {
-    customersBody.innerHTML = '<tr><td colspan="7">Customer records could not be loaded.</td></tr>';
+    customersBody.innerHTML = '<tr><td colspan="8">Customer records could not be loaded.</td></tr>';
   } else if (!BILLING_CUSTOMERS.length) {
-    customersBody.innerHTML = '<tr><td colspan="7">No billing customers recorded yet.</td></tr>';
+    customersBody.innerHTML = '<tr><td colspan="8">No billing customers recorded yet.</td></tr>';
   } else if (!customers.length) {
-    customersBody.innerHTML = '<tr><td colspan="7">No customers match this search.</td></tr>';
+    customersBody.innerHTML = '<tr><td colspan="8">No customers match this search.</td></tr>';
   } else {
     customersBody.innerHTML = customers.map(customer => {
       const count = BILLING_CONTRACTS.filter(contract => contract.customerId === customer.id).length;
       return `<tr><td><strong>${esc(customer.name)}</strong>${customer.legalName ? `<div class="table-sub">${esc(customer.legalName)}</div>` : ''}</td>
-        <td>${esc(customer.tenantKey || 'Not linked')}</td><td>${esc(customer.billingEmail || 'No email')}<div class="table-sub">${esc(customer.billingPhone || '')}</div></td>
+        <td><strong>${esc(customer.paybillAccountName || customer.name)}</strong></td><td>${esc(customer.tenantKey || 'Not linked')}</td><td>${esc(customer.billingEmail || 'No email')}<div class="table-sub">${esc(customer.billingPhone || '')}</div></td>
         <td>${esc(customer.currency)}</td><td>${esc(customer.status)}</td><td>${count}</td>
         <td><button class="btn sm" data-billing-customer-edit="${esc(customer.id)}" data-super-admin-only type="button">Edit</button>
         <button class="btn sm" data-billing-contract-add="${esc(customer.id)}" data-super-admin-only type="button">Add contract</button></td></tr>`;
@@ -773,11 +809,23 @@ function renderBillingRegistry() {
   renderBillingOverview();
   renderBillingSettings();
   renderBillingPayments();
+  renderCommissionAttributionFailures();
   renderBillingReports();
   document.querySelectorAll('[data-super-admin-only]').forEach(element => {
     if (window.consoleUserRole) element.hidden = window.consoleUserRole !== 'super_admin';
   });
   updateBillingActionVisibility();
+}
+
+function renderBillingRenewalTerms() {
+  const select = $('billing-renewal-term');
+  if (!select) return;
+  const selected = select.value;
+  select.innerHTML = '<option value="">Choose term</option>' + BILLING_TERMS.map(term => {
+    const value = `${term.year}:${term.term}`;
+    return `<option value="${esc(value)}">${esc(term.year)} · Term ${esc(term.term)} · ${esc(term.startDate)} to ${esc(term.endDate)}</option>`;
+  }).join('');
+  if (BILLING_TERMS.some(term => `${term.year}:${term.term}` === selected)) select.value = selected;
 }
 
 function billingEmailPreviewHtml(draft) {
@@ -910,15 +958,17 @@ function renderBillingQuotes() {
       const customer = quote.customerSnapshot || BILLING_CUSTOMERS.find(item => item.id === quote.customerId) || {};
       const existingInvoice = BILLING_INVOICES.find(invoice => invoice.quoteId === quote.id);
       const deliveryCount = BILLING_DELIVERIES.find(item => item.quoteId === quote.id)?.attempts?.length || 0;
+      const discountPending = quote.quoteSnapshot?.discount?.requiresApproval === true && quote.quoteSnapshot.discount.approvalStatus !== 'approved';
       const actions = [`<a class="btn sm" href="/api/billing/quotes/${encodeURIComponent(quote.id)}/pdf" target="_blank" rel="noopener">PDF</a>`];
       if (quote.status === 'draft' && !quote.sentAt) actions.push(`<button class="btn sm" data-quote-edit="${esc(quote.id)}" data-super-admin-only type="button">Edit</button>`);
       if (['draft', 'sent'].includes(quote.status)) actions.push(`<button class="btn sm" data-quote-send="${esc(quote.id)}" data-super-admin-only type="button">${quote.status === 'sent' ? 'Resend email' : 'Send email'}</button>`);
-      if (['draft', 'sent'].includes(quote.status)) actions.push(`<button class="btn sm" data-quote-accept="${esc(quote.id)}" data-super-admin-only type="button">Record accepted</button>`);
+      if (discountPending && window.consoleUserRole === 'finance_approver') actions.push(`<button class="btn sm primary" data-quote-discount-approve="${esc(quote.id)}" type="button">Approve discount</button>`);
+      if (['draft', 'sent'].includes(quote.status) && !discountPending) actions.push(`<button class="btn sm" data-quote-accept="${esc(quote.id)}" data-super-admin-only type="button">Record accepted</button>`);
       if (['draft', 'sent', 'accepted'].includes(quote.status)) actions.push(`<button class="btn sm" data-quote-cancel="${esc(quote.id)}" data-super-admin-only type="button">Cancel</button>`);
       if (quote.status === 'draft' && !quote.sentAt && !deliveryCount && !existingInvoice) actions.push(`<button class="btn sm danger" data-quote-delete="${esc(quote.id)}" data-super-admin-only type="button">Delete</button>`);
       if (quote.status === 'accepted') actions.push(`<button class="btn sm" data-quote-convert="${esc(quote.id)}" data-super-admin-only type="button">Create draft invoice</button>`);
       if (quote.status === 'converted' && existingInvoice) actions.push(`<span class="table-sub">${esc(existingInvoice.invoiceNumber)}</span>`);
-      return `<tr><td><strong>${esc(quote.quoteNumber)}</strong></td><td>${esc(customer.name || 'Customer')}</td><td>${Number(quote.enrollmentCount) > 0 ? Number(quote.enrollmentCount).toLocaleString('en-KE') : esc(quote.quoteSnapshot?.schoolTypeLabel || '-')}</td><td>${formatBillingKsh(quote.subtotalKsh)}</td><td>${esc(quote.expiresOn || 'No expiry')}</td><td>${esc(quote.status)}${deliveryCount ? `<div class="table-sub">${deliveryCount} email attempt${deliveryCount === 1 ? '' : 's'}</div>` : ''}</td><td><div class="billing-action-row">${actions.join('')}</div></td></tr>`;
+      return `<tr><td><strong>${esc(quote.quoteNumber)}</strong></td><td>${esc(customer.name || 'Customer')}</td><td>${Number(quote.enrollmentCount) > 0 ? Number(quote.enrollmentCount).toLocaleString('en-KE') : esc(quote.quoteSnapshot?.schoolTypeLabel || '-')}</td><td>${formatBillingKsh(quote.subtotalKsh)}</td><td>${esc(quote.expiresOn || 'No expiry')}</td><td>${esc(quote.status)}${discountPending ? '<div class="table-sub">Discount approval pending</div>' : ''}${deliveryCount ? `<div class="table-sub">${deliveryCount} email attempt${deliveryCount === 1 ? '' : 's'}</div>` : ''}</td><td><div class="billing-action-row">${actions.join('')}</div></td></tr>`;
     }).join('');
   }
   const invoiceNeedle = BILLING_FILTERS.invoices.trim().toLowerCase();
@@ -988,6 +1038,41 @@ function renderBillingPayments() {
     const overdue = dueDate && dueDate < billingTodayDate();
     return `<tr><td><strong>${esc(invoice.invoiceNumber)}</strong></td><td>${esc(customer.name || 'Customer')}</td><td>${esc(String(invoice.invoiceSnapshot?.issuedAt || '').slice(0, 10) || '—')}</td><td>${esc(dueDate || 'On receipt')}</td><td>${formatBillingKsh(invoice.amountKsh)}</td><td>${formatBillingKsh(invoice.paidAmountKsh)}</td><td><strong>${formatBillingKsh(invoice.balanceKsh)}</strong></td><td>${overdue ? 'Overdue' : invoice.paymentStatus === 'partially_paid' ? 'Partially paid' : 'Unpaid'}</td></tr>`;
   }).join('') : '<tr><td colspan="8">No outstanding issued invoices.</td></tr>';
+  renderDarajaC2B();
+}
+
+function renderDarajaC2B() {
+  const status = $('billing-mpesa-c2b-status');
+  const register = $('billing-mpesa-c2b-register');
+  const table = $('billing-mpesa-c2b-events');
+  if (status) {
+    const config = BILLING_MPESA_STATUS;
+    status.textContent = !config
+      ? 'Daraja configuration status is unavailable. Check the server configuration.'
+      : `Daraja ${config.environment} · shortcode ${config.shortcode || 'not configured'} · C2B ${config.c2bEnabled ? 'enabled' : 'disabled'} · callbacks ${config.c2bReady ? 'ready' : 'need HTTPS URL, callback token, and API credentials'} · B2C payouts ${config.b2cReady && config.b2cEnabled ? 'enabled' : 'disabled'}${config.b2cReady && !config.b2cEnabled ? ' (operator opt-in required)' : ''}.`;
+  }
+  if (register) register.disabled = !BILLING_MPESA_STATUS?.c2bReady || BILLING_MPESA_STATUS?.c2bEnabled;
+  if (!table) return;
+  const candidates = BILLING_INVOICES.filter(invoice => ['issued', 'sent'].includes(invoice.status) && Number(invoice.balanceKsh || 0) > 0);
+  table.innerHTML = BILLING_C2B_EVENTS.length ? BILLING_C2B_EVENTS.map(event => {
+    const schoolCandidates = event.matched_customer_id ? candidates.filter(invoice => invoice.customerId === event.matched_customer_id) : candidates;
+    const options = schoolCandidates.filter(invoice => Number(invoice.balanceKsh || 0) >= Number(event.amount_ksh || 0))
+      .map(invoice => `<option value="${esc(invoice.id)}">${esc(invoice.invoiceNumber)} · ${esc(BILLING_CUSTOMERS.find(customer => customer.id === invoice.customerId)?.name || 'Customer')}</option>`).join('');
+    return `<tr><td><strong>${esc(event.transaction_id)}</strong></td><td>${esc(event.bill_reference || '—')}</td><td>${esc(event.matched_customer_name || 'Unmatched')}${event.review_reason ? `<div class="table-sub">${esc(event.review_reason)}</div>` : ''}</td><td>${esc(event.sender_phone || '—')}</td><td><input class="form-input" type="date" data-c2b-date="${esc(event.transaction_id)}" value="${esc(String(event.transaction_date || '').slice(0, 10))}" max="${esc(billingTodayDate())}" aria-label="Verified transaction date for ${esc(event.transaction_id)}"></td><td>${formatBillingKsh(event.amount_ksh)}</td><td><input class="form-input" data-c2b-reason="${esc(event.transaction_id)}" maxlength="300" placeholder="Reason if school match is unclear"><select class="form-select" data-c2b-invoice="${esc(event.transaction_id)}"><option value="">Choose invoice</option>${options}</select><button class="btn sm" data-c2b-allocate="${esc(event.transaction_id)}" ${options ? '' : 'disabled'}>Allocate</button></td></tr>`;
+  }).join('') : '<tr><td colspan="7">No unallocated C2B payments.</td></tr>';
+}
+
+function renderCommissionAttributionFailures() {
+  const body = $('billing-commission-reconciliation');
+  if (!body) return;
+  body.innerHTML = BILLING_COMMISSION_FAILURES_STATUS !== 'ready'
+    ? '<tr><td colspan="7">Commission reconciliation queue is unavailable.</td></tr>'
+    : BILLING_COMMISSION_FAILURES.length
+    ? BILLING_COMMISSION_FAILURES.map(item => `<tr><td>${esc(item.reference || item.paymentId)}</td><td>${esc(item.customerName || 'Unknown school')}</td><td>${esc(item.invoiceNumber || 'Invoice unavailable')}</td><td>${formatBillingKsh(item.amountKsh)}</td><td>${esc(item.error || 'Attribution failed')}</td><td>${Number(item.attempts || 0)}</td><td><button class="btn sm" data-commission-attribution-retry="${esc(item.paymentId)}" data-super-admin-only type="button">Retry</button></td></tr>`).join('')
+    : '<tr><td colspan="7">No commission attribution failures need review.</td></tr>';
+  body.querySelectorAll('[data-super-admin-only]').forEach(element => {
+    if (window.consoleUserRole) element.hidden = window.consoleUserRole !== 'super_admin';
+  });
 }
 
 function renderBillingReports() {
@@ -1027,6 +1112,7 @@ function openBillingPayment() {
   $('bp-amount').value = '';
   $('bp-amount').max = '';
   $('bp-date').value = billingTodayDate();
+  $('bp-date').max = billingTodayDate();
   $('bp-method').value = 'mpesa';
   $('bp-reference').value = '';
   $('bp-notes').value = '';
@@ -1041,6 +1127,7 @@ function openBillingCustomer(customer = null) {
   $('bc-name').dataset.mode = customer ? 'edit' : 'add';
   $('bc-name').dataset.selectedName = customer?.name || '';
   $('bc-name').value = customer?.name || '';
+  $('bc-paybill-name').value = customer?.paybillAccountName || customer?.name || '';
   $('bc-legal-name').value = customer?.legalName || '';
   $('bc-tenant-key').value = customer?.tenantKey || '';
   $('bc-email').value = customer?.billingEmail || '';
@@ -1318,6 +1405,26 @@ async function validateCommunicationsSettings() {
 
 $('communications-email-form')?.addEventListener('submit', saveCommunicationsSettings);
 $('communications-email-test')?.addEventListener('click', validateCommunicationsSettings);
+$('billing-auto-term-renewals')?.addEventListener('change', async event => {
+  const input = event.currentTarget;
+  const enabled = input.checked;
+  input.disabled = true;
+  try {
+    const response = await fetch('/api/feature-flags/AUTO_TERM_RENEWAL_INVOICES', {
+      method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || 'Could not update renewal setting');
+    const flag = BILLING_FEATURE_FLAGS.find(item => item.name === 'AUTO_TERM_RENEWAL_INVOICES');
+    if (flag) flag.enabled = enabled;
+    else BILLING_FEATURE_FLAGS.push({ name: 'AUTO_TERM_RENEWAL_INVOICES', enabled });
+    toast(enabled ? 'Automatic renewal draft generation enabled.' : 'Automatic renewal draft generation disabled.');
+  } catch (error) {
+    input.checked = !enabled;
+    toast(error.message || 'Could not update renewal setting.');
+  } finally { input.disabled = !BILLING_FEATURE_FLAGS.some(item => item.name === 'AUTO_TERM_RENEWAL_INVOICES'); }
+});
 
 const BILLING_TABS = ['overview', 'customers', 'quotes', 'invoices', 'payments', 'catalogue', 'reports', 'settings'];
 function selectBillingTab(tab, focus = false) {
@@ -1411,7 +1518,7 @@ function closeBillingContract() { $('billing-contract-overlay')?.classList.remov
 
 function billingCustomerPayload() {
   return {
-    name: $('bc-name').value, legalName: $('bc-legal-name').value, tenantKey: $('bc-tenant-key').value,
+    name: $('bc-name').value, paybillAccountName: $('bc-paybill-name').value, legalName: $('bc-legal-name').value, tenantKey: $('bc-tenant-key').value,
     billingEmail: $('bc-email').value, billingPhone: $('bc-phone').value, taxIdentifier: $('bc-tax-id').value,
     currency: $('bc-currency').value, paymentTerms: $('bc-payment-terms').value,
     billingAddress: $('bc-address').value, status: $('bc-status').value,
@@ -1634,7 +1741,8 @@ function renderPipeline() {
             </div>
             <button class="k-card-edit" onclick="openLeadModal(null, '${lead.id}')">Edit</button>
             <button class="k-card-edit" style="right:46px" onclick="convertLeadToProvision('${lead.id}')">Convert</button>
-            <button class="k-card-edit" style="right:112px" onclick="deleteLead('${lead.id}')">Delete</button>
+            <button class="k-card-edit" data-super-admin-only style="right:112px" onclick="openLeadConversion('${lead.id}')">Customer</button>
+            <button class="k-card-edit" style="right:178px" onclick="deleteLead('${lead.id}')">Delete</button>
           </div>`;
         }).join('')}
       </div>
@@ -1656,6 +1764,12 @@ function renderPipeline() {
             const newStage = toCol.closest('.kanban-column').dataset.stage;
             
             const lead = LEADS.find(l => l.id === leadId);
+            if (lead && newStage === 'converted' && lead.stage !== 'converted') {
+              renderEverything();
+              openLeadConversion(leadId);
+              toast('Record customer acceptance to convert this lead and create its billing records.');
+              return;
+            }
             if (lead && lead.stage !== newStage) {
               lead.stage = newStage;
               updateLeadApi(leadId, { stage: newStage }).catch(() => toast('Stage save failed — refresh to restore'));
@@ -1734,7 +1848,9 @@ function renderLeadsList() {
       <td>
         <div class="action-row">
           <button class="tbl-btn" onclick="openLeadModal(null, '${lead.id}')">Edit</button>
+          ${!lead.agentId && !['converted', 'lost'].includes(lead.stage) ? `<button class="tbl-btn" onclick="openLeadAssignment('${esc(lead.id)}')">Assign agent</button>` : ''}
           <button class="tbl-btn primary" onclick="convertLeadToProvision('${lead.id}')">Convert & Provision</button>
+          <button class="tbl-btn" data-super-admin-only onclick="openLeadConversion('${lead.id}')">Convert to Customer</button>
           <button class="tbl-btn danger" onclick="deleteLead('${lead.id}')">Delete</button>
         </div>
       </td>
@@ -1787,6 +1903,22 @@ window.convertLeadToProvision = function(leadId) {
   refreshProvisionAutoAssignment();
   addAudit({ action: 'Lead Convert Initiated', instance: schoolName, details: `Provision form opened from CRM lead ${lead.id}` });
   toast(`Provision form prefilled from ${schoolName}.`);
+};
+
+window.openLeadConversion = function(leadId) {
+  const lead = LEADS.find(item => item.id === leadId);
+  if (!lead) return;
+  $('lc-lead-id').value = lead.id;
+  $('lc-school-label').textContent = `Convert ${lead.school} into a billing customer, contract, accepted quote, and draft invoice.`;
+  $('lc-email').value = lead.billingEmail || '';
+  $('lc-phone').value = lead.billingPhone || lead.phone || '';
+  $('lc-students').value = Number(lead.students) || '';
+  $('lc-accepted-by').value = lead.name || '';
+  $('lc-evidence').value = '';
+  $('lc-start-date').value = new Date().toISOString().slice(0, 10);
+  $('lc-modules').value = '';
+  $('lc-comms').checked = false;
+  $('lead-convert-overlay')?.classList.add('open');
 };
 
 function toggleCrmMetrics() {
@@ -2879,6 +3011,136 @@ document.body.addEventListener('click', event => {
   }
 
   const id = btn.id;
+  if (id === 'billing-acceptance-close' || id === 'billing-acceptance-cancel') {
+    $('billing-acceptance-overlay')?.classList.remove('open');
+    return;
+  }
+  if (id === 'billing-acceptance-submit') {
+    const quoteId = $('ba-quote-id')?.value;
+    const acceptedBy = $('ba-accepted-by')?.value.trim();
+    const acceptanceEvidence = $('ba-evidence')?.value.trim();
+    if (!acceptedBy || !acceptanceEvidence) { toast('Enter the customer approver and an evidence reference.'); return; }
+    btn.disabled = true;
+    (async () => {
+      try {
+        const response = await fetch(`/api/billing/quotes/${encodeURIComponent(quoteId)}/accept`, {
+          method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ acceptedBy, acceptanceMethod: $('ba-method').value, acceptanceEvidence }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'Could not record acceptance');
+        $('billing-acceptance-overlay')?.classList.remove('open');
+        await loadBillingData();
+        toast('Customer acceptance and evidence reference recorded.');
+      } catch (error) { toast(error.message || 'Could not record acceptance.'); }
+      finally { btn.disabled = false; }
+    })();
+    return;
+  }
+  if (id === 'billing-generate-term-invoices') {
+    const [year, term] = String($('billing-renewal-term')?.value || '').split(':').map(Number);
+    if (!year || !term) { toast('Choose a configured school term first.'); return; }
+    if (!window.confirm(`Prepare draft renewal invoices from active termly contracts for ${year} Term ${term}?`)) return;
+    btn.disabled = true;
+    (async () => {
+      try {
+        const response = await fetch('/api/billing/term-invoices', {
+          method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ year, term }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || 'Could not prepare renewal invoices');
+        await loadBillingData();
+        toast(`${result.count} draft renewal invoice(s) prepared for ${result.periodKey}.`);
+      } catch (error) { toast(error.message || 'Could not prepare renewal invoices.'); }
+      finally { btn.disabled = false; }
+    })();
+    return;
+  }
+  if (id === 'billing-mpesa-c2b-register') {
+    if (btn.disabled || !window.confirm('Register this console’s HTTPS validation and confirmation URLs with Safaricom Daraja and enable C2B collections?')) return;
+    btn.disabled = true;
+    (async () => {
+      try {
+        const response = await fetch('/api/settings/integrations/mpesa/c2b/register', { method: 'POST', credentials: 'same-origin' });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || 'Could not register C2B callbacks');
+        await loadBillingData();
+        toast('Daraja C2B callbacks registered and collections enabled.');
+      } catch (error) { toast(error.message || 'C2B callback registration failed.'); }
+      finally { renderDarajaC2B(); }
+    })();
+    return;
+  }
+  if (btn.dataset.c2bAllocate) {
+    const transactionId = btn.dataset.c2bAllocate;
+    const invoiceSelect = [...document.querySelectorAll('[data-c2b-invoice]')].find(input => input.dataset.c2bInvoice === transactionId);
+    const paymentDateInput = [...document.querySelectorAll('[data-c2b-date]')].find(input => input.dataset.c2bDate === transactionId);
+    const allocationReasonInput = [...document.querySelectorAll('[data-c2b-reason]')].find(input => input.dataset.c2bReason === transactionId);
+    if (!invoiceSelect?.value) { toast('Choose an issued invoice first.'); return; }
+    if (!paymentDateInput?.value) { toast('Enter the verified M-Pesa transaction date first.'); return; }
+    btn.disabled = true;
+    (async () => {
+      try {
+        const response = await fetch(`/api/billing/mpesa-c2b-events/${encodeURIComponent(transactionId)}/allocate`, {
+          method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ invoiceId: invoiceSelect.value, paymentDate: paymentDateInput.value, allocationReason: allocationReasonInput?.value || '' }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || 'Could not allocate payment');
+        await loadBillingData();
+        toast(result.commissionReconciliationRequired ? 'C2B payment allocated; commission was queued for reconciliation.' : 'C2B payment allocated and commission attribution updated.');
+      } catch (error) { toast(error.message || 'Payment allocation failed.'); btn.disabled = false; }
+    })();
+    return;
+  }
+  if (id === 'lead-convert-close' || id === 'lead-convert-cancel') {
+    $('lead-convert-overlay')?.classList.remove('open');
+    return;
+  }
+  if (id === 'lead-convert-submit') {
+    const leadId = $('lc-lead-id')?.value;
+    const acceptedBy = $('lc-accepted-by')?.value.trim();
+    const acceptanceEvidence = $('lc-evidence')?.value.trim();
+    const startDate = $('lc-start-date')?.value;
+    if (!acceptedBy || !acceptanceEvidence || !startDate) {
+      toast('Enter the customer approver, acceptance evidence, and contract start date.');
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = 'Creating billing records…';
+    (async () => {
+      try {
+        const response = await fetch(`/api/leads/${encodeURIComponent(leadId)}/convert`, {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            billingEmail: $('lc-email').value.trim(), billingPhone: $('lc-phone').value.trim(),
+            schoolType: $('lc-school-type').value, startDate, acceptedBy,
+            acceptanceMethod: $('lc-acceptance-method').value, acceptanceEvidence,
+            quote: {
+              schoolType: $('lc-school-type').value,
+              enrollmentCount: Number($('lc-students').value || 0),
+              extraModules: $('lc-modules').value.split(',').map(value => value.trim()).filter(Boolean),
+              communicationsIncluded: $('lc-comms').checked,
+            },
+          }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(result.error || 'Lead conversion failed');
+        $('lead-convert-overlay')?.classList.remove('open');
+        await Promise.all([loadLeadsFromApi(), loadBillingData()]);
+        renderEverything();
+        toast(`Customer converted. Draft invoice ${result.invoice.invoiceNumber} is ready to review.`);
+      } catch (error) {
+        toast(error.message || 'Lead conversion failed.');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Create customer & draft invoice';
+      }
+    })();
+    return;
+  }
   if (id === 'btn-new-instance-overview' || id === 'btn-new-instance-list') {
     openNewInstanceTypePicker();
     return;
@@ -3032,6 +3294,32 @@ document.body.addEventListener('click', event => {
   if (quoteEditId) {
     const quote = BILLING_QUOTES.find(item => item.id === quoteEditId);
     if (quote) openBillingQuote(quote);
+    return;
+  }
+  const quoteDiscountApproveId = btn.dataset.quoteDiscountApprove;
+  if (quoteDiscountApproveId) {
+    (async () => {
+      try {
+        const response = await fetch(`/api/billing/quotes/${encodeURIComponent(quoteDiscountApproveId)}/approve-discount`, { method: 'POST', credentials: 'same-origin' });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'Could not approve discount');
+        await loadBillingData(); toast('Discount approved. The quote may now be accepted.');
+      } catch (error) { toast(error.message || 'Could not approve discount.'); }
+    })();
+    return;
+  }
+  const commissionRetryPaymentId = btn.dataset.commissionAttributionRetry;
+  if (commissionRetryPaymentId) {
+    btn.disabled = true;
+    (async () => {
+      try {
+        const response = await fetch(`/api/billing/commission-reconciliation/${encodeURIComponent(commissionRetryPaymentId)}/retry`, { method: 'POST', credentials: 'same-origin' });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'Could not retry commission attribution');
+        await loadBillingData(); toast(payload.alreadyCredited ? 'Commission was already credited; reconciliation closed.' : 'Commission attributed successfully.');
+      } catch (error) { toast(error.message || 'Could not retry commission attribution.'); }
+      finally { btn.disabled = false; }
+    })();
     return;
   }
   const quoteDeleteId = btn.dataset.quoteDelete;
@@ -3201,16 +3489,12 @@ document.body.addEventListener('click', event => {
 
   const quoteAcceptId = btn.dataset.quoteAccept;
   if (quoteAcceptId) {
-    if (!window.confirm('Confirm that the customer has accepted this quote? This records acceptance and enables draft invoice creation.')) return;
-    (async () => {
-      try {
-        const response = await fetch(`/api/billing/quotes/${encodeURIComponent(quoteAcceptId)}/accept`, { method: 'POST', credentials: 'same-origin' });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(payload.error || 'Could not record acceptance');
-        await loadBillingData();
-        toast('Customer acceptance recorded. You can now create a draft invoice.');
-      } catch (error) { toast(error.message); }
-    })();
+    const quote = BILLING_QUOTES.find(item => item.id === quoteAcceptId);
+    $('ba-quote-id').value = quoteAcceptId;
+    $('ba-quote-label').textContent = quote ? `${quote.quoteNumber} · ${quote.customerSnapshot?.name || 'Customer'}` : quoteAcceptId;
+    $('ba-accepted-by').value = '';
+    $('ba-evidence').value = '';
+    $('billing-acceptance-overlay')?.classList.add('open');
     return;
   }
 
@@ -3334,6 +3618,7 @@ function bindModalEvents() {
       const payload = {
         appType: currentProvisionApp,
         name,
+        leadId: pendingProvisionLeadId || '',
         domain: $('f-domain')?.value.trim() || '',
         version: version?.value || 'latest',
         image: version?.image || '',
@@ -3453,8 +3738,7 @@ function bindModalEvents() {
           if (leadIdx >= 0) {
             const updatedLead = {
               ...LEADS[leadIdx],
-              stage: 'converted',
-              nextActivity: `Provisioning ${app.label} (${payload.version})`,
+              nextActivity: `Instance provisioned · ${app.label}`,
               notes: [LEADS[leadIdx].notes, `Provision requested for ${payload.name} (${payload.domain})`]
                 .filter(Boolean)
                 .join(' | '),
@@ -3462,7 +3746,7 @@ function bindModalEvents() {
             try {
               LEADS[leadIdx] = await updateLeadApi(updatedLead.id, updatedLead);
               addAudit({
-                action: 'Lead Converted',
+                action: 'Provisioning Linked to Lead',
                 instance: updatedLead.school,
                 details: `Lead linked to provisioning request for ${payload.name}`,
                 status: 'Success',
@@ -3561,6 +3845,57 @@ $('btn-view-clients')?.addEventListener('click', () => {
   $('btn-view-clients')?.classList.add('active');
 });
 
+async function openLeadAssignment(leadId) {
+  const lead = LEADS.find(item => String(item.id) === String(leadId));
+  if (!lead) return toast('Lead not found. Refresh the CRM list and try again.', true);
+  $('lead-assign-agent-id').value = lead.id;
+  $('lead-assign-agent-school').textContent = `${lead.school} · ${lead.name || 'Contact not set'}`;
+  const select = $('lead-assign-agent-select');
+  select.innerHTML = '<option value="">Loading agents…</option>';
+  $('lead-assign-agent-overlay').style.display = 'grid';
+  try {
+    const response = await fetch('/api/agents?status=active', { credentials: 'same-origin' });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !Array.isArray(data.agents)) throw new Error(data.error || 'Could not load active agents');
+    const activeAgents = data.agents.filter(agent => agent.status === 'active');
+    select.innerHTML = '<option value="">Choose an agent</option>' + activeAgents.map(agent =>
+      `<option value="${esc(agent.id)}">${esc(agent.full_name)} (${esc(agent.agent_code)})</option>`).join('');
+    if (!activeAgents.length) select.innerHTML = '<option value="">No active agents available</option>';
+  } catch (error) {
+    select.innerHTML = '<option value="">Could not load agents</option>';
+    toast(error.message || 'Could not load active agents', true);
+  }
+}
+
+function closeLeadAssignment() {
+  if ($('lead-assign-agent-overlay')) $('lead-assign-agent-overlay').style.display = 'none';
+}
+
+async function submitLeadAssignment() {
+  const leadId = $('lead-assign-agent-id')?.value;
+  const agentId = $('lead-assign-agent-select')?.value;
+  if (!leadId || !agentId) return toast('Choose an active agent first.', true);
+  const button = $('lead-assign-agent-submit');
+  button.disabled = true;
+  try {
+    const response = await fetch(`/api/leads/${encodeURIComponent(leadId)}/assign-agent`, {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentId }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.ok) throw new Error(result.error || 'Could not assign lead');
+    closeLeadAssignment();
+    await loadLeadsFromApi();
+    renderEverything();
+    toast(`${result.lead.school} assigned to ${result.agent.full_name}.`);
+  } catch (error) {
+    toast(error.message || 'Could not assign lead', true);
+  } finally {
+    button.disabled = false;
+  }
+}
+window.openLeadAssignment = openLeadAssignment;
+
 window.openLeadModal = function(defaultStage = 'new', editLeadId = null) {
   const lead = editLeadId ? LEADS.find(l => l.id === editLeadId) : null;
   
@@ -3586,6 +3921,9 @@ window.openLeadModal = function(defaultStage = 'new', editLeadId = null) {
 $('lead-modal-close')?.addEventListener('click', () => $('lead-modal-overlay')?.classList.remove('open'));
 $('lead-modal-cancel')?.addEventListener('click', () => $('lead-modal-overlay')?.classList.remove('open'));
 $('btn-new-lead')?.addEventListener('click', () => openLeadModal('new', null));
+$('lead-assign-agent-close')?.addEventListener('click', closeLeadAssignment);
+$('lead-assign-agent-cancel')?.addEventListener('click', closeLeadAssignment);
+$('lead-assign-agent-submit')?.addEventListener('click', submitLeadAssignment);
 $('btn-toggle-crm-metrics')?.addEventListener('click', toggleCrmMetrics);
 
 $('lead-search')?.addEventListener('input', (e) => {
@@ -3787,11 +4125,7 @@ function renderAgentsTable() {
   }
 
   tableBody.innerHTML = AGENTS.map(agent => {
-    const rateLabel = agent.commission_type === 'percentage'
-      ? `${agent.commission_rate}% sub`
-      : agent.commission_type === 'fixed_per_student'
-      ? `${formatKsh(agent.commission_rate)}/student`
-      : `${formatKsh(agent.commission_rate)}/school`;
+    const rateLabel = `${Number(agent.first_payment_commission_rate ?? 25)}% first · ${Number(agent.recurring_payment_commission_rate ?? 10)}% recurring`;
 
     const statusBadge = agent.status === 'active'
       ? '<span class="status-badge" style="background:rgba(5,150,105,.12);color:#059669;padding:2px 7px;border-radius:999px;font-size:10px;font-weight:700">● Active</span>'
@@ -3837,38 +4171,124 @@ function renderAgentsTable() {
   }).join('');
 }
 
-async function approveAgent(agentId) {
-  if (!confirm('Approve this agent and give them access to the Field Agent Portal?')) return;
+async function approveAgent(agentId, confirmed = false) {
+  if (!confirmed) {
+    openAgentOperationContent('Approve agent application', `<div class="modal"><div class="modal-body"><p>Approve <strong>${esc(CURRENT_AGENT?.full_name || 'this agent')}</strong> and give them access to the Field Agent Portal?</p></div><div class="modal-footer"><button class="btn" id="agent-approve-cancel" type="button">Cancel</button><button class="btn primary" id="agent-approve-confirm" type="button">Approve agent</button></div></div>`);
+    $('agent-approve-cancel')?.addEventListener('click', closeAgentOperation);
+    $('agent-approve-confirm')?.addEventListener('click', () => approveAgent(agentId, true));
+    return;
+  }
   try {
-    await fetch(`/api/agents/${agentId}/approve`, { method: 'POST', credentials: 'same-origin' });
+    const response = await fetch(`/api/agents/${agentId}/approve`, { method: 'POST', credentials: 'same-origin' });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || 'Failed to approve agent');
     toast('Agent approved — they can now sign in to the portal');
+    closeAgentOperation();
     loadAgentsData();
     if (CURRENT_AGENT && CURRENT_AGENT.id === agentId) {
       openAgentDetailModal(agentId);
     }
   } catch (err) {
-    toast('Failed to approve agent: ' + err.message, true);
+    setAgentOperationFeedback('Failed to approve agent: ' + err.message);
   }
 }
 
-async function rejectAgent(agentId) {
-  if (!confirm('Reject this agent application? Their account will be set to inactive.')) return;
+async function rejectAgent(agentId, confirmed = false) {
+  if (!confirmed) {
+    openAgentOperationContent('Reject agent application', `<div class="modal"><div class="modal-body"><p>Reject <strong>${esc(CURRENT_AGENT?.full_name || 'this agent')}</strong>? Their account will be set to inactive.</p></div><div class="modal-footer"><button class="btn" id="agent-reject-cancel" type="button">Cancel</button><button class="btn danger-outline" id="agent-reject-confirm" type="button">Reject application</button></div></div>`);
+    $('agent-reject-cancel')?.addEventListener('click', closeAgentOperation);
+    $('agent-reject-confirm')?.addEventListener('click', () => rejectAgent(agentId, true));
+    return;
+  }
   try {
-    await fetch(`/api/agents/${agentId}/reject`, { method: 'POST', credentials: 'same-origin' });
+    const response = await fetch(`/api/agents/${agentId}/reject`, { method: 'POST', credentials: 'same-origin' });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || 'Failed to reject agent');
     toast('Agent application rejected');
+    closeAgentOperation();
     loadAgentsData();
     if (CURRENT_AGENT && CURRENT_AGENT.id === agentId) {
       openAgentDetailModal(agentId);
     }
   } catch (err) {
-    toast('Failed to reject agent: ' + err.message, true);
+    setAgentOperationFeedback('Failed to reject agent: ' + err.message);
   }
 }
 
 window.approveAgent = approveAgent;
 window.rejectAgent = rejectAgent;
 
+function closeAgentOperation() {
+  const panel = $('agent-drawer-operation');
+  const content = $('agent-drawer-operation-content');
+  const modal = content?.querySelector('.modal');
+  if (modal) {
+    const overlay = $(modal.dataset.operationOverlay || '');
+    const originalStyle = modal.dataset.operationOriginalStyle;
+    if (originalStyle !== undefined) modal.setAttribute('style', originalStyle);
+    delete modal.dataset.operationOverlay;
+    delete modal.dataset.operationOriginalStyle;
+    if (overlay) overlay.appendChild(modal);
+  }
+  if (content) content.replaceChildren();
+  if (panel) panel.hidden = true;
+  if ($('agent-detail-drawer')) $('agent-detail-drawer').scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function openAgentOperationFromOverlay(overlayId, title) {
+  const panel = $('agent-drawer-operation');
+  const content = $('agent-drawer-operation-content');
+  if (panel && !panel.hidden) closeAgentOperation();
+  const overlay = $(overlayId);
+  const modal = overlay?.querySelector('.modal');
+  if (!panel || !content || !overlay || !modal) return false;
+  modal.dataset.operationOverlay = overlayId;
+  modal.dataset.operationOriginalStyle = modal.getAttribute('style') || '';
+  modal.setAttribute('aria-label', title);
+  modal.querySelectorAll('.agent-drawer-operation-feedback').forEach(node => node.remove());
+  content.appendChild(modal);
+  overlay.style.display = 'none';
+  $('agent-drawer-operation-title').textContent = title;
+  panel.hidden = false;
+  const body = modal.querySelector('.modal-body');
+  const feedback = document.createElement('div');
+  feedback.className = 'agent-drawer-operation-feedback';
+  feedback.id = 'agent-drawer-operation-feedback';
+  body?.after(feedback);
+  panel.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  const firstInput = modal.querySelector('input:not([type="hidden"]):not([disabled]),select,textarea');
+  firstInput?.focus({ preventScroll: true });
+  return true;
+}
+
+function openAgentOperationContent(title, markup) {
+  closeAgentOperation();
+  const panel = $('agent-drawer-operation');
+  if (!panel) return null;
+  $('agent-drawer-operation-title').textContent = title;
+  $('agent-drawer-operation-content').innerHTML = markup;
+  panel.hidden = false;
+  panel.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  return $('agent-drawer-operation-content');
+}
+
+function setAgentOperationFeedback(message, type = 'error') {
+  const content = $('agent-drawer-operation-content');
+  if (!content) return;
+  let feedback = content.querySelector('#agent-drawer-operation-feedback');
+  if (!feedback) {
+    feedback = document.createElement('div');
+    feedback.id = 'agent-drawer-operation-feedback';
+    feedback.className = 'agent-drawer-operation-feedback';
+    const footer = content.querySelector('.modal-footer');
+    if (footer) footer.before(feedback); else content.appendChild(feedback);
+  }
+  feedback.textContent = message || '';
+  feedback.className = `agent-drawer-operation-feedback${message ? ` visible ${type}` : ''}`;
+}
+
 function openNewAgentModal() {
+  closeAgentOperation();
   $('agent-form-id').value = '';
   $('agent-modal-title').textContent = 'Register Field Agent';
   if ($('agent-form-delete')) $('agent-form-delete').style.display = 'none';
@@ -3878,8 +4298,8 @@ function openNewAgentModal() {
   $('agent-form-national-id').value = '';
   $('agent-form-county').value = '';
   $('agent-form-base').value = '';
-  $('agent-form-commission-type').value = 'percentage';
-  $('agent-form-commission-rate').value = '10.0';
+  $('agent-form-first-commission-rate').value = '25';
+  $('agent-form-recurring-commission-rate').value = '10';
   $('agent-form-mpesa').value = '';
   $('agent-form-status').value = 'active';
   $('agent-form-bank-name').value = '';
@@ -3890,7 +4310,7 @@ function openNewAgentModal() {
 }
 
 function openEditAgentModal(agentId) {
-  const agent = AGENTS.find(a => a.id === agentId);
+  const agent = CURRENT_AGENT?.id === agentId ? CURRENT_AGENT : AGENTS.find(a => a.id === agentId);
   if (!agent) return;
   $('agent-form-id').value = agent.id;
   $('agent-modal-title').textContent = `Edit Agent — ${agent.agent_code}`;
@@ -3901,27 +4321,27 @@ function openEditAgentModal(agentId) {
   $('agent-form-national-id').value = agent.national_id || '';
   $('agent-form-county').value = agent.county || '';
   $('agent-form-base').value = agent.base_location || '';
-  $('agent-form-commission-type').value = agent.commission_type || 'percentage';
-  $('agent-form-commission-rate').value = agent.commission_rate ?? 10.0;
+  $('agent-form-first-commission-rate').value = agent.first_payment_commission_rate ?? 25;
+  $('agent-form-recurring-commission-rate').value = agent.recurring_payment_commission_rate ?? (agent.commission_type === 'percentage' ? agent.commission_rate : 10);
   $('agent-form-mpesa').value = agent.mpesa_number || '';
   $('agent-form-status').value = agent.status || 'active';
   $('agent-form-bank-name').value = agent.bank_name || '';
   $('agent-form-bank-account').value = agent.bank_account || '';
   $('agent-form-pin').value = '';
   $('agent-form-notes').value = agent.notes || '';
-  $('agent-modal-overlay').style.display = 'grid';
+  if ($('agent-detail-overlay')?.classList.contains('open')) openAgentOperationFromOverlay('agent-modal-overlay', 'Edit agent profile');
+  else $('agent-modal-overlay').style.display = 'grid';
 }
 
-async function deleteAgent(agentId) {
+async function deleteAgent(agentId, confirmed = false) {
   const agent = AGENTS.find(a => a.id === agentId) || CURRENT_AGENT;
   const name = agent ? `${agent.full_name} (${agent.agent_code})` : 'this agent';
-
-  const confirmed = confirm(
-    `Are you sure you want to delete ${name}?\n\n` +
-    `This will permanently remove the agent and all associated school assignments, commissions, and payout records.\n\n` +
-    `This action cannot be undone.`
-  );
-  if (!confirmed) return;
+  if (!confirmed) {
+    const content = openAgentOperationContent('Delete agent', `<div class="modal"><div class="modal-body"><p><strong>Delete ${esc(name)}?</strong></p><p>This permanently removes the agent, school assignments, commissions, and payout records. This cannot be undone.</p></div><div class="modal-footer"><button class="btn" id="agent-delete-cancel" type="button">Keep agent</button><button class="btn danger-outline" id="agent-delete-confirm" type="button">Delete permanently</button></div></div>`);
+    $('agent-delete-cancel')?.addEventListener('click', closeAgentOperation);
+    $('agent-delete-confirm')?.addEventListener('click', () => deleteAgent(agentId, true));
+    return;
+  }
 
   try {
     const res = await fetch(`/api/agents/${agentId}`, {
@@ -3939,7 +4359,7 @@ async function deleteAgent(agentId) {
     CURRENT_AGENT = null;
     loadAgentsData();
   } catch (err) {
-    alert('Error deleting agent: ' + err.message);
+    setAgentOperationFeedback('Error deleting agent: ' + err.message);
   }
 }
 
@@ -3947,8 +4367,8 @@ async function saveAgentForm() {
   const id = $('agent-form-id').value.trim();
   const full_name = $('agent-form-name').value.trim();
   const phone = $('agent-form-phone').value.trim();
-  if (!full_name) return alert('Full Name is required');
-  if (!phone) return alert('Primary Phone number is required');
+  if (!full_name) return id && !$('agent-drawer-operation').hidden ? setAgentOperationFeedback('Full Name is required') : alert('Full Name is required');
+  if (!phone) return id && !$('agent-drawer-operation').hidden ? setAgentOperationFeedback('Primary Phone number is required') : alert('Primary Phone number is required');
 
   const payload = {
     full_name,
@@ -3957,17 +4377,14 @@ async function saveAgentForm() {
     national_id: $('agent-form-national-id').value.trim(),
     county: $('agent-form-county').value.trim(),
     base_location: $('agent-form-base').value.trim(),
-    commission_type: $('agent-form-commission-type').value,
-    commission_rate: parseFloat($('agent-form-commission-rate').value) || 0,
+    first_payment_commission_rate: parseFloat($('agent-form-first-commission-rate').value),
+    recurring_payment_commission_rate: parseFloat($('agent-form-recurring-commission-rate').value),
     mpesa_number: $('agent-form-mpesa').value.trim(),
     status: $('agent-form-status').value,
     bank_name: $('agent-form-bank-name').value.trim(),
     bank_account: $('agent-form-bank-account').value.trim(),
     notes: $('agent-form-notes').value.trim(),
   };
-
-  const pin = $('agent-form-pin').value.trim();
-  if (pin) payload.pin = pin;
 
   try {
     const url = id ? `/api/agents/${id}` : '/api/agents';
@@ -3980,11 +4397,18 @@ async function saveAgentForm() {
     });
     const result = await res.json();
     if (!res.ok) throw new Error(result.error || 'Failed to save agent');
+    if (!id && result.tempPin) {
+      window.alert(`Temporary PIN for ${result.agent?.full_name || full_name}: ${result.tempPin}\n\nExpires: ${result.tempPinExpiresAt || 'in 24 hours'}\n\nShare this PIN securely. It is shown only once and must be changed at first sign-in.`);
+    }
     toast(id ? 'Agent updated successfully' : `Agent ${result.agent?.agent_code || ''} registered`);
-    $('agent-modal-overlay').style.display = 'none';
+    if (id && !$('agent-drawer-operation').hidden) {
+      closeAgentOperation();
+      await openAgentDetailModal(id);
+    } else $('agent-modal-overlay').style.display = 'none';
     loadAgentsData();
   } catch (err) {
-    alert('Error: ' + err.message);
+    if (id && !$('agent-drawer-operation').hidden) setAgentOperationFeedback('Error: ' + err.message);
+    else alert('Error: ' + err.message);
   }
 }
 
@@ -4004,6 +4428,7 @@ function openAgentDrawer() {
 }
 
 function closeAgentDrawer() {
+  closeAgentOperation();
   const el = $('agent-detail-overlay');
   if (!el) return;
   el.classList.remove('open');
@@ -4011,6 +4436,41 @@ function closeAgentDrawer() {
     if (!el.classList.contains('open')) el.style.display = 'none';
   }, 280);
   document.body.style.overflow = '';
+}
+
+async function resetAgentPin(agentId) {
+  if (window.consoleUserRole !== 'super_admin') return toast('Only a super admin can reset agent PINs.', true);
+  const agent = CURRENT_AGENT;
+  if (!agent || agent.id !== agentId) return;
+  const content = openAgentOperationContent('Reset agent PIN', `<div class="modal"><div class="modal-body"><p>Issue a one-time temporary PIN for <strong>${esc(agent.full_name)}</strong>?</p><p>This signs out their current sessions. The agent must choose a new PIN at first sign-in.</p></div><div class="modal-footer"><button class="btn" id="agent-pin-reset-cancel" type="button">Cancel</button><button class="btn primary" id="agent-pin-reset-confirm" type="button">Issue temporary PIN</button></div></div>`);
+  $('agent-pin-reset-cancel')?.addEventListener('click', closeAgentOperation);
+  $('agent-pin-reset-confirm')?.addEventListener('click', async event => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    button.textContent = 'Issuing…';
+  try {
+    const response = await fetch(`/api/agents/${encodeURIComponent(agentId)}/reset-pin`, {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: '{}',
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || !result.ok) throw new Error(result.error || 'Could not reset PIN');
+    CURRENT_AGENT = result.agent || CURRENT_AGENT;
+    toast('Temporary PIN issued. Share it securely with the agent.');
+    const resultContent = $('agent-drawer-operation-content');
+    resultContent.innerHTML = `<div class="modal"><div class="modal-body"><p><strong>Temporary PIN issued</strong></p><p>Share it securely with ${esc(agent.full_name)}. It is shown only in this view and expires at <span id="agent-pin-reset-expiry"></span>.</p><div class="form-row"><label class="form-label" for="agent-pin-reset-value">Temporary PIN</label><input class="form-input" id="agent-pin-reset-value" readonly/></div><div class="agent-drawer-operation-feedback visible success">The agent must change this PIN at first sign-in. Their previous sessions have been signed out.</div></div><div class="modal-footer"><button class="btn" id="agent-pin-reset-copy" type="button">Copy PIN</button><button class="btn primary" id="agent-pin-reset-done" type="button">Done</button></div></div>`;
+    $('agent-pin-reset-value').value = result.tempPin;
+    $('agent-pin-reset-expiry').textContent = result.expiresAt || 'in 24 hours';
+    $('agent-pin-reset-copy')?.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(result.tempPin); toast('Temporary PIN copied'); }
+      catch { $('agent-pin-reset-value').select(); document.execCommand('copy'); toast('Temporary PIN selected for copying'); }
+    });
+    $('agent-pin-reset-done')?.addEventListener('click', closeAgentOperation);
+  } catch (error) {
+      button.disabled = false;
+      button.textContent = 'Issue temporary PIN';
+      setAgentOperationFeedback(error.message || 'Could not reset agent PIN');
+    }
+  });
 }
 
 async function openAgentDetailModal(agentId) {
@@ -4030,12 +4490,16 @@ function renderAgentDetailModal(agent) {
   if ($('agent-detail-avatar')) $('agent-detail-avatar').textContent = getAgentInitials(agent.full_name);
   $('agent-detail-code').textContent = agent.agent_code;
   $('agent-detail-name').textContent = agent.full_name;
+  const resetRequest = $('agent-pin-reset-request');
+  if (resetRequest) {
+    const requestedAt = agent.pin_reset_requested_at || '';
+    resetRequest.hidden = !requestedAt;
+    resetRequest.textContent = requestedAt
+      ? `PIN reset requested at ${new Date(requestedAt).toLocaleString()}. Verify the agent’s identity before issuing a temporary PIN.`
+      : '';
+  }
   
-  const rateLabel = agent.commission_type === 'percentage'
-    ? `${agent.commission_rate}% of subscription`
-    : agent.commission_type === 'fixed_per_student'
-    ? `${formatKsh(agent.commission_rate)} / student`
-    : `${formatKsh(agent.commission_rate)} / school`;
+  const rateLabel = `${Number(agent.first_payment_commission_rate ?? 25)}% first school invoice · ${Number(agent.recurring_payment_commission_rate ?? 10)}% recurring terms`;
 
   $('agent-detail-sub').textContent = `Rate: ${rateLabel} · Registered: ${agent.created_at ? agent.created_at.slice(0, 10) : '—'}`;
 
@@ -4056,6 +4520,8 @@ function renderAgentDetailModal(agent) {
   const btnPayout = $('btn-agent-record-payout');
   const btnApprove = $('btn-agent-approve');
   const btnReject = $('btn-agent-reject');
+  const btnResetPin = $('btn-agent-reset-pin');
+  if (btnResetPin) btnResetPin.hidden = window.consoleUserRole !== 'super_admin';
   if (agent.status === 'pending') {
     if (btnPayout) btnPayout.style.display = 'none';
     if (btnApprove) btnApprove.style.display = 'inline-flex';
@@ -4130,8 +4596,8 @@ function renderAgentDetailModal(agent) {
           <td style="font-weight:600">${esc(e.school_name || 'General')}</td>
           <td>${esc(e.description)}</td>
           <td>${formatKsh(e.gross_amount_ksh)}</td>
-          <td style="font-weight:700;color:var(--brand)">${formatKsh(e.earned_amount_ksh)}</td>
-          <td><span class="pill" style="font-size:11px;font-weight:600">${esc(e.status)}</span></td>
+          <td style="font-weight:700;color:var(--brand)">${formatKsh(e.earned_amount_ksh)}<div class="table-sub">Paid ${formatKsh(e.paid_amount_ksh || 0)} · Due ${formatKsh(e.balance_due_ksh ?? e.earned_amount_ksh)}</div></td>
+          <td><span class="pill" style="font-size:11px;font-weight:600">${esc(String(e.display_status || e.status).replaceAll('_', ' '))}</span></td>
         </tr>
       `).join('');
     }
@@ -4141,7 +4607,7 @@ function renderAgentDetailModal(agent) {
   const payoutsBody = $('agent-payouts-body');
   if (payoutsBody) {
     if (payouts.length === 0) {
-      payoutsBody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">No payouts disbursed to this agent yet. Click "💸 Record Payout" above to record a disbursement.</td></tr>';
+      payoutsBody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">No payouts disbursed to this agent yet. Click "💸 Record Payout" above to record a disbursement.</td></tr>';
     } else {
       payoutsBody.innerHTML = payouts.map(p => `
         <tr>
@@ -4149,6 +4615,7 @@ function renderAgentDetailModal(agent) {
           <td style="text-transform:uppercase;font-weight:600">${esc(p.payout_method)}</td>
           <td style="font-family:monospace;font-weight:700">${esc(p.reference || '—')}</td>
           <td style="font-weight:700;color:var(--green)">${formatKsh(p.amount_ksh)}</td>
+          <td>${(p.allocations || []).map(allocation => `<div>${esc(allocation.school_name || 'Commission')} · ${formatKsh(allocation.amount_ksh)}${allocation.invoice_ref ? `<div class="table-sub">${esc(allocation.invoice_ref)}</div>` : ''}</div>`).join('') || '—'}</td>
           <td><span class="pill" style="font-size:11px">${esc(p.status)}</span></td>
           <td>${esc(p.processed_by || 'admin')}</td>
         </tr>
@@ -4192,15 +4659,18 @@ function openPayoutModal(agentId) {
   $('payout-form-ref').value = '';
   $('payout-form-notes').value = '';
   $('payout-form-date').value = new Date().toISOString().slice(0, 10);
-  $('agent-payout-overlay').style.display = 'grid';
+  $('payout-transfer-confirmed').checked = false;
+  $('payout-form-submit').disabled = true;
+  openAgentOperationFromOverlay('agent-payout-overlay', 'Record a payout already sent');
 }
 
 async function submitPayout() {
   if (!CURRENT_AGENT) return;
   const amount_ksh = parseFloat($('payout-form-amount').value);
   const reference = $('payout-form-ref').value.trim();
-  if (isNaN(amount_ksh) || amount_ksh <= 0) return alert('Please enter a valid payout amount');
-  if (!reference) return alert('Transaction reference (e.g. M-Pesa receipt code) is required');
+  if (!Number.isSafeInteger(amount_ksh) || amount_ksh <= 0) return setAgentOperationFeedback('Enter a whole KSh amount greater than zero.');
+  if (!reference) return setAgentOperationFeedback('Transaction reference (for example, the M-Pesa receipt code) is required.');
+  if (!$('payout-transfer-confirmed').checked) return setAgentOperationFeedback('Confirm that you already sent this payout outside the console.');
 
   try {
     const res = await fetch(`/api/agents/${CURRENT_AGENT.id}/payouts`, {
@@ -4210,6 +4680,7 @@ async function submitPayout() {
         amount_ksh,
         payout_method: $('payout-form-method').value,
         reference,
+        transferConfirmed: true,
         payout_date: $('payout-form-date').value,
         notes: $('payout-form-notes').value.trim(),
       }),
@@ -4218,45 +4689,89 @@ async function submitPayout() {
     const result = await res.json();
     if (!res.ok) throw new Error(result.error || 'Failed to record payout');
     toast(`Payout of KES ${amount_ksh.toLocaleString()} recorded`);
-    $('agent-payout-overlay').style.display = 'none';
+    closeAgentOperation();
     if ($('agent-detail-overlay') && ($('agent-detail-overlay').classList.contains('open') || $('agent-detail-overlay').style.display !== 'none')) {
       openAgentDetailModal(CURRENT_AGENT.id);
     }
     loadAgentsData();
   } catch (err) {
-    alert('Error: ' + err.message);
+    setAgentOperationFeedback('Error: ' + err.message);
   }
 }
 
-function openEarningModal(agentId) {
+function updateCommissionInvoiceOptions() {
+  const schoolSelect = $('earning-form-school');
+  const invoiceSelect = $('earning-form-invoice-select');
+  if (!schoolSelect || !invoiceSelect) return;
+  const school = CURRENT_AGENT_COMMISSION_SCHOOLS.find(item => item.id === schoolSelect.value);
+  const invoices = school?.invoices || [];
+  invoiceSelect.innerHTML = invoices.length
+    ? `<option value="">Select an existing invoice…</option>${invoices.map(invoice => `<option value="${esc(invoice.id)}">${esc(invoice.invoiceNumber)} · ${esc(formatKsh(invoice.amountKsh))} · ${esc(invoice.status)}</option>`).join('')}`
+    : `<option value="">${school ? 'No issued invoices found for this school' : 'Select a school first'}</option>`;
+  invoiceSelect.disabled = invoices.length === 0;
+  $('earning-form-gross').value = '';
+  $('earning-form-invoice').value = '';
+}
+
+function applySelectedCommissionInvoice() {
+  const school = CURRENT_AGENT_COMMISSION_SCHOOLS.find(item => item.id === $('earning-form-school')?.value);
+  const invoice = school?.invoices?.find(item => item.id === $('earning-form-invoice-select')?.value);
+  $('earning-form-gross').value = invoice ? String(invoice.amountKsh) : '';
+  $('earning-form-invoice').value = invoice?.invoiceNumber || '';
+}
+
+async function openEarningModal(agentId) {
   const agent = CURRENT_AGENT && CURRENT_AGENT.id === agentId ? CURRENT_AGENT : AGENTS.find(a => a.id === agentId);
   if (!agent) return;
   CURRENT_AGENT = agent;
-  $('earning-form-school').value = '';
+  CURRENT_AGENT_COMMISSION_SCHOOLS = [];
+  $('earning-form-school').innerHTML = '<option value="">Loading assigned schools…</option>';
+  $('earning-form-school').disabled = true;
+  $('earning-form-invoice-select').innerHTML = '<option value="">Select a school first</option>';
+  $('earning-form-invoice-select').disabled = true;
   $('earning-form-gross').value = '';
   $('earning-form-earned').value = '';
   $('earning-form-invoice').value = '';
   $('earning-form-desc').value = '';
   $('earning-form-status').value = 'approved';
-  $('agent-earning-overlay').style.display = 'grid';
+  openAgentOperationFromOverlay('agent-earning-overlay', 'Record commission earning');
+  try {
+    const response = await fetch(`/api/agents/${encodeURIComponent(agent.id)}/commission-invoices`, { credentials: 'same-origin' });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Could not load assigned schools and invoices');
+    if (CURRENT_AGENT?.id !== agent.id || $('agent-drawer-operation').hidden) return;
+    CURRENT_AGENT_COMMISSION_SCHOOLS = Array.isArray(result.schools) ? result.schools : [];
+    $('earning-form-school').innerHTML = CURRENT_AGENT_COMMISSION_SCHOOLS.length
+      ? `<option value="">Select an assigned school…</option>${CURRENT_AGENT_COMMISSION_SCHOOLS.map(school => `<option value="${esc(school.id)}">${esc(school.schoolName)}${school.invoices.length ? ` · ${school.invoices.length} invoice${school.invoices.length === 1 ? '' : 's'}` : ' · no invoices'}</option>`).join('')}`
+      : '<option value="">No schools assigned to this agent</option>';
+    $('earning-form-school').disabled = CURRENT_AGENT_COMMISSION_SCHOOLS.length === 0;
+    updateCommissionInvoiceOptions();
+    if (!CURRENT_AGENT_COMMISSION_SCHOOLS.length) setAgentOperationFeedback('Assign a school to this agent before recording a commission.');
+  } catch (error) {
+    $('earning-form-school').innerHTML = '<option value="">Could not load assigned schools</option>';
+    setAgentOperationFeedback(error.message || 'Could not load assigned schools and invoices');
+  }
 }
 
 async function submitEarning() {
   if (!CURRENT_AGENT) return;
-  const school_name = $('earning-form-school').value.trim();
+  const school_id = $('earning-form-school').value;
+  const invoice_id = $('earning-form-invoice-select').value;
+  const school = CURRENT_AGENT_COMMISSION_SCHOOLS.find(item => item.id === school_id);
+  const invoice = school?.invoices?.find(item => item.id === invoice_id);
   const earned_amount_ksh = parseFloat($('earning-form-earned').value);
-  if (!school_name) return alert('School name is required');
-  if (isNaN(earned_amount_ksh) || earned_amount_ksh <= 0) return alert('Valid commission amount is required');
+  if (!school) return setAgentOperationFeedback('Choose a school assigned to this agent.');
+  if (!invoice) return setAgentOperationFeedback('Choose an existing invoice for the selected school.');
+  if (!Number.isSafeInteger(earned_amount_ksh) || earned_amount_ksh <= 0) return setAgentOperationFeedback('Enter a whole KSh commission amount greater than zero.');
 
   try {
     const res = await fetch(`/api/agents/${CURRENT_AGENT.id}/earnings`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        school_name,
-        gross_amount_ksh: parseFloat($('earning-form-gross').value) || 0,
+        school_id,
+        invoice_id,
         earned_amount_ksh,
-        invoice_ref: $('earning-form-invoice').value.trim(),
         description: $('earning-form-desc').value.trim(),
         status: $('earning-form-status').value,
       }),
@@ -4265,13 +4780,13 @@ async function submitEarning() {
     const result = await res.json();
     if (!res.ok) throw new Error(result.error || 'Failed to record commission');
     toast(`Commission of KES ${earned_amount_ksh.toLocaleString()} recorded`);
-    $('agent-earning-overlay').style.display = 'none';
+    closeAgentOperation();
     if ($('agent-detail-overlay') && ($('agent-detail-overlay').classList.contains('open') || $('agent-detail-overlay').style.display !== 'none')) {
       openAgentDetailModal(CURRENT_AGENT.id);
     }
     loadAgentsData();
   } catch (err) {
-    alert('Error: ' + err.message);
+    setAgentOperationFeedback('Error: ' + err.message);
   }
 }
 
@@ -4283,13 +4798,13 @@ function openAssignSchoolModal(agentId) {
   $('school-form-contact').value = '';
   $('school-form-phone').value = '';
   $('school-form-status').value = 'pitching';
-  $('agent-school-overlay').style.display = 'grid';
+  openAgentOperationFromOverlay('agent-school-overlay', 'Assign a school');
 }
 
 async function submitAssignSchool() {
   if (!CURRENT_AGENT) return;
   const school_name = $('school-form-name').value.trim();
-  if (!school_name) return alert('School name is required');
+  if (!school_name) return setAgentOperationFeedback('School name is required.');
 
   try {
     const res = await fetch(`/api/agents/${CURRENT_AGENT.id}/schools`, {
@@ -4306,29 +4821,37 @@ async function submitAssignSchool() {
     const result = await res.json();
     if (!res.ok) throw new Error(result.error || 'Failed to assign school');
     toast(`School ${school_name} assigned to agent`);
-    $('agent-school-overlay').style.display = 'none';
+    closeAgentOperation();
     if ($('agent-detail-overlay') && ($('agent-detail-overlay').classList.contains('open') || $('agent-detail-overlay').style.display !== 'none')) {
       openAgentDetailModal(CURRENT_AGENT.id);
     }
     loadAgentsData();
   } catch (err) {
-    alert('Error: ' + err.message);
+    setAgentOperationFeedback('Error: ' + err.message);
   }
 }
 
-async function deleteSchoolAssignment(schoolId) {
-  if (!confirm('Remove this school from the agent?')) return;
+async function deleteSchoolAssignment(schoolId, confirmed = false) {
+  if (!confirmed) {
+    const school = CURRENT_AGENT?.schools?.find(item => item.id === schoolId);
+    openAgentOperationContent('Remove school assignment', `<div class="modal"><div class="modal-body"><p>Remove <strong>${esc(school?.school_name || 'this school')}</strong> from ${esc(CURRENT_AGENT?.full_name || 'this agent')}?</p><p>This removes the agent-to-school assignment. It does not delete the CRM lead or school billing records.</p></div><div class="modal-footer"><button class="btn" id="agent-school-remove-cancel" type="button">Cancel</button><button class="btn danger-outline" id="agent-school-remove-confirm" type="button">Remove assignment</button></div></div>`);
+    $('agent-school-remove-cancel')?.addEventListener('click', closeAgentOperation);
+    $('agent-school-remove-confirm')?.addEventListener('click', () => deleteSchoolAssignment(schoolId, true));
+    return;
+  }
   try {
     const res = await fetch(`/api/agents/schools/${schoolId}`, {
       method: 'DELETE',
       credentials: 'same-origin',
     });
-    if (!res.ok) throw new Error('Failed to remove school assignment');
+    const result = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(result.error || 'Failed to remove school assignment');
     toast('School removed');
-    if (CURRENT_AGENT) openAgentDetailModal(CURRENT_AGENT.id);
+    closeAgentOperation();
+    if (CURRENT_AGENT) await openAgentDetailModal(CURRENT_AGENT.id);
     loadAgentsData();
   } catch (err) {
-    alert('Error: ' + err.message);
+    setAgentOperationFeedback('Error: ' + err.message);
   }
 }
 
@@ -4342,8 +4865,14 @@ function bindAgentEvents() {
   $('agent-filter-status')?.addEventListener('change', loadAgentsData);
 
   // Agent form
-  $('agent-modal-close')?.addEventListener('click', () => { $('agent-modal-overlay').style.display = 'none'; });
-  $('agent-form-cancel')?.addEventListener('click', () => { $('agent-modal-overlay').style.display = 'none'; });
+  $('agent-modal-close')?.addEventListener('click', () => {
+    if (!$('agent-drawer-operation').hidden) closeAgentOperation();
+    else $('agent-modal-overlay').style.display = 'none';
+  });
+  $('agent-form-cancel')?.addEventListener('click', () => {
+    if (!$('agent-drawer-operation').hidden) closeAgentOperation();
+    else $('agent-modal-overlay').style.display = 'none';
+  });
   $('agent-form-save')?.addEventListener('click', saveAgentForm);
   $('agent-form-delete')?.addEventListener('click', () => {
     const id = $('agent-form-id')?.value;
@@ -4365,6 +4894,7 @@ function bindAgentEvents() {
   $('tab-btn-schools')?.addEventListener('click', () => switchAgentDetailTab('schools'));
   $('tab-btn-earnings')?.addEventListener('click', () => switchAgentDetailTab('earnings'));
   $('tab-btn-payouts')?.addEventListener('click', () => switchAgentDetailTab('payouts'));
+  $('agent-drawer-operation-back')?.addEventListener('click', closeAgentOperation);
 
   $('btn-agent-record-payout')?.addEventListener('click', () => { if (CURRENT_AGENT) openPayoutModal(CURRENT_AGENT.id); });
   $('btn-agent-approve')?.addEventListener('click', () => { if (CURRENT_AGENT) approveAgent(CURRENT_AGENT.id); });
@@ -4372,28 +4902,33 @@ function bindAgentEvents() {
   $('btn-agent-add-earning')?.addEventListener('click', () => { if (CURRENT_AGENT) openEarningModal(CURRENT_AGENT.id); });
   $('btn-agent-add-school')?.addEventListener('click', () => { if (CURRENT_AGENT) openAssignSchoolModal(CURRENT_AGENT.id); });
   $('btn-agent-edit-profile')?.addEventListener('click', () => {
-    if (CURRENT_AGENT) {
-      closeAgentDrawer();
-      openEditAgentModal(CURRENT_AGENT.id);
-    }
+    if (CURRENT_AGENT) openEditAgentModal(CURRENT_AGENT.id);
+  });
+  $('btn-agent-reset-pin')?.addEventListener('click', () => {
+    if (CURRENT_AGENT) resetAgentPin(CURRENT_AGENT.id);
   });
   $('btn-agent-delete')?.addEventListener('click', () => {
     if (CURRENT_AGENT) deleteAgent(CURRENT_AGENT.id);
   });
 
   // Payout modal
-  $('agent-payout-close')?.addEventListener('click', () => { $('agent-payout-overlay').style.display = 'none'; });
-  $('payout-form-cancel')?.addEventListener('click', () => { $('agent-payout-overlay').style.display = 'none'; });
+  $('agent-payout-close')?.addEventListener('click', closeAgentOperation);
+  $('payout-form-cancel')?.addEventListener('click', closeAgentOperation);
   $('payout-form-submit')?.addEventListener('click', submitPayout);
+  $('payout-transfer-confirmed')?.addEventListener('change', event => {
+    $('payout-form-submit').disabled = !event.target.checked;
+  });
 
   // Earning modal
-  $('agent-earning-close')?.addEventListener('click', () => { $('agent-earning-overlay').style.display = 'none'; });
-  $('earning-form-cancel')?.addEventListener('click', () => { $('agent-earning-overlay').style.display = 'none'; });
+  $('agent-earning-close')?.addEventListener('click', closeAgentOperation);
+  $('earning-form-cancel')?.addEventListener('click', closeAgentOperation);
   $('earning-form-submit')?.addEventListener('click', submitEarning);
+  $('earning-form-school')?.addEventListener('change', updateCommissionInvoiceOptions);
+  $('earning-form-invoice-select')?.addEventListener('change', applySelectedCommissionInvoice);
 
   // School modal
-  $('agent-school-close')?.addEventListener('click', () => { $('agent-school-overlay').style.display = 'none'; });
-  $('school-form-cancel')?.addEventListener('click', () => { $('agent-school-overlay').style.display = 'none'; });
+  $('agent-school-close')?.addEventListener('click', closeAgentOperation);
+  $('school-form-cancel')?.addEventListener('click', closeAgentOperation);
   $('school-form-submit')?.addEventListener('click', submitAssignSchool);
 }
 
@@ -4402,12 +4937,14 @@ window.openAgentDetailModal = openAgentDetailModal;
 window.closeAgentDrawer = closeAgentDrawer;
 window.openPayoutModal = openPayoutModal;
 window.openEditAgentModal = openEditAgentModal;
+window.resetAgentPin = resetAgentPin;
 window.deleteSchoolAssignment = deleteSchoolAssignment;
 window.deleteAgent = deleteAgent;
 
 // ── Admin Notifications & Audio Beep ───────────────────────────────────────
 let audioCtx = null;
-let notifSoundEnabled = true;
+let notifSoundEnabled = localStorage.getItem('consoleRegistrationSound') !== 'disabled';
+let notifRingtone = localStorage.getItem('consoleRegistrationRingtone') || 'gentle';
 let lastSeenPendingAgents = null;
 let lastSeenTotalAgents = null;
 let lastSeenTotalSchools = null;
@@ -4415,6 +4952,48 @@ let lastSeenTotalEarned = null;
 let lastSeenTotalBalance = null;
 let lastSeenLatestSchoolName = null;
 let adminNotifications = [];
+let desktopAlertsEnabled = localStorage.getItem('consoleDesktopAlerts') === 'enabled';
+
+function updateDesktopNotificationControl() {
+  const button = $('btn-enable-desktop-notifications');
+  const state = $('desktop-notification-state');
+  if (!button || !state) return;
+  if (!('Notification' in window)) {
+    state.textContent = 'Desktop notifications are not supported in this browser';
+    button.hidden = true;
+    return;
+  }
+  if (Notification.permission === 'denied') {
+    state.textContent = 'Blocked by browser settings';
+    button.textContent = 'Blocked';
+    button.disabled = true;
+    return;
+  }
+  const enabled = desktopAlertsEnabled && Notification.permission === 'granted';
+  state.textContent = enabled ? 'Desktop alerts are on' : 'Get alerts when an agent registers';
+  button.textContent = enabled ? 'Turn off' : 'Enable';
+  button.disabled = false;
+}
+
+function sendAgentDesktopNotification(agent) {
+  if (!desktopAlertsEnabled || !('Notification' in window) || Notification.permission !== 'granted') return;
+  const name = agent?.full_name || 'A new field agent';
+  const notification = new Notification('Agent registration needs approval', {
+    body: name + ' just registered. Click to review and approve.',
+    tag: 'agent-registration-' + (agent?.id || Date.now()),
+    icon: './favicon-32x32.png',
+    renotify: false,
+  });
+  notification.onclick = async () => {
+    window.focus();
+    showSection('agents');
+    try {
+      await loadAgentsData();
+      if (agent?.id) await openAgentDetailModal(agent.id);
+    } catch (_) { /* The Agents tab remains available if details fail to load. */ }
+    notification.close();
+  };
+}
 
 function initAudioContext() {
   if (!audioCtx) {
@@ -4429,37 +5008,37 @@ function initAudioContext() {
 document.addEventListener('click', initAudioContext, { once: true });
 document.addEventListener('keydown', initAudioContext, { once: true });
 
-function playNotificationBeep() {
-  if (!notifSoundEnabled) return;
+function playNotificationBeep(force = false) {
+  if (!notifSoundEnabled && !force) return;
+  const rings = {
+    gentle: { notes: [587.33, 880], spacing: 0.17, duration: 0.27, wave: 'sine', volume: 0.18 },
+    classic: { notes: [1046.5, 880, 1046.5], spacing: 0.2, duration: 0.16, wave: 'sine', volume: 0.15 },
+    bright: { notes: [784, 1046.5, 1318.5], spacing: 0.13, duration: 0.12, wave: 'triangle', volume: 0.16 },
+    soft: { notes: [523.25, 659.25, 783.99], spacing: 0.22, duration: 0.2, wave: 'sine', volume: 0.12 },
+    urgent: { notes: [880, 880, 1174.66], spacing: 0.12, duration: 0.1, wave: 'square', volume: 0.09 },
+  };
+  const ring = rings[notifRingtone] || rings.gentle;
   try {
     initAudioContext();
     if (!audioCtx) return;
-    const now = audioCtx.currentTime;
-
-    // Friendly 2-tone melodic chime: D5 (587.33Hz) then A5 (880Hz)
-    const osc1 = audioCtx.createOscillator();
-    const gain1 = audioCtx.createGain();
-    osc1.type = 'sine';
-    osc1.frequency.setValueAtTime(587.33, now);
-    gain1.gain.setValueAtTime(0.2, now);
-    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
-    osc1.connect(gain1);
-    gain1.connect(audioCtx.destination);
-    osc1.start(now);
-    osc1.stop(now + 0.18);
-
-    const osc2 = audioCtx.createOscillator();
-    const gain2 = audioCtx.createGain();
-    osc2.type = 'sine';
-    osc2.frequency.setValueAtTime(880, now + 0.12);
-    gain2.gain.setValueAtTime(0.25, now + 0.12);
-    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
-    osc2.connect(gain2);
-    gain2.connect(audioCtx.destination);
-    osc2.start(now + 0.12);
-    osc2.stop(now + 0.45);
+    const startAt = audioCtx.currentTime + 0.015;
+    ring.notes.forEach((frequency, index) => {
+      const start = startAt + index * ring.spacing;
+      const end = start + ring.duration;
+      const oscillator = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      oscillator.type = ring.wave;
+      oscillator.frequency.setValueAtTime(frequency, start);
+      gain.gain.setValueAtTime(0.001, start);
+      gain.gain.linearRampToValueAtTime(ring.volume, start + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.001, end);
+      oscillator.connect(gain);
+      gain.connect(audioCtx.destination);
+      oscillator.start(start);
+      oscillator.stop(end + 0.01);
+    });
   } catch (err) {
-    console.warn('Audio chime error:', err);
+    console.warn('Registration alert sound error:', err);
   }
 }
 
@@ -4506,6 +5085,9 @@ async function checkAdminNotifications() {
       // Event 1: New agent registered or awaiting approval
       if (totalCount > lastSeenTotalAgents || pendingCount > lastSeenPendingAgents) {
         playNotificationBeep();
+        if (pendingCount > lastSeenPendingAgents && latestAgent?.status === 'pending') {
+          sendAgentDesktopNotification(latestAgent);
+        }
         const agentName = latestAgent?.full_name || 'New Field Agent';
         const agentCode = latestAgent?.agent_code ? ` (${latestAgent.agent_code})` : '';
         adminNotifications.unshift({
@@ -4606,7 +5188,9 @@ function renderAdminNotificationsList() {
 function bindNotificationEvents() {
   const notifBtn = $('btn-admin-notif');
   const dropdown = $('admin-notif-dropdown');
-  const soundBtn = $('btn-notif-sound');
+  const soundSelect = $('notif-sound-select');
+  const soundEnabled = $('notif-sound-enabled');
+  const previewSound = $('btn-preview-notif-sound');
 
   notifBtn?.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -4623,16 +5207,50 @@ function bindNotificationEvents() {
     }
   });
 
-  soundBtn?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    notifSoundEnabled = !notifSoundEnabled;
-    const icon = $('notif-sound-icon');
-    const text = $('notif-sound-text');
-    if (icon) icon.textContent = notifSoundEnabled ? '🔔' : '🔕';
-    if (text) text.textContent = notifSoundEnabled ? 'Beep On' : 'Muted';
-    if (notifSoundEnabled) {
-      playNotificationBeep();
+  const desktopButton = $('btn-enable-desktop-notifications');
+  desktopButton?.addEventListener('click', async event => {
+    event.stopPropagation();
+    if (!('Notification' in window)) return;
+    if (desktopAlertsEnabled && Notification.permission === 'granted') {
+      desktopAlertsEnabled = false;
+      localStorage.setItem('consoleDesktopAlerts', 'disabled');
+      updateDesktopNotificationControl();
+      return;
     }
+    try {
+      const permission = await Notification.requestPermission();
+      desktopAlertsEnabled = permission === 'granted';
+      localStorage.setItem('consoleDesktopAlerts', desktopAlertsEnabled ? 'enabled' : 'disabled');
+      updateDesktopNotificationControl();
+      if (desktopAlertsEnabled) {
+        const confirmation = new Notification('Desktop alerts enabled', { body: 'You will be alerted when an agent registers and needs approval.', icon: './favicon-32x32.png' });
+        setTimeout(() => confirmation.close(), 5000);
+      }
+    } catch (error) {
+      console.warn('Could not enable desktop notifications:', error);
+      updateDesktopNotificationControl();
+    }
+  });
+  updateDesktopNotificationControl();
+
+  if (soundSelect) {
+    if (['gentle', 'classic', 'bright', 'soft', 'urgent'].includes(notifRingtone)) soundSelect.value = notifRingtone;
+    soundSelect.addEventListener('change', () => {
+      notifRingtone = soundSelect.value;
+      localStorage.setItem('consoleRegistrationRingtone', notifRingtone);
+    });
+  }
+  if (soundEnabled) {
+    soundEnabled.checked = notifSoundEnabled;
+    soundEnabled.addEventListener('change', () => {
+      notifSoundEnabled = soundEnabled.checked;
+      localStorage.setItem('consoleRegistrationSound', notifSoundEnabled ? 'enabled' : 'disabled');
+      if (notifSoundEnabled) playNotificationBeep();
+    });
+  }
+  previewSound?.addEventListener('click', () => {
+    initAudioContext();
+    playNotificationBeep(true);
   });
 }
 

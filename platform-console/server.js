@@ -20,6 +20,8 @@ const { createNotifyService }  = require('./services/notify');
 const { getFlag, setFlag, listFlags } = require('./services/feature-flags');
 const { getCurrentTerm, getTermForDate, listTerms, upsertTerm } = require('./services/term-calendar');
 const { appendEvent, SYSTEM_ACTOR } = require('./services/events');
+const { allocateNumber } = require('./services/sequences');
+const daraja = require('./services/daraja');
 
 const execFileAsync = promisify(execFile);
 
@@ -1365,6 +1367,7 @@ app.post('/api/instances/create', requireAuth, requireRole('super_admin'), async
     image = '',
     adminEmail = '',
     notes = '',
+    leadId = '',
     domain = '',
     db,
     billing = {},
@@ -1391,6 +1394,10 @@ app.post('/api/instances/create', requireAuth, requireRole('super_admin'), async
 
   if (!name) {
     return res.status(400).json({ error: 'name is required' });
+  }
+  const sourceLeadId = billingText(leadId, 80);
+  if (sourceLeadId && !leadsStore.getLead(sourceLeadId)) {
+    return res.status(404).json({ error: 'The lead linked to this provisioning request no longer exists.' });
   }
 
   const requestedDomain = String(domain || '').trim().toLowerCase();
@@ -1429,6 +1436,7 @@ app.post('/api/instances/create', requireAuth, requireRole('super_admin'), async
     image,
     adminEmail,
     notes,
+    sourceLeadId,
     fePort: autoAssigned.fePort,
     bePort: appRange.requireBe ? autoAssigned.bePort : 0,
     db,
@@ -1447,10 +1455,10 @@ app.post('/api/instances/create', requireAuth, requireRole('super_admin'), async
       pushAudit('BILLING_DEFERRED', name, req.user.email, `Billing deferred for ${name}; create the customer and quote later from Billing.`);
       billingResult = { ok: true, deferred: true };
     }
-    // Two-way sync: link this provisioned school back to any matching agent lead
-    if (name) {
+    // Link this instance only to the lead explicitly selected in the provisioning form.
+    if (sourceLeadId) {
       try {
-        leadsStore.syncProvisionedTenant({ schoolName: name, tenantKey: stdout?.trim() || name });
+        leadsStore.syncProvisionedTenant({ leadId: sourceLeadId, tenantKey: instanceTenantKey(name, stdout) });
       } catch (_) { /* non-critical */ }
     }
     res.json({ ok: true, output: stdout?.trim(), warning: stderr?.trim() || null, billing: billingResult });
@@ -1687,6 +1695,126 @@ app.put('/api/leads/:id', requireAuth, requireRole('super_admin', 'platform_owne
   }
 });
 
+app.post('/api/leads/:id/assign-agent', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  const agentId = billingText(req.body?.agentId, 80);
+  if (!agentId) return res.status(400).json({ ok: false, error: 'Choose an agent' });
+  try {
+    const result = leadsStore.assignLeadToAgent(req.params.id, agentId, req.user.email);
+    if (!result) return res.status(404).json({ ok: false, error: 'Lead not found' });
+    if (!result.alreadyAssigned) notifyNewAgentLead(result).catch(() => {});
+    pushAudit('LEAD_ASSIGN_AGENT', result.lead.school, req.user.email,
+      `Assigned CRM lead ${result.lead.id} (${result.lead.school}) to ${result.agent.full_name} (${result.agent.agent_code})`);
+    return res.json({ ok: true, ...result });
+  } catch (error) {
+    const status = /not found/i.test(error.message) ? 404 : 400;
+    return res.status(status).json({ ok: false, error: error.message || 'Could not assign lead to agent' });
+  }
+});
+
+app.post('/api/leads/:id/convert', requireAuth, requireRole('super_admin'), (req, res) => {
+  const lead = leadsStore.getLead(req.params.id);
+  if (!lead) return res.status(404).json({ ok: false, error: 'Lead not found' });
+  if (lead.convertedCustomerId && lead.convertedInvoiceId) {
+    return res.json({ ok: true, alreadyConverted: true, lead });
+  }
+
+  const acceptedBy = billingText(req.body?.acceptedBy, 160);
+  const acceptanceMethod = billingText(req.body?.acceptanceMethod, 30).toLowerCase();
+  const acceptanceEvidence = billingText(req.body?.acceptanceEvidence, 1200);
+  if (!acceptedBy || !acceptanceEvidence || !['signed_contract', 'email', 'in_person', 'phone'].includes(acceptanceMethod)) {
+    return res.status(400).json({ ok: false, error: 'Record who accepted, how they accepted, and a document or communication reference before conversion.' });
+  }
+
+  try {
+    const quoteSnapshot = buildQuote(req.body?.quote || {});
+    if (discountApprovalPending(quoteSnapshot)) {
+      return res.status(409).json({ ok: false, error: 'A discount requiring finance approval cannot be accepted during lead conversion. Create a billing quote, obtain finance approval, and then record customer acceptance.' });
+    }
+    const schoolType = billingText(req.body?.schoolType || req.body?.quote?.schoolType, 40).toLowerCase();
+    const tenantKey = instanceTenantKey(lead.school, '');
+    let customer = billingStore.getCustomerByTenantKey(tenantKey);
+    if (!customer) {
+      customer = billingStore.createCustomer({
+        ...normalizeBillingCustomer({
+          name: lead.school, legalName: req.body?.legalName || lead.school, tenantKey,
+          billingEmail: req.body?.billingEmail || lead.billingEmail,
+          billingPhone: req.body?.billingPhone || lead.billingPhone || lead.phone,
+          currency: 'KES', paymentTerms: req.body?.paymentTerms || 'Due upon receipt',
+        }),
+        id: crypto.randomUUID(),
+      });
+    }
+
+    const contractReference = `LEAD-${String(lead.id).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 80)}`;
+    let contract = billingStore.listContracts(customer.id).find(item => item.reference === contractReference);
+    if (!contract) {
+      const contractInput = normalizeBillingContract({
+        reference: contractReference,
+        serviceDescription: `TrendSCORE school subscription for ${lead.school}`,
+        cadence: quoteSnapshot.billingCadence || 'termly',
+        startDate: billingText(req.body?.startDate, 10),
+        renewalDate: billingText(req.body?.renewalDate, 10),
+        termsNote: billingText(req.body?.contractTerms || acceptanceEvidence, 3000),
+        status: 'active',
+      }, customer.id);
+      validateBillingDates(contractInput);
+      contract = billingStore.createContract({ ...contractInput, id: crypto.randomUUID(), lines: quoteSnapshot.lines || [] });
+    }
+
+    let quote = billingStore.listQuotes().find(item => item.customerId === customer.id && item.quoteSnapshot?.leadId === lead.id);
+    if (!quote) {
+      const acceptance = { acceptedBy, acceptanceMethod, acceptanceEvidence, acceptedAt: new Date().toISOString() };
+      quote = billingStore.createQuote({
+        id: crypto.randomUUID(),
+        quoteNumber: `Q-${new Date().getUTCFullYear()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`,
+        customerId: customer.id,
+        customerSnapshot: {
+          name: customer.name, paybillAccountName: customer.paybillAccountName, legalName: customer.legalName, tenantKey: customer.tenantKey,
+          billingEmail: customer.billingEmail, billingPhone: customer.billingPhone,
+          billingAddress: customer.billingAddress, taxIdentifier: customer.taxIdentifier, currency: customer.currency,
+        },
+        quoteSnapshot: { ...quoteSnapshot, leadId: lead.id, schoolType, acceptance },
+        enrollmentCount: quoteSnapshot.enrollmentCount || Number(lead.students || 0),
+        pricingModel: quoteSnapshot.pricingModel,
+        billingCadence: quoteSnapshot.billingCadence,
+        subtotalKsh: quoteSnapshot.subtotalKsh,
+        expiresOn: quoteSnapshot.expiresOn,
+        notes: quoteSnapshot.notes,
+        createdBy: req.user.email,
+      });
+      billingStore.setQuoteStatus(quote.id, 'accepted');
+      quote = billingStore.getQuote(quote.id);
+    }
+
+    let invoice = billingStore.getInvoiceForQuote(quote.id);
+    if (!invoice) {
+      invoice = billingStore.createDraftInvoice({
+        id: crypto.randomUUID(), invoiceNumber: `DRAFT-${quote.quoteNumber}`, quoteId: quote.id,
+        customerId: customer.id,
+        invoiceSnapshot: {
+          source: 'lead_conversion', leadId: lead.id, contractId: contract.id,
+          quoteNumber: quote.quoteNumber, enrollmentCount: quote.enrollmentCount,
+          customerSnapshot: quote.customerSnapshot, quoteSnapshot: quote.quoteSnapshot,
+          acceptedAt: quote.quoteSnapshot.acceptance?.acceptedAt || new Date().toISOString(),
+          acceptanceEvidence: quote.quoteSnapshot.acceptance,
+          taxNote: quote.quoteSnapshot.taxNote,
+        },
+        amountKsh: quote.subtotalKsh, createdBy: req.user.email,
+      });
+    }
+    billingStore.linkContractOnboardingInvoice(contract.id, invoice.id);
+
+    const convertedLead = leadsStore.recordLeadConversion(lead.id, {
+      acceptedBy, acceptanceMethod, acceptanceEvidence,
+      customerId: customer.id, contractId: contract.id, invoiceId: invoice.id,
+    });
+    pushAudit('LEAD_CONVERT', lead.school, req.user.email, `Converted lead ${lead.id} into customer ${customer.id}, contract ${contract.id}, and draft invoice ${invoice.invoiceNumber}`);
+    return res.status(201).json({ ok: true, lead: convertedLead, customer, contract, quote, invoice });
+  } catch (error) {
+    return res.status(400).json({ ok: false, error: error.message || 'Could not convert lead' });
+  }
+});
+
 app.delete('/api/leads/:id', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
   const id = String(req.params.id || '').trim();
   if (!id) return res.status(400).json({ error: 'id is required' });
@@ -1725,10 +1853,14 @@ app.get('/api/agents', requireAuth, requireRole('super_admin', 'platform_owner')
 
 app.post('/api/agents', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
   try {
-    const body = req.body || {};
-    const agent = agentsStore.createAgent(body);
+    const { pin: _ignoredPin, ...body } = req.body || {};
+    const created = agentsStore.createAgent(body);
+    // Admins never choose an agent's PIN: the agent gets a random temporary one that must be changed at first sign-in.
+    const temp = agentsStore.issueTempPin(created.id);
+    const agent = agentsStore.getAgent(created.id);
     pushAudit('AGENT_CREATE', agent.agent_code, req.user.email, `Registered field agent ${agent.full_name} (${agent.agent_code})`, 'Success');
-    return res.status(201).json({ ok: true, agent });
+    res.set('Cache-Control', 'no-store');
+    return res.status(201).json({ ok: true, agent, tempPin: temp.tempPin, tempPinExpiresAt: temp.expiresAt });
   } catch (err) {
     return res.status(400).json({ error: err.message || 'Failed to register agent' });
   }
@@ -1742,6 +1874,47 @@ app.get('/api/agents/:id', requireAuth, requireRole('super_admin', 'platform_own
   } catch (err) {
     return res.status(500).json({ error: err.message || 'Failed to get agent' });
   }
+});
+
+function agentSchoolOwnsCommissionInvoice(school, invoice) {
+  if (!school || !invoice) return false;
+  const snapshot = invoice.invoiceSnapshot || {};
+  const quoteSnapshot = snapshot.quoteSnapshot || {};
+  const leadId = String(snapshot.leadId || quoteSnapshot.leadId || '');
+  if (school.lead_id && leadId && String(school.lead_id) === leadId) return true;
+
+  const customer = billingStore.getCustomer(invoice.customerId);
+  const invoiceTenantKey = String(customer?.tenantKey || snapshot.customerSnapshot?.tenantKey || '').trim().toLowerCase();
+  if (school.tenant_key && invoiceTenantKey && String(school.tenant_key).trim().toLowerCase() === invoiceTenantKey) return true;
+
+  const normalizeSchoolName = value => String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+  const assignedName = normalizeSchoolName(school.school_name);
+  const invoiceNames = [customer?.name, customer?.legalName, snapshot.customerSnapshot?.name, snapshot.customerSnapshot?.legalName]
+    .map(normalizeSchoolName).filter(Boolean);
+  return Boolean(assignedName && invoiceNames.includes(assignedName));
+}
+
+app.get('/api/agents/:id/commission-invoices', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  const agent = agentsStore.getAgent(req.params.id);
+  if (!agent) return res.status(404).json({ ok: false, error: 'Agent not found' });
+  const invoices = billingStore.listInvoices()
+    .filter(invoice => ['issued', 'sent', 'paid'].includes(invoice.status))
+    .map(invoice => {
+      const school = agent.schools.find(candidate => agentSchoolOwnsCommissionInvoice(candidate, invoice));
+      return school ? {
+        id: invoice.id,
+        invoiceNumber: invoice.invoiceNumber,
+        amountKsh: invoice.amountKsh,
+        status: invoice.status,
+        schoolId: school.id,
+      } : null;
+    })
+    .filter(Boolean);
+  return res.json({ ok: true, schools: agent.schools.map(school => ({
+    id: school.id,
+    schoolName: school.school_name,
+    invoices: invoices.filter(invoice => invoice.schoolId === school.id),
+  })) });
 });
 
 app.put('/api/agents/:id', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
@@ -1792,6 +1965,20 @@ app.post('/api/agents/:id/reject', requireAuth, requireRole('super_admin', 'plat
   }
 });
 
+app.post('/api/agents/:id/reset-pin', requireAuth, requireRole('super_admin'), (req, res) => {
+  try {
+    const agent = agentsStore.getAgent(req.params.id);
+    if (!agent) return res.status(404).json({ error: 'Agent not found' });
+    const temp = agentsStore.issueTempPin(agent.id);
+    // The temporary PIN is shown once to the admin, never logged or stored in readable form.
+    pushAudit('AGENT_PIN_RESET', agent.agent_code, req.user.email, `Issued a temporary PIN for ${agent.full_name} (${agent.agent_code}); valid until ${temp.expiresAt}`, 'Warning');
+    res.set('Cache-Control', 'no-store');
+    return res.json({ ok: true, tempPin: temp.tempPin, expiresAt: temp.expiresAt, agent: agentsStore.getAgent(agent.id) });
+  } catch (err) {
+    return res.status(500).json({ error: err.message || 'Failed to reset PIN' });
+  }
+});
+
 app.post('/api/agents/:id/schools', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
   try {
     const body = req.body || {};
@@ -1836,7 +2023,21 @@ app.delete('/api/agents/schools/:schoolId', requireAuth, requireRole('super_admi
 
 app.post('/api/agents/:id/earnings', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
   try {
-    const earning = agentsStore.recordEarning(req.params.id, req.body || {});
+    const body = req.body || {};
+    const agent = agentsStore.getAgent(req.params.id);
+    if (!agent) return res.status(404).json({ ok: false, error: 'Agent not found' });
+    const school = agent.schools.find(candidate => candidate.id === String(body.school_id || ''));
+    if (!school) return res.status(400).json({ ok: false, error: 'Choose a school assigned to this agent.' });
+    const invoice = billingStore.getInvoice(String(body.invoice_id || ''));
+    if (!invoice || !['issued', 'sent', 'paid'].includes(invoice.status) || !agentSchoolOwnsCommissionInvoice(school, invoice)) {
+      return res.status(400).json({ ok: false, error: 'Choose an existing issued invoice belonging to the selected agent school.' });
+    }
+    const earning = agentsStore.recordEarning(req.params.id, {
+      ...body,
+      school_name: school.school_name,
+      gross_amount_ksh: invoice.amountKsh,
+      invoice_ref: invoice.invoiceNumber,
+    });
     pushAudit('AGENT_EARNING_RECORD', req.params.id, req.user.email, `Recorded commission of KES ${earning.earned_amount_ksh} for ${earning.school_name}`, 'Success');
     return res.status(201).json({ ok: true, earning });
   } catch (err) {
@@ -1858,7 +2059,16 @@ app.put('/api/agents/earnings/:earningId', requireAuth, requireRole('super_admin
 
 app.post('/api/agents/:id/payouts', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
   try {
-    const payout = agentsStore.recordPayout(req.params.id, req.body || {}, req.user.email);
+    const body = req.body || {};
+    const amount = Number(body.amount_ksh);
+    const reference = billingText(body.reference, 120);
+    if (body.transferConfirmed !== true) return res.status(400).json({ ok: false, error: 'Confirm that the transfer was already sent outside the console before recording it.' });
+    if (!Number.isSafeInteger(amount) || amount <= 0) return res.status(400).json({ ok: false, error: 'Payout amount must be a whole KSh amount greater than zero.' });
+    if (!reference) return res.status(400).json({ ok: false, error: 'A transfer receipt or transaction reference is required.' });
+    const agent = agentsStore.getAgent(req.params.id);
+    if (!agent) return res.status(404).json({ ok: false, error: 'Agent not found' });
+    if (amount > Number(agent.financials?.balanceDueKsh || 0)) return res.status(400).json({ ok: false, error: 'Payout amount exceeds the agent’s available commission balance.' });
+    const payout = agentsStore.recordPayout(req.params.id, { ...body, amount_ksh: amount, reference, status: 'completed' }, req.user.email);
     pushAudit('AGENT_PAYOUT_RECORD', req.params.id, req.user.email, `Recorded payout of KES ${payout.amount_ksh} via ${payout.payout_method} (${payout.reference})`, 'Success');
     return res.status(201).json({ ok: true, payout });
   } catch (err) {
@@ -1868,6 +2078,37 @@ app.post('/api/agents/:id/payouts', requireAuth, requireRole('super_admin', 'pla
 
 // ── Mobile Field Agent App Auth & Endpoints ──────────────────────────────
 const AGENT_COOKIE_NAME = 'trends_agent_token';
+
+// Signs the agent in. The token carries the agent's token version, so a PIN change or reset signs out every older session.
+function issueAgentSession(agent, res) {
+  const token = jwt.sign(
+    { agentId: agent.id, agentCode: agent.agent_code, phone: agent.phone, role: 'field_agent', tv: Number(agent.auth_token_version || 1) },
+    JWT_SECRET,
+    { expiresIn: '30d' }
+  );
+  res.cookie(AGENT_COOKIE_NAME, token, {
+    httpOnly: true,
+    secure: COOKIE_SECURE,
+    sameSite: 'lax',
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+  });
+  return token;
+}
+
+// "Forgot PIN" requests are limited per phone number and overall, and always get the same answer.
+const pinResetRequests = new Map();
+function allowPinResetRequest(key, max) {
+  const now = Date.now();
+  const windowMs = 60 * 60 * 1000;
+  const state = pinResetRequests.get(key);
+  if (!state || now - state.windowStart > windowMs) {
+    pinResetRequests.set(key, { count: 1, windowStart: now });
+    return true;
+  }
+  if (state.count >= max) return false;
+  state.count += 1;
+  return true;
+}
 
 function requireAgentAuth(req, res, next) {
   let token = null;
@@ -1891,6 +2132,16 @@ function requireAgentAuth(req, res, next) {
     if (!agent || agent.status !== 'active') {
       return res.status(401).json({ ok: false, error: 'Agent profile inactive or not found' });
     }
+    // A PIN change or reset bumps the token version, which signs out every older session.
+    if (Number(payload.tv || 0) !== Number(agent.auth_token_version || 1)) {
+      return res.status(401).json({ ok: false, error: 'Session expired, please sign in again' });
+    }
+    // An agent holding a temporary or old 4-digit PIN may only view their profile and choose a new PIN.
+    const pinChangeAllowed = (req.method === 'GET' && req.path === '/api/agent/me')
+      || (req.method === 'PUT' && req.path === '/api/agent/profile');
+    if (agent.pin_must_change && !pinChangeAllowed) {
+      return res.status(403).json({ ok: false, code: 'PIN_CHANGE_REQUIRED', error: 'Choose a new 6-digit PIN to continue.' });
+    }
     req.agent = agent;
     next();
   } catch {
@@ -1910,8 +2161,8 @@ app.post('/api/agent/register', (req, res) => {
   if (!cleanPhone || cleanPhone.length < 9) {
     return res.status(400).json({ ok: false, error: 'A valid Kenyan phone number is required (e.g. 07... or 01...)' });
   }
-  if (!/^\d{4}$/.test(cleanPin)) {
-    return res.status(400).json({ ok: false, error: 'Security PIN must be exactly 4 digits' });
+  if (!/^\d{6}$/.test(cleanPin)) {
+    return res.status(400).json({ ok: false, error: 'Security PIN must be exactly 6 digits' });
   }
 
   try {
@@ -1938,17 +2189,7 @@ app.post('/api/agent/register', (req, res) => {
       notes: 'Self-registered via Field Agent Web Portal',
     });
 
-    const token = jwt.sign(
-      { agentId: agent.id, agentCode: agent.agent_code, phone: agent.phone, role: 'field_agent' },
-      JWT_SECRET,
-      { expiresIn: '30d' }
-    );
-    res.cookie(AGENT_COOKIE_NAME, token, {
-      httpOnly: true,
-      secure: COOKIE_SECURE,
-      sameSite: 'lax',
-      maxAge: 30 * 24 * 60 * 60 * 1000,
-    });
+    const token = issueAgentSession(agent, res);
     pushAudit('AGENT_SELF_REGISTER', agent.id, agent.phone, `Agent ${agent.full_name} (${agent.agent_code}) self-registered via Web Portal`, 'Success');
     return res.status(201).json({
       ok: true,
@@ -1964,34 +2205,45 @@ app.post('/api/agent/register', (req, res) => {
 app.post('/api/agent/login', (req, res) => {
   const { phone, pin } = req.body || {};
   if (!phone || !pin) {
-    return res.status(400).json({ ok: false, error: 'Phone number and 4-digit PIN are required' });
+    return res.status(400).json({ ok: false, error: 'Phone number and PIN are required' });
   }
   try {
     const agent = agentsStore.authenticateAgent(phone, pin);
     if (!agent) {
       return res.status(401).json({ ok: false, error: 'Incorrect phone number or PIN' });
     }
-    const token = jwt.sign(
-      { agentId: agent.id, agentCode: agent.agent_code, phone: agent.phone, role: 'field_agent' },
-      JWT_SECRET,
-      { expiresIn: '30d' }
-    );
-    res.cookie(AGENT_COOKIE_NAME, token, {
-      httpOnly: true,
-      secure: COOKIE_SECURE,
-      sameSite: 'lax',
-      maxAge: 30 * 24 * 60 * 60 * 1000,
-    });
+    const token = issueAgentSession(agent, res);
     pushAudit('AGENT_APP_LOGIN', agent.id, agent.phone, `Agent ${agent.full_name} (${agent.agent_code}) logged in via Mobile App`, 'Success');
-    return res.json({ ok: true, token, agent });
+    return res.json({ ok: true, token, agent, mustChangePin: Boolean(agent.pin_must_change) });
   } catch (err) {
-    return res.status(400).json({ ok: false, error: err.message || 'Authentication failed' });
+    return res.status(err.code === 'PIN_LOCKED' ? 429 : 400).json({ ok: false, error: err.message || 'Authentication failed' });
   }
 });
 
 app.get('/api/agent/me', requireAgentAuth, (req, res) => {
   const fresh = agentsStore.getAgent(req.agent.id);
   return res.json({ ok: true, agent: fresh || req.agent });
+});
+
+app.get('/api/agent/wallet', requireAgentAuth, (req, res) => {
+  const agent = agentsStore.getAgent(req.agent.id);
+  if (!agent) return res.status(404).json({ ok: false, error: 'Agent account not found' });
+  const provider = daraja.configurationStatus();
+  const withdrawalsEnabled = Boolean(provider.b2cReady && provider.b2cEnabled);
+  const message = withdrawalsEnabled
+    ? 'M-Pesa withdrawals are ready. New requests remain pending until Safaricom confirms the result.'
+    : provider.b2cReady
+      ? 'Your wallet is ready, but the platform operator has not enabled Daraja B2C payouts yet.'
+      : 'M-Pesa settlements are temporarily unavailable while the platform operator completes Daraja B2C setup.';
+  return res.json({ ok: true, wallet: {
+    financials: agent.financials,
+    earnings: agent.earnings,
+    payouts: agent.payouts,
+    mpesaNumber: agent.mpesa_number || agent.phone || '',
+    minimumWithdrawalKsh: 500,
+    withdrawalsEnabled,
+    message,
+  } });
 });
 
 app.post('/api/agent/schools', requireAgentAuth, (req, res) => {
@@ -2034,21 +2286,39 @@ app.put('/api/agent/profile', requireAgentAuth, (req, res) => {
   if (bank_name !== undefined) updates.bank_name = String(bank_name).trim();
   if (bank_account !== undefined) updates.bank_account = String(bank_account).trim();
 
-  if (new_pin) {
-    if (!old_pin) return res.status(400).json({ ok: false, error: 'Current PIN is required to set a new PIN' });
-    const verified = agentsStore.authenticateAgent(req.agent.phone, old_pin);
-    if (!verified) return res.status(403).json({ ok: false, error: 'Current PIN is incorrect' });
-    if (!/^\d{4}$/.test(String(new_pin).trim())) return res.status(400).json({ ok: false, error: 'PIN must be exactly 4 digits' });
-    updates.pin = String(new_pin).trim();
+  // A temporary or old 4-digit PIN must be replaced before anything else can change.
+  if (req.agent.pin_must_change && !new_pin) {
+    return res.status(403).json({ ok: false, code: 'PIN_CHANGE_REQUIRED', error: 'Choose a new 6-digit PIN to continue.' });
   }
 
   try {
-    agentsStore.updateAgent(req.agent.id, updates);
+    if (new_pin) {
+      if (!old_pin) return res.status(400).json({ ok: false, error: 'Current PIN is required to set a new PIN' });
+      const verified = agentsStore.authenticateAgent(req.agent.phone, old_pin);
+      if (!verified) return res.status(403).json({ ok: false, error: 'Current PIN is incorrect' });
+      if (String(new_pin).trim() === String(old_pin).trim()) return res.status(400).json({ ok: false, error: 'Choose a different PIN from your current one' });
+      agentsStore.setPin(req.agent.id, String(new_pin).trim()); // exactly 6 digits, not easy to guess
+    }
+    if (Object.keys(updates).length) agentsStore.updateAgent(req.agent.id, updates);
     const updated = agentsStore.getAgent(req.agent.id);
-    return res.json({ ok: true, agent: updated });
+    const token = new_pin ? issueAgentSession(updated, res) : undefined; // the old session is signed out when the PIN changes
+    return res.json({ ok: true, agent: updated, ...(token ? { token } : {}) });
   } catch (err) {
-    return res.status(400).json({ ok: false, error: err.message || 'Failed to update profile' });
+    return res.status(err.code === 'PIN_LOCKED' ? 429 : 400).json({ ok: false, error: err.message || 'Failed to update profile' });
   }
+});
+
+app.post('/api/agent/forgot-pin', (req, res) => {
+  const cleanPhone = String(req.body?.phone || '').replace(/[\s\-_]/g, '').trim();
+  // The answer never reveals whether the number is registered or whether the request was limited.
+  const reply = { ok: true, message: 'If that number is registered, an admin has been asked to reset your PIN. They will contact you to confirm it is you before giving you a temporary PIN.' };
+  if (cleanPhone.length < 9 || !allowPinResetRequest('phone:' + cleanPhone, 3) || !allowPinResetRequest('all', 30)) return res.json(reply);
+  try {
+    if (agentsStore.requestPinReset(cleanPhone)) {
+      pushAudit('AGENT_PIN_RESET_REQUESTED', cleanPhone, cleanPhone, 'Agent asked for a PIN reset from the sign-in screen', 'Warning');
+    }
+  } catch (_) { /* never reveal anything to the caller */ }
+  return res.json(reply);
 });
 
 app.post('/api/agent/logout', (req, res) => {
@@ -2061,7 +2331,7 @@ app.post('/api/agent/withdraw', requireAgentAuth, (req, res) => {
   const amount = Number(body.amount);
   const pin = String(body.pin || '').trim();
 
-  if (isNaN(amount) || amount < 500) {
+  if (!Number.isSafeInteger(amount) || amount < 500) {
     return res.status(400).json({ ok: false, error: 'Minimum transfer amount is KES 500' });
   }
 
@@ -2075,9 +2345,14 @@ app.post('/api/agent/withdraw', requireAgentAuth, (req, res) => {
   }
 
   // Verify PIN
-  const verified = agentsStore.authenticateAgent(freshAgent.phone, pin);
+  let verified = null;
+  try {
+    verified = agentsStore.authenticateAgent(freshAgent.phone, pin);
+  } catch (err) {
+    return res.status(err.code === 'PIN_LOCKED' ? 429 : 400).json({ ok: false, error: err.message });
+  }
   if (!verified) {
-    return res.status(401).json({ ok: false, error: 'Incorrect 4-digit security PIN' });
+    return res.status(401).json({ ok: false, error: 'Incorrect security PIN' });
   }
 
   const availableBalance = Number(freshAgent.financials?.balanceDueKsh || 0);
@@ -2093,34 +2368,97 @@ app.post('/api/agent/withdraw', requireAgentAuth, (req, res) => {
     return res.status(400).json({ ok: false, error: 'No registered M-Pesa phone number found on profile' });
   }
 
+  const providerStatus = daraja.configurationStatus();
+  if (!providerStatus.b2cEnabled || !providerStatus.b2cReady) {
+    return res.status(503).json({ ok: false, error: 'M-Pesa withdrawals are unavailable until the operator configures and enables Daraja B2C.' });
+  }
+  const phoneDigits = String(payoutPhone).replace(/\D/g, '');
+  const partyB = phoneDigits.startsWith('254') ? phoneDigits : phoneDigits.startsWith('0') ? `254${phoneDigits.slice(1)}` : `254${phoneDigits}`;
+  if (!/^254(?:7|1)\d{8}$/.test(partyB)) {
+    return res.status(400).json({ ok: false, error: 'The registered M-Pesa number must be a valid Kenyan mobile number.' });
+  }
+
   try {
-    const mpesaRef = 'MP' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 5).toUpperCase();
     const payout = agentsStore.recordPayout(freshAgent.id, {
       amount_ksh: amount,
       payout_method: 'mpesa',
-      reference: mpesaRef,
-      status: 'completed',
-      notes: `Self-service M-Pesa transfer requested to ${payoutPhone}`,
+      reference: '',
+      status: 'pending',
+      notes: `Daraja B2C payout requested to ${payoutPhone}`,
     }, 'agent_app_self_service');
+    daraja.submitB2CPayout({ amount, phone: partyB, payoutId: payout.id }).then(providerResult => {
+      const conversationId = String(providerResult.OriginatorConversationID || '');
+      if (String(providerResult.ResponseCode) !== '0' || !conversationId) {
+        agentsStore.updateProviderPayout(payout.id, 'failed');
+        pushAudit('AGENT_MPESA_PAYOUT_REJECTED', freshAgent.id, freshAgent.phone,
+          `Daraja did not accept payout ${payout.id}: ${billingText(providerResult.ResponseDescription || 'missing conversation ID', 200)}`, 'Warning');
+        return;
+      }
+      agentsStore.linkPayoutToProvider(payout.id, conversationId);
+      const earlyCallback = agentsStore.getPendingProviderPayoutCallback(conversationId);
+      if (earlyCallback) processDarajaB2CResult(earlyCallback.payload);
+      pushAudit('AGENT_MPESA_PAYOUT_PENDING', freshAgent.id, freshAgent.phone,
+        `Daraja accepted payout request ${payout.id} for KSh ${amount} to ${partyB}; waiting for result callback`, 'Warning');
+    }).catch(error => {
+      // The request may have reached Daraja even if the HTTP response timed out. Keep the funds reserved for reconciliation.
+      pushAudit('AGENT_MPESA_PAYOUT_UNCONFIRMED', freshAgent.id, freshAgent.phone,
+        `Payout ${payout.id} could not be confirmed after submission: ${billingText(error.message, 200)}. It remains pending.`, 'Warning');
+    });
 
-    pushAudit(
-      'AGENT_MPESA_WITHDRAWAL',
-      freshAgent.id,
-      freshAgent.phone,
-      `Agent ${freshAgent.full_name} initiated M-Pesa cash-out of KES ${amount} to ${payoutPhone} (Ref: ${mpesaRef})`,
-      'Success'
-    );
-
-    const updatedAgent = agentsStore.getAgent(freshAgent.id);
-    return res.status(200).json({
+    return res.status(202).json({
       ok: true,
       payout,
-      newBalance: updatedAgent.financials.balanceDueKsh,
-      message: `KES ${amount.toLocaleString()} transferred to M-Pesa (${payoutPhone}). Reference: ${mpesaRef}`,
+      newBalance: agentsStore.getAgent(freshAgent.id).financials.balanceDueKsh,
+      message: `M-Pesa payout request submitted for KES ${amount.toLocaleString()}. Your balance will update after Daraja confirms the transfer.`,
     });
   } catch (err) {
     return res.status(500).json({ ok: false, error: err.message || 'Transfer to M-Pesa failed' });
   }
+});
+
+function darajaResultParameters(result) {
+  const list = result?.ResultParameters?.ResultParameter;
+  return Object.fromEntries((Array.isArray(list) ? list : []).map(item => [String(item.Key || ''), item.Value]));
+}
+
+function processDarajaB2CResult(payload) {
+  const result = payload?.Result || {};
+  const params = darajaResultParameters(result);
+  const conversationId = String(result.OriginatorConversationID || payload?.OriginatorConversationID || '');
+  const occasion = String(params.Occasion || payload?.Occasion || '');
+  const payout = agentsStore.getPayoutByProviderConversation(conversationId) || agentsStore.getPayout(occasion);
+  if (!payout) return null;
+  if (payout.status !== 'pending') {
+    if (conversationId) agentsStore.markProviderPayoutCallbackHandled(conversationId);
+    return payout;
+  }
+  const timedOut = payload?.timeout === true;
+  const succeeded = !timedOut && Number(result.ResultCode) === 0;
+  agentsStore.updateProviderPayout(payout.id, succeeded ? 'completed' : 'failed', String(params.TransactionReceipt || ''));
+  if (conversationId) agentsStore.markProviderPayoutCallbackHandled(conversationId);
+  pushAudit(succeeded ? 'AGENT_MPESA_PAYOUT_CONFIRMED' : timedOut ? 'AGENT_MPESA_PAYOUT_TIMEOUT' : 'AGENT_MPESA_PAYOUT_FAILED',
+    payout.agent_id, 'daraja', `${succeeded ? 'Confirmed' : timedOut ? 'Timed out' : 'Failed'} KSh ${Number(payout.amount_ksh).toLocaleString()} agent payout ${payout.id}${params.TransactionReceipt ? ` · ${params.TransactionReceipt}` : ''}`,
+    succeeded ? 'Success' : 'Warning');
+  return agentsStore.getPayout(payout.id);
+}
+
+app.post('/api/mpesa/b2c/:token/result', (req, res) => {
+  if (!validDarajaCallbackToken(req.params.token)) return res.sendStatus(404);
+  const result = req.body?.Result || {};
+  const params = darajaResultParameters(result);
+  const occasion = String(params.Occasion || '');
+  const conversationId = String(result.OriginatorConversationID || '');
+  agentsStore.saveProviderPayoutCallback({ conversationId, payoutId: occasion, resultCode: result.ResultCode, transactionId: params.TransactionReceipt, payload: req.body });
+  const payout = processDarajaB2CResult(req.body);
+  return darajaReply(res, true, payout ? 'Payout result recorded' : 'Payout result queued for matching');
+});
+
+app.post('/api/mpesa/b2c/:token/timeout', (req, res) => {
+  if (!validDarajaCallbackToken(req.params.token)) return res.sendStatus(404);
+  const conversationId = String(req.body?.OriginatorConversationID || '');
+  agentsStore.saveProviderPayoutCallback({ conversationId, payoutId: '', resultCode: -1, transactionId: '', payload: { ...req.body, timeout: true } });
+  const payout = processDarajaB2CResult({ ...req.body, timeout: true });
+  return darajaReply(res, true, payout ? 'Timeout recorded' : 'Timeout queued for matching');
 });
 
 app.get('/api/agent/notifications', requireAgentAuth, (req, res) => {
@@ -2143,11 +2481,16 @@ app.get('/api/agent/notifications', requireAgentAuth, (req, res) => {
 
   // 2. Payouts notifications
   (agent.payouts || []).slice(0, 5).forEach((p) => {
+    const payoutMessage = p.status === 'completed'
+      ? `KES ${Number(p.amount_ksh).toLocaleString()} was confirmed sent to M-Pesa (Ref: ${p.reference || p.provider_transaction_id || '-'}).`
+      : p.status === 'pending'
+        ? `KES ${Number(p.amount_ksh).toLocaleString()} payout is waiting for Safaricom confirmation.`
+        : `KES ${Number(p.amount_ksh).toLocaleString()} M-Pesa payout failed. The amount is available again.`;
     notifications.push({
       id: `notif_pay_${p.id}`,
       type: 'payout',
-      title: 'M-Pesa Transfer Disbursed',
-      message: `KES ${Number(p.amount_ksh).toLocaleString()} sent to M-Pesa (Ref: ${p.reference || '-'}).`,
+      title: p.status === 'completed' ? 'M-Pesa Transfer Confirmed' : p.status === 'pending' ? 'M-Pesa Transfer Pending' : 'M-Pesa Transfer Failed',
+      message: payoutMessage,
       time: p.payout_date || p.created_at,
       status: p.status,
     });
@@ -2169,8 +2512,10 @@ app.get('/api/agent/notifications', requireAgentAuth, (req, res) => {
   notifications.unshift({
     id: 'notif_welcome',
     type: 'system',
-    title: 'Wallet & Payouts Active',
-    message: 'You can now transfer your available commission directly to your registered M-Pesa (Min KES 500).',
+    title: 'M-Pesa payout status',
+    message: daraja.configurationStatus().b2cEnabled && daraja.configurationStatus().b2cReady
+      ? 'M-Pesa payout requests are processed through Safaricom and remain pending until Safaricom confirms the result.'
+      : 'M-Pesa payout requests are currently unavailable until the platform operator configures Daraja B2C.',
     time: new Date().toISOString(),
     status: 'active',
   });
@@ -2185,8 +2530,34 @@ app.get('/api/agent/notifications', requireAgentAuth, (req, res) => {
 const BILLING_CADENCES = new Set(['one_off', 'monthly', 'termly', 'annual', 'custom']);
 const CONTRACT_STATUSES = new Set(['draft', 'active', 'ended', 'cancelled']);
 
+function nairobiCalendarDate() {
+  const parts = new Intl.DateTimeFormat('en', {
+    timeZone: 'Africa/Nairobi', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date());
+  const dateParts = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  return `${dateParts.year}-${dateParts.month}-${dateParts.day}`;
+}
+
 function billingText(value, maxLength = 500) {
   return String(value ?? '').trim().slice(0, maxLength);
+}
+
+function attributePaidInvoiceCommission(payment, invoice, actor) {
+  if (!payment || !invoice) return { earning: null, queued: false };
+  const customer = billingStore.getCustomer(invoice.customerId);
+  try {
+    const earning = agentsStore.attributePaymentCommission({ payment, invoice, customer });
+    if (earning) {
+      pushAudit('AGENT_COMMISSION_AUTO', earning.agent_id, actor || 'system',
+        `Auto-credited KSh ${earning.earned_amount_ksh.toLocaleString('en-KE')} commission for invoice ${invoice.invoiceNumber} to ${earning.agent_name} (${earning.agent_code})`, 'Success');
+    }
+    return { earning, queued: false };
+  } catch (error) {
+    billingStore.recordCommissionAttributionFailure({ paymentId: payment.id, invoiceId: invoice.id, error: error.message });
+    pushAudit('AGENT_COMMISSION_RECONCILIATION', invoice.invoiceNumber, actor || 'system',
+      `Payment ${payment.reference || payment.id} was recorded, but agent commission attribution failed and was queued for retry: ${billingText(error.message, 240)}`, 'Warning');
+    return { earning: null, queued: true, error: error.message };
+  }
 }
 
 function normalizeBillingCustomer(body = {}) {
@@ -2200,6 +2571,7 @@ function normalizeBillingCustomer(body = {}) {
   if (billingEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(billingEmail)) throw new Error('billing email is invalid');
   return {
     name: billingText(body.name, 160),
+    paybillAccountName: billingText(body.paybillAccountName || body.name, 160),
     legalName: billingText(body.legalName, 200),
     tenantKey,
     billingEmail,
@@ -2320,8 +2692,13 @@ function calculateQuote(body = {}) {
 // Quotes with a schoolType are priced from the price list (flat per school). A request without one falls
 // back to the legacy per-student band calculation, which only exists so older draft quotes stay editable.
 function buildQuote(body = {}) {
-  if (body && body.schoolType) return calculateCatalogueQuote(body, billingStore.listProducts());
-  return calculateQuote(body);
+  if (!body || !body.schoolType) throw new Error('Choose a school type. New quotes are priced per school from the approved price list.');
+  return calculateCatalogueQuote(body, billingStore.listProducts());
+}
+
+function discountApprovalPending(quoteSnapshot = {}) {
+  const discount = quoteSnapshot.discount;
+  return Boolean(discount?.requiresApproval && discount.approvalStatus !== 'approved');
 }
 
 const BILLING_EMAIL_LOGO_URL = process.env.BILLING_EMAIL_LOGO_URL || 'https://trendscore.co.ke/splash/new/TrendsCORE-Logo.png';
@@ -2342,7 +2719,7 @@ function billingEmailDraft(kind, record) {
     ? `Hello ${customerName},\n\nPlease find quotation ${documentNumber} attached for your review. ${Number(record.enrollmentCount || 0) > 0 ? `It is based on an enrollment snapshot of ${Number(record.enrollmentCount).toLocaleString('en-KE')} students` : 'It covers the school service package'}${record.expiresOn ? ` and is valid until ${record.expiresOn}` : ''}.\n\n${record.quoteSnapshot?.taxNote || 'Tax treatment is not included in this quotation and should be reviewed before invoicing.'} This quotation is not a tax invoice.\n\nPlease reply to this email if you have any questions or would like to proceed.\n\nWarm regards,\nTrendSCORE Billing Team`
     : draftInvoice
       ? `Hello ${customerName},\n\nPlease review the attached draft invoice ${documentNumber} for KSh ${Number(amountKsh || 0).toLocaleString('en-KE')}.\n\nThis is a review copy only. It is not an issued invoice, payment request, or tax invoice. Please reply with any corrections or approval.\n\nWarm regards,\nTrendSCORE Billing Team`
-      : `Hello ${customerName},\n\nPlease find invoice ${documentNumber} attached for KSh ${Number(amountKsh || 0).toLocaleString('en-KE')}.${record.invoiceSnapshot?.dueDate ? ` Payment is due by ${record.invoiceSnapshot.dueDate}.` : ' Payment is due upon receipt.'}\n\nPlease include the invoice number as your payment reference. This commercial invoice is not an eTIMS tax invoice.\n\nWarm regards,\nTrendSCORE Billing Team`;
+      : `Hello ${customerName},\n\nPlease find invoice ${documentNumber} attached for KSh ${Number(amountKsh || 0).toLocaleString('en-KE')}.${record.invoiceSnapshot?.dueDate ? ` Payment is due by ${record.invoiceSnapshot.dueDate}.` : ' Payment is due upon receipt.'}\n\nFor a Paybill payment, enter the school account name exactly as shown on your invoice: ${customer.paybillAccountName || customer.name || customerName}. Do not enter the invoice number. If a payment cannot be matched to one outstanding invoice, our finance team will review it. This commercial invoice is not an eTIMS tax invoice.\n\nWarm regards,\nTrendSCORE Billing Team`;
   return {
     kind, customerName, documentNumber, recipient: customer.billingEmail || '',
     subject, message, amountKsh, logoUrl: BILLING_EMAIL_LOGO_URL,
@@ -2534,7 +2911,7 @@ function ensureInstanceBilling({ name, tenantKeyHint, domain, adminEmail, quoteS
       quoteNumber: `Q-${new Date().getUTCFullYear()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`,
       customerId: customer.id,
       customerSnapshot: {
-        name: customer.name, legalName: customer.legalName, tenantKey: customer.tenantKey,
+        name: customer.name, paybillAccountName: customer.paybillAccountName, legalName: customer.legalName, tenantKey: customer.tenantKey,
         billingEmail: customer.billingEmail, billingPhone: customer.billingPhone,
         billingAddress: customer.billingAddress, taxIdentifier: customer.taxIdentifier, currency: customer.currency,
       },
@@ -2607,6 +2984,21 @@ app.put('/api/billing/customers/:id', requireAuth, requireRole('super_admin'), (
 app.get('/api/billing/contracts', requireAuth, requireRole('super_admin', 'platform_owner', 'finance_approver'), (req, res) => {
   const customerId = billingText(req.query.customerId, 80);
   res.json({ ok: true, contracts: billingStore.listContracts(customerId) });
+});
+
+app.post('/api/billing/term-invoices', requireAuth, requireRole('super_admin'), (req, res) => {
+  const year = Number(req.body?.year);
+  const termNumber = Number(req.body?.term);
+  const term = listTerms(billingStore._getDb()).find(item => Number(item.year) === year && Number(item.term) === termNumber);
+  if (!term) return res.status(404).json({ ok: false, error: 'Select a term that is configured in the term calendar first.' });
+  try {
+    const result = billingStore.createTermRenewalInvoices(term, req.user.email);
+    pushAudit('BILLING_TERM_INVOICES', result.periodKey, req.user.email,
+      `Created ${result.created.length} draft renewal invoice(s) from active termly contracts for ${result.periodKey}`);
+    return res.status(201).json({ ok: true, periodKey: result.periodKey, invoices: result.created, count: result.created.length });
+  } catch (error) {
+    return res.status(400).json({ ok: false, error: error.message || 'Could not prepare term renewal invoices' });
+  }
 });
 
 function writeConsoleEmailSettings(values) {
@@ -2761,7 +3153,7 @@ app.post('/api/billing/quotes', requireAuth, requireRole('super_admin'), (req, r
       quoteNumber: `Q-${new Date().getUTCFullYear()}-${crypto.randomBytes(4).toString('hex').toUpperCase()}`,
       customerId,
       customerSnapshot: {
-        name: customer.name, legalName: customer.legalName, tenantKey: customer.tenantKey,
+        name: customer.name, paybillAccountName: customer.paybillAccountName, legalName: customer.legalName, tenantKey: customer.tenantKey,
         billingEmail: customer.billingEmail, billingPhone: customer.billingPhone,
         billingAddress: customer.billingAddress, taxIdentifier: customer.taxIdentifier, currency: customer.currency,
       },
@@ -2790,10 +3182,14 @@ app.put('/api/billing/quotes/:id', requireAuth, requireRole('super_admin'), (req
     const customer = billingStore.getCustomer(customerId);
     if (!customer) return res.status(404).json({ ok: false, error: 'Select a saved billing customer first' });
     if (customer.currency !== 'KES') return res.status(400).json({ ok: false, error: 'The approved school rate card is in KSh. Set this customer currency to KES before quoting.' });
-    const quoteSnapshot = buildQuote(req.body);
+    const quoteSnapshot = req.body?.schoolType
+      ? buildQuote(req.body)
+      : existing.quoteSnapshot?.pricingModel !== 'catalogue'
+        ? calculateQuote(req.body)
+        : buildQuote(req.body);
     const updated = billingStore.updateQuote(existing.id, {
       customerId,
-      customerSnapshot: { name: customer.name, legalName: customer.legalName, tenantKey: customer.tenantKey,
+      customerSnapshot: { name: customer.name, paybillAccountName: customer.paybillAccountName, legalName: customer.legalName, tenantKey: customer.tenantKey,
         billingEmail: customer.billingEmail, billingPhone: customer.billingPhone, billingAddress: customer.billingAddress,
         taxIdentifier: customer.taxIdentifier, currency: customer.currency },
       quoteSnapshot, enrollmentCount: quoteSnapshot.enrollmentCount, pricingModel: quoteSnapshot.pricingModel,
@@ -2858,16 +3254,39 @@ app.post('/api/billing/quotes/:id/send', requireAuth, requireRole('super_admin')
   }
 });
 
+app.post('/api/billing/quotes/:id/approve-discount', requireAuth, requireRole('finance_approver'), (req, res) => {
+  const quote = billingStore.getQuote(req.params.id);
+  if (!quote) return res.status(404).json({ ok: false, error: 'Quote not found' });
+  if (String(quote.createdBy || '').toLowerCase() === String(req.user.email || '').toLowerCase()) {
+    return res.status(403).json({ ok: false, error: 'The quote creator cannot approve their own discount.' });
+  }
+  try {
+    const updated = billingStore.recordQuoteDiscountApproval(quote.id, { approvedBy: req.user.email });
+    pushAudit('BILLING_DISCOUNT_APPROVE', quote.customerSnapshot?.name || quote.customerId, req.user.email,
+      `Approved KSh ${updated.quoteSnapshot.discount.amountKsh} discount on ${updated.quoteNumber}`);
+    return res.json({ ok: true, quote: updated });
+  } catch (error) {
+    return res.status(409).json({ ok: false, error: error.message || 'Could not approve discount' });
+  }
+});
+
 app.post('/api/billing/quotes/:id/accept', requireAuth, requireRole('super_admin'), (req, res) => {
   const quote = billingStore.getQuote(req.params.id);
   if (!quote) return res.status(404).json({ ok: false, error: 'Quote not found' });
   if (!['draft', 'sent'].includes(quote.status) || quote.cancelledAt) return res.status(409).json({ ok: false, error: `Quote is ${quote.status} and cannot be marked accepted` });
+  if (discountApprovalPending(quote.quoteSnapshot)) return res.status(409).json({ ok: false, error: 'A finance approver must approve this quote’s discount before acceptance.' });
   if (quote.expiresOn && quote.expiresOn < new Date().toISOString().slice(0, 10)) {
     billingStore.setQuoteStatus(quote.id, 'expired');
     return res.status(409).json({ ok: false, error: 'This quote has expired. Create a new quote before recording acceptance.' });
   }
-  const updated = billingStore.setQuoteStatus(quote.id, 'accepted');
-  pushAudit('BILLING_QUOTE_ACCEPT', quote.customerSnapshot.name, req.user.email, `Recorded acceptance of ${quote.quoteNumber}`);
+  const acceptedBy = billingText(req.body?.acceptedBy, 160);
+  const acceptanceMethod = billingText(req.body?.acceptanceMethod, 30).toLowerCase();
+  const acceptanceEvidence = billingText(req.body?.acceptanceEvidence, 1200);
+  if (!acceptedBy || !acceptanceEvidence || !['signed_contract', 'email', 'in_person', 'phone'].includes(acceptanceMethod)) {
+    return res.status(400).json({ ok: false, error: 'Record who accepted, how they accepted, and a document or communication reference.' });
+  }
+  const updated = billingStore.recordQuoteAcceptance(quote.id, { acceptedBy, acceptanceMethod, acceptanceEvidence, acceptedByUser: req.user.email });
+  pushAudit('BILLING_QUOTE_ACCEPT', quote.customerSnapshot.name, req.user.email, `Recorded ${acceptanceMethod} acceptance by ${acceptedBy} for ${quote.quoteNumber}; evidence: ${acceptanceEvidence}`);
   return res.json({ ok: true, quote: updated });
 });
 
@@ -2875,6 +3294,7 @@ app.post('/api/billing/quotes/:id/convert', requireAuth, requireRole('super_admi
   const quote = billingStore.getQuote(req.params.id);
   if (!quote) return res.status(404).json({ ok: false, error: 'Quote not found' });
   if (quote.status !== 'accepted' && quote.status !== 'converted') return res.status(409).json({ ok: false, error: 'Record customer acceptance before creating a draft invoice' });
+  if (discountApprovalPending(quote.quoteSnapshot)) return res.status(409).json({ ok: false, error: 'A finance approver must approve this quote’s discount before invoice creation.' });
   const existing = billingStore.getInvoiceForQuote(quote.id);
   if (existing) {
     billingStore.setQuoteStatus(quote.id, 'converted');
@@ -2908,6 +3328,38 @@ app.get('/api/billing/payments', requireAuth, requireRole('super_admin', 'platfo
   return res.json({ ok: true, payments: billingStore.listPayments() });
 });
 
+app.get('/api/billing/commission-reconciliation', requireAuth, requireRole('super_admin', 'platform_owner', 'finance_approver', 'billing_operator'), (_req, res) => {
+  return res.json({ ok: true, failures: billingStore.listCommissionAttributionFailures({ status: 'pending' }) });
+});
+
+app.post('/api/billing/commission-reconciliation/:paymentId/retry', requireAuth, requireRole('super_admin'), (req, res) => {
+  const failure = billingStore.getCommissionAttributionFailure(req.params.paymentId);
+  if (!failure || failure.status !== 'pending') return res.status(404).json({ ok: false, error: 'Pending commission reconciliation was not found.' });
+  const payment = billingStore.getPayment(failure.paymentId);
+  const invoice = billingStore.getInvoice(failure.invoiceId);
+  if (!payment || !invoice) return res.status(409).json({ ok: false, error: 'The linked payment or invoice is unavailable; reconcile the billing record first.' });
+  billingStore.noteCommissionAttributionAttempt(failure.paymentId, 'Retry in progress');
+  try {
+    if (agentsStore.hasPaymentCommission(payment.id)) {
+      billingStore.resolveCommissionAttributionFailure(payment.id, 'Commission was already credited.');
+      return res.json({ ok: true, alreadyCredited: true });
+    }
+    const customer = billingStore.getCustomer(invoice.customerId);
+    const earning = agentsStore.attributePaymentCommission({ payment, invoice, customer });
+    if (!earning) {
+      billingStore.updateCommissionAttributionError(payment.id, 'No matching assigned agent school was found. Check the school, lead, and tenant links before retrying.');
+      return res.status(409).json({ ok: false, error: 'No matching assigned agent school was found. Check the school, lead, and tenant links before retrying.' });
+    }
+    billingStore.resolveCommissionAttributionFailure(payment.id, 'Commission successfully attributed.');
+    pushAudit('AGENT_COMMISSION_RECONCILIATION_RESOLVED', earning.agent_id, req.user.email,
+      `Retried and credited KSh ${earning.earned_amount_ksh.toLocaleString('en-KE')} commission for payment ${payment.reference || payment.id}`);
+    return res.json({ ok: true, earning });
+  } catch (error) {
+    billingStore.updateCommissionAttributionError(payment.id, error.message || 'Commission attribution retry failed');
+    return res.status(409).json({ ok: false, error: error.message || 'Commission attribution retry failed' });
+  }
+});
+
 app.get('/api/billing/payments/:id/receipt', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
   const payment = billingStore.getPayment(req.params.id);
   if (!payment) return res.status(404).json({ ok: false, error: 'Payment record not found' });
@@ -2929,30 +3381,181 @@ app.post('/api/billing/payments', requireAuth, requireRole('super_admin'), (req,
   const reference = billingText(req.body?.reference, 120);
   const notes = billingText(req.body?.notes, 500);
   if (!invoiceId) return res.status(400).json({ ok: false, error: 'Select an issued invoice' });
+  if (!reference) return res.status(400).json({ ok: false, error: 'Enter the bank, M-Pesa, cash receipt, cheque, or other payment reference.' });
   if (!Number.isSafeInteger(amountKsh) || amountKsh <= 0) return res.status(400).json({ ok: false, error: 'Enter a whole amount in KSh greater than zero' });
   const parsedPaymentDate = new Date(`${paymentDate}T00:00:00.000Z`);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(paymentDate) || !Number.isFinite(parsedPaymentDate.getTime()) || parsedPaymentDate.toISOString().slice(0, 10) !== paymentDate) return res.status(400).json({ ok: false, error: 'Enter a valid payment date' });
+  const todayNairobi = nairobiCalendarDate();
+  if (paymentDate > todayNairobi) return res.status(400).json({ ok: false, error: 'Payment date cannot be in the future.' });
   if (!['mpesa', 'bank_transfer', 'cash', 'cheque', 'other'].includes(method)) return res.status(400).json({ ok: false, error: 'Choose a supported payment method' });
+  const selectedInvoice = billingStore.getInvoice(invoiceId);
+  const issueDate = String(selectedInvoice?.invoiceSnapshot?.issuedAt || '').slice(0, 10);
+  if (issueDate && paymentDate < issueDate) return res.status(400).json({ ok: false, error: 'Payment date cannot be before the invoice was issued.' });
   try {
     const payment = billingStore.recordPayment({ id: crypto.randomUUID(), invoiceId, amountKsh, paymentDate, method, reference, notes, recordedBy: req.user.email });
     const invoice = billingStore.getInvoice(invoiceId);
     pushAudit('BILLING_PAYMENT_RECORD', invoice?.customerId || invoiceId, req.user.email, `Recorded KSh ${amountKsh.toLocaleString('en-KE')} payment against ${invoice?.invoiceNumber || invoiceId}${reference ? ` · reference ${reference}` : ''}`);
-
-    // Auto-attribute commission to assigned field agent
-    let autoEarning = null;
-    try {
-      const customer = invoice?.customerId ? billingStore.getCustomer(invoice.customerId) : null;
-      autoEarning = agentsStore.attributePaymentCommission({ payment, invoice, customer });
-      if (autoEarning) {
-        pushAudit('AGENT_COMMISSION_AUTO', autoEarning.agent_id, req.user.email, `Auto-credited KSh ${autoEarning.earned_amount_ksh.toLocaleString('en-KE')} commission for invoice ${invoice?.invoiceNumber || invoiceId} to ${autoEarning.agent_name} (${autoEarning.agent_code})`, 'Success');
-      }
-    } catch (attrErr) {
-      console.warn('[Agents] Auto-attribution notice:', attrErr?.message || attrErr);
-    }
-
-    return res.status(201).json({ ok: true, payment, invoice, autoEarning });
+    const attribution = attributePaidInvoiceCommission(payment, invoice, req.user.email);
+    return res.status(201).json({ ok: true, payment, invoice, autoEarning: attribution.earning, commissionReconciliationRequired: attribution.queued });
   } catch (error) {
     return res.status(409).json({ ok: false, error: error.message || 'Could not record payment' });
+  }
+});
+
+function validDarajaCallbackToken(token) {
+  const expected = String(process.env.MPESA_DARAJA_CALLBACK_TOKEN || '');
+  const supplied = String(token || '');
+  if (!expected || !supplied) return false;
+  const a = Buffer.from(expected);
+  const b = Buffer.from(supplied);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+function darajaReply(res, accepted, description) {
+  return res.status(200).json({ ResultCode: accepted ? 0 : 1, ResultDesc: description });
+}
+
+function darajaPaymentDate(value) {
+  const raw = String(value || '');
+  if (!/^\d{14}$/.test(raw)) return '';
+  const datePart = `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
+  const hour = Number(raw.slice(8, 10));
+  const minute = Number(raw.slice(10, 12));
+  const second = Number(raw.slice(12, 14));
+  const date = new Date(`${datePart}T00:00:00.000Z`);
+  if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== datePart || hour > 23 || minute > 59 || second > 59) return '';
+  return datePart;
+}
+
+app.get('/api/settings/integrations/mpesa', requireAuth, requireRole('super_admin'), (_req, res) => {
+  return res.json({ ok: true, ...daraja.configurationStatus(), c2bEnabled: getFlag(billingStore._getDb(), 'MPESA_C2B_ENABLED') });
+});
+
+app.post('/api/settings/integrations/mpesa/c2b/register', requireAuth, requireRole('super_admin'), async (req, res) => {
+  try {
+    const registration = await daraja.registerC2BUrls();
+    setFlag(billingStore._getDb(), 'MPESA_C2B_ENABLED', true, req.user.email);
+    pushAudit('MPESA_C2B_REGISTER', 'Daraja', req.user.email, `Registered C2B callback URLs for shortcode ${daraja.configurationStatus().shortcode}`);
+    return res.json({ ok: true, c2bEnabled: true, registration });
+  } catch (error) {
+    return res.status(502).json({ ok: false, error: error.message || 'Could not register Daraja C2B callbacks' });
+  }
+});
+
+app.post('/api/mpesa/c2b/:token/validation', (req, res) => {
+  if (!validDarajaCallbackToken(req.params.token)) return res.sendStatus(404);
+  if (!getFlag(billingStore._getDb(), 'MPESA_C2B_ENABLED')) return darajaReply(res, false, 'C2B collections are disabled');
+  const amount = Number(req.body?.TransAmount);
+  // Accept valid collections here so the confirmation callback can persist
+  // unmatched references and overpayments into the admin review queue.
+  // Rejecting them at validation time prevents confirmation and loses the
+  // reconciliation record entirely.
+  if (!Number.isSafeInteger(amount) || amount <= 0) return darajaReply(res, false, 'Invalid payment amount');
+  return darajaReply(res, true, 'Accepted');
+});
+
+app.post('/api/mpesa/c2b/:token/confirmation', (req, res) => {
+  if (!validDarajaCallbackToken(req.params.token)) return res.sendStatus(404);
+  if (!getFlag(billingStore._getDb(), 'MPESA_C2B_ENABLED')) return darajaReply(res, false, 'C2B collections are disabled');
+  const transactionId = billingText(req.body?.TransID, 80).toUpperCase();
+  const billReference = billingText(req.body?.BillRefNumber, 80);
+  const amountKsh = Number(req.body?.TransAmount);
+  const transactionDate = darajaPaymentDate(req.body?.TransTime);
+  const senderPhone = billingText(req.body?.MSISDN, 40);
+  if (!transactionId || !Number.isSafeInteger(amountKsh) || amountKsh <= 0) return darajaReply(res, false, 'Invalid transaction details');
+
+  const duplicate = billingStore.getPaymentByReference('mpesa', transactionId);
+  if (duplicate) {
+    billingStore.recordMpesaC2BEvent({ transactionId, billReference, amountKsh, senderPhone, transactionDate, invoiceId: duplicate.invoiceId, status: 'allocated', payload: req.body });
+    return darajaReply(res, true, 'Duplicate transaction already recorded');
+  }
+
+  if (!transactionDate) {
+    const possibleCustomers = billReference ? billingStore.findCustomersByPaybillAccountName(billReference) : [];
+    const matched = possibleCustomers.length === 1 ? possibleCustomers[0] : null;
+    const reason = 'Daraja transaction timestamp is missing or invalid; enter the verified payment date during review.';
+    billingStore.recordMpesaC2BEvent({ transactionId, billReference, amountKsh, senderPhone, transactionDate: '', status: 'needs_review', matchedCustomerId: matched?.id, matchedCustomerName: matched?.name, reviewReason: reason, payload: req.body });
+    pushAudit('MPESA_C2B_REVIEW', billReference || transactionId, 'daraja', `C2B payment ${transactionId} needs manual review: ${reason}`, 'Warning');
+    return darajaReply(res, true, 'Received and queued for billing review');
+  }
+
+  const matchedCustomers = billingStore.findCustomersByPaybillAccountName(billReference);
+  const matchedCustomer = matchedCustomers.length === 1 ? matchedCustomers[0] : null;
+  const candidateInvoices = matchedCustomer
+    ? billingStore.listInvoices().filter(item => item.customerId === matchedCustomer.id && ['issued', 'sent'].includes(item.status) && Number(item.balanceKsh || 0) > 0)
+    : [];
+  const invoice = candidateInvoices.length === 1 ? candidateInvoices[0] : null;
+  let reviewReason = '';
+  if (!billReference) reviewReason = 'No school account name was supplied';
+  else if (!matchedCustomers.length) reviewReason = 'No billing customer matches this school account name';
+  else if (matchedCustomers.length > 1) reviewReason = 'More than one billing customer has this school account name';
+  else if (!candidateInvoices.length) reviewReason = 'This school has no outstanding issued invoice';
+  else if (candidateInvoices.length > 1) reviewReason = 'This school has multiple outstanding invoices';
+  else if (amountKsh > Number(invoice.balanceKsh || 0)) reviewReason = 'Payment is greater than the invoice balance';
+  if (reviewReason) {
+    billingStore.recordMpesaC2BEvent({ transactionId, billReference, amountKsh, senderPhone, transactionDate, status: 'needs_review', matchedCustomerId: matchedCustomer?.id, matchedCustomerName: matchedCustomer?.name, reviewReason, payload: req.body });
+    pushAudit('MPESA_C2B_REVIEW', billReference || transactionId, 'daraja', `Received KSh ${amountKsh}; manual allocation required: ${reviewReason}`, 'Warning');
+    return darajaReply(res, true, 'Received and queued for billing review');
+  }
+
+  try {
+    const payment = billingStore.recordPayment({
+      id: crypto.randomUUID(), invoiceId: invoice.id, amountKsh, paymentDate: transactionDate,
+      method: 'mpesa', reference: transactionId, notes: `Daraja C2B payment from ${senderPhone}`,
+      recordedBy: 'daraja_c2b',
+    });
+    billingStore.recordMpesaC2BEvent({ transactionId, billReference, amountKsh, senderPhone, transactionDate, invoiceId: invoice.id, status: 'allocated', payload: req.body });
+    const freshInvoice = billingStore.getInvoice(invoice.id);
+    const attribution = attributePaidInvoiceCommission(payment, freshInvoice, 'daraja');
+    pushAudit('MPESA_C2B_PAYMENT', invoice.invoiceNumber, 'daraja', `Recorded KSh ${amountKsh} C2B payment ${transactionId}${attribution.earning ? ` and credited KSh ${attribution.earning.earned_amount_ksh} agent commission` : ''}`);
+    return darajaReply(res, true, attribution.queued ? 'Payment recorded; commission queued for reconciliation' : 'Payment recorded');
+  } catch (error) {
+    billingStore.recordMpesaC2BEvent({ transactionId, billReference, amountKsh, senderPhone, transactionDate, status: 'needs_review', matchedCustomerId: matchedCustomer.id, matchedCustomerName: matchedCustomer.name, reviewReason: billingText(error.message, 300), payload: req.body });
+    pushAudit('MPESA_C2B_REVIEW', billReference || transactionId, 'daraja', `C2B payment ${transactionId} needs manual allocation: ${billingText(error.message, 200)}`, 'Warning');
+    return darajaReply(res, true, 'Received and queued for billing review');
+  }
+});
+
+app.get('/api/billing/mpesa-c2b-events', requireAuth, requireRole('super_admin', 'finance_approver'), (_req, res) => {
+  return res.json({ ok: true, events: billingStore.listMpesaC2BEvents({ status: 'needs_review' }) });
+});
+
+app.post('/api/billing/mpesa-c2b-events/:transactionId/allocate', requireAuth, requireRole('super_admin'), (req, res) => {
+  const event = billingStore.listMpesaC2BEvents({ status: 'needs_review' }).find(item => item.transaction_id === req.params.transactionId);
+  if (!event) return res.status(404).json({ ok: false, error: 'Unallocated C2B payment not found' });
+  const invoice = billingStore.getInvoice(req.body?.invoiceId);
+  if (!invoice) return res.status(404).json({ ok: false, error: 'Select an invoice' });
+  const allocationReason = billingText(req.body?.allocationReason, 300);
+  if (!event.matched_customer_id && allocationReason.length < 10) {
+    return res.status(400).json({ ok: false, error: 'Add a short explanation for matching this unrecognized or ambiguous school payment to an invoice.' });
+  }
+  if (event.matched_customer_id && invoice.customerId !== event.matched_customer_id) {
+    return res.status(400).json({ ok: false, error: 'The selected invoice does not belong to the customer matched from this Paybill account name.' });
+  }
+  if (!['issued', 'sent'].includes(invoice.status)) return res.status(409).json({ ok: false, error: 'C2B payments can only be allocated to an issued invoice.' });
+  const eventDate = billingText(req.body?.paymentDate || event.transaction_date, 10);
+  const invoiceIssueDate = String(invoice.invoiceSnapshot?.issuedAt || '').slice(0, 10);
+  const todayNairobi = nairobiCalendarDate();
+  const parsedEventDate = new Date(`${eventDate}T00:00:00.000Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(eventDate) || !Number.isFinite(parsedEventDate.getTime())
+      || parsedEventDate.toISOString().slice(0, 10) !== eventDate || eventDate > todayNairobi
+      || (invoiceIssueDate && eventDate < invoiceIssueDate)) {
+    return res.status(409).json({ ok: false, error: 'The C2B payment date is invalid, in the future, or before the invoice issue date; review the receipt before allocation.' });
+  }
+  try {
+    const payment = billingStore.recordPayment({
+      id: crypto.randomUUID(), invoiceId: invoice.id, amountKsh: Number(event.amount_ksh),
+      paymentDate: eventDate, method: 'mpesa', reference: event.transaction_id,
+      notes: `Daraja C2B payment from ${event.sender_phone}; manually matched to ${invoice.invoiceNumber}${allocationReason ? `; review: ${allocationReason}` : ''}`,
+      recordedBy: req.user.email,
+    });
+    billingStore.resolveMpesaC2BEvent(event.transaction_id, invoice.id, 'allocated');
+    const updatedInvoice = billingStore.getInvoice(invoice.id);
+    const attribution = attributePaidInvoiceCommission(payment, updatedInvoice, req.user.email);
+    pushAudit('MPESA_C2B_ALLOCATE', invoice.invoiceNumber, req.user.email, `Allocated C2B payment ${event.transaction_id} to ${invoice.invoiceNumber}${allocationReason ? `; review: ${allocationReason}` : ''}`);
+    return res.status(201).json({ ok: true, payment, invoice: updatedInvoice, autoEarning: attribution.earning, commissionReconciliationRequired: attribution.queued });
+  } catch (error) {
+    return res.status(409).json({ ok: false, error: error.message || 'Could not allocate C2B payment' });
   }
 });
 
@@ -2969,8 +3572,13 @@ app.post('/api/billing/invoices/:id/issue', requireAuth, requireRole('super_admi
   const existing = billingStore.getInvoice(req.params.id);
   if (!existing) return res.status(404).json({ ok: false, error: 'Invoice not found' });
   if (existing.status !== 'draft') return res.status(409).json({ ok: false, error: 'Only a draft invoice can be issued' });
-  const invoiceNumber = `INV-${String(existing.invoiceSnapshot?.quoteNumber || existing.invoiceNumber.replace(/^DRAFT-/, '')).replace(/^Q-/, '')}`;
+  if (existing.quoteId) {
+    const sourceQuote = billingStore.getQuote(existing.quoteId);
+    if (!sourceQuote || (sourceQuote.status !== 'accepted' && sourceQuote.status !== 'converted')) return res.status(409).json({ ok: false, error: 'Only an invoice from an accepted quote can be issued.' });
+    if (discountApprovalPending(sourceQuote.quoteSnapshot)) return res.status(409).json({ ok: false, error: 'A finance approver must approve the source quote’s discount before invoice issuance.' });
+  }
   try {
+    const invoiceNumber = allocateNumber(billingStore._getDb(), 'INV', new Date().getUTCFullYear());
     const invoice = billingStore.issueDraftInvoice(existing.id, invoiceNumber, new Date().toISOString());
     if (!invoice) return res.status(409).json({ ok: false, error: 'This invoice has already been issued or changed' });
     pushAudit('BILLING_INVOICE_ISSUE', invoice.customerId, req.user.email, `Issued commercial invoice ${invoice.invoiceNumber}; tax invoice/eTIMS is not represented`);
@@ -3083,6 +3691,7 @@ app.put('/api/feature-flags/:name', requireAuth, requireRole('super_admin'), (re
   if (typeof enabled !== 'boolean') return res.status(400).json({ ok: false, error: 'enabled must be a boolean' });
   try {
     setFlag(billingStore._getDb(), name, enabled, req.user.email);
+    if (name === 'AUTO_TERM_RENEWAL_INVOICES' && enabled) lastAutomaticRenewalDate = '';
     appendEvent(billingStore._getDb(), {
       type: 'feature_flag.changed',
       aggregateType: 'FeatureFlag',
@@ -3127,6 +3736,31 @@ app.post('/api/term-calendar', requireAuth, requireRole('super_admin'), (req, re
     res.status(500).json({ ok: false, error: err.message });
   }
 });
+
+let lastAutomaticRenewalDate = '';
+function runAutomaticTermRenewals() {
+  if (!getFlag(billingStore._getDb(), 'AUTO_TERM_RENEWAL_INVOICES')) return;
+  const today = nairobiCalendarDate();
+  if (lastAutomaticRenewalDate === today) return;
+  lastAutomaticRenewalDate = today;
+  for (const term of listTerms(billingStore._getDb())) {
+    if (term.billingDate > today || term.endDate < today) continue;
+    try {
+      const result = billingStore.createTermRenewalInvoices(term, 'term_renewal_scheduler');
+      if (result.created.length) {
+        pushAudit('BILLING_TERM_RENEWALS_AUTO', result.periodKey, 'system',
+          `Prepared ${result.created.length} draft renewal invoice(s) for ${result.periodKey}`);
+      }
+    } catch (error) {
+      lastAutomaticRenewalDate = '';
+      pushAudit('BILLING_TERM_RENEWALS_AUTO_FAILED', `${term.year}-T${term.term}`, 'system',
+        `Could not prepare renewal drafts: ${billingText(error.message, 240)}`, 'Warning');
+    }
+  }
+}
+const termRenewalTimer = setInterval(runAutomaticTermRenewals, 60 * 60 * 1000);
+if (termRenewalTimer.unref) termRenewalTimer.unref();
+runAutomaticTermRenewals();
 
 // Only the public/ dir is served statically — server.js, auth-config.js, .env,
 // data/*.store.json and everything else in __dirname stay unreachable over HTTP.

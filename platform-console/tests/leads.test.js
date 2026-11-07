@@ -57,6 +57,15 @@ test('Leads Store & Two-Way Attribution Pipeline', async (t) => {
     assert.equal(byStage.length, 0);
   });
 
+  await t.test('2b. Existing CRM lead can be linked explicitly to an active agent', () => {
+    const lead = leadsStore.listLeads({ search: 'Sunrise Academy' })[0];
+    const assigned = leadsStore.assignLeadToAgent(lead.id, agent.id, 'admin@test');
+    assert.equal(assigned.lead.agentId, agent.id);
+    assert.equal(assigned.lead.agentSchoolId, assigned.school.id);
+    assert.equal(assigned.school.lead_id, lead.id);
+    assert.equal(assigned.school.status, 'pitching');
+  });
+
   let fieldSchool = null;
   let fieldLead = null;
 
@@ -167,20 +176,21 @@ test('Leads Store & Two-Way Attribution Pipeline', async (t) => {
     let school = agentsStore.getSchool(fieldSchool.id);
     assert.equal(school.status, 'pitching');
 
-    // 6b. Move to "converted" -> status becomes "onboarded"
-    leadsStore.updateLead(fieldLead.id, { stage: 'converted' });
+    // Converted status must go through acceptance and billing conversion.
+    assert.throws(() => leadsStore.updateLead(fieldLead.id, { stage: 'converted' }), /acceptance workflow/);
     school = agentsStore.getSchool(fieldSchool.id);
-    assert.equal(school.status, 'onboarded');
+    assert.equal(school.status, 'pitching');
 
-    // 6c. Move to "lost" -> status becomes "churned"
+    // Move to "lost" -> status becomes "churned"
     leadsStore.updateLead(fieldLead.id, { stage: 'lost' });
     school = agentsStore.getSchool(fieldSchool.id);
     assert.equal(school.status, 'churned');
+    leadsStore.updateLead(fieldLead.id, { stage: 'interested' });
   });
 
-  await t.test('7. Instance Provisioning sync: syncProvisionedTenant sets tenant_key and converts lead', () => {
+  await t.test('7. Instance Provisioning sync links by explicit lead ID without changing CRM stage', () => {
     leadsStore.syncProvisionedTenant({
-      schoolName: 'Moi High School Kabarak',
+      leadId: fieldLead.id,
       tenantKey: 'moi-kabarak-prod',
     });
 
@@ -189,7 +199,7 @@ test('Leads Store & Two-Way Attribution Pipeline', async (t) => {
     assert.equal(school.status, 'onboarded');
 
     const lead = leadsStore.getLead(fieldLead.id);
-    assert.equal(lead.stage, 'converted');
+    assert.equal(lead.stage, 'interested');
     assert.equal(lead.nextActivity, 'Instance provisioned');
   });
 

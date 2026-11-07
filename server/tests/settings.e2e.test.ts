@@ -2,6 +2,9 @@
 
 jest.mock('../src/services/redis-cache.service', () => ({
   redisCacheService: {
+    getSecurityValue: jest.fn(async () => null),
+    setSecurityValue: jest.fn(async () => undefined),
+    incrementSecurityCounter: jest.fn(async () => 1),
     get: jest.fn(async () => null),
     set: jest.fn(async () => undefined),
     delete: jest.fn(async () => undefined),

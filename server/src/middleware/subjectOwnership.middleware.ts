@@ -74,11 +74,66 @@ export const checkSubjectOwnership = (opts: { required?: boolean } = { required:
         return next();
       }
 
-      // Extract learnerId + learningArea from body (single or bulk entry)
+      // Extract learnerId + learningArea from body (single or bulk entry).
+      // Bulk assessment routes provide testId/results instead, so resolve the
+      // subject and class scope from the referenced test before validating.
       const body = req.body || {};
-      const learnerId: string | null = body.learnerId ?? null;
-      const learningAreaRaw: string | null =
-        body.learningArea ?? body.subject ?? null;
+      let learnerId: string | null = body.learnerId ?? body.results?.[0]?.learnerId ?? null;
+      let learningAreaRaw: string | null = body.learningArea ?? body.subject ?? null;
+      if (body.testId) {
+        const test = await prisma.summativeTest.findUnique({
+          where: { id: String(body.testId) },
+          select: { grade: true, learningArea: true, learningAreaId: true },
+        });
+        if (!test) return _res.status(404).json({ success: false, message: 'Assessment not found' });
+        learningAreaRaw = learningAreaRaw || test.learningArea;
+        if (Array.isArray(body.results)) {
+          const learnerIds: string[] = Array.from(
+            new Set<string>(
+              body.results
+                .map((item: any) => String(item?.learnerId || ''))
+                .filter((id: string) => id.length > 0),
+            ),
+          );
+          if (!learnerIds.length) return _res.status(400).json({ success: false, message: 'Assessment results require learners' });
+          for (const submittedLearnerId of learnerIds) {
+            const learner = await prisma.learner.findUnique({
+              where: { id: submittedLearnerId },
+              select: { grade: true, enrollments: { where: { active: true, archived: false }, select: { classId: true } } },
+            });
+            if (!learner || learner.grade !== test.grade) return _res.status(403).json({ success: false, code: 'ASSESSMENT_CLASS_SCOPE', message: 'You can only assess learners in your assigned class.' });
+            const classIds = learner.enrollments.map((item) => item.classId);
+            const [subjectAssignment, schedule, classTeacher] = await Promise.all([
+              prisma.subjectAssignment.findFirst({ where: { teacherId: userId, grade: learner.grade, active: true, OR: [{ classId: { in: classIds } }, { classId: null }], learningArea: { OR: [{ name: { equals: test.learningArea, mode: 'insensitive' } }, { shortName: { equals: test.learningArea, mode: 'insensitive' } }] } }, select: { id: true } }),
+              prisma.classSchedule.findFirst({ where: { teacherId: userId, active: true, subject: { equals: test.learningArea, mode: 'insensitive' }, classId: { in: classIds } }, select: { id: true } }),
+              prisma.class.findFirst({ where: { OR: [{ teacherId: userId }, { teacherAssignments: { some: { teacherId: userId } } }], id: { in: classIds }, archived: false, active: true }, select: { id: true } }),
+            ]);
+            if (!subjectAssignment && !schedule && !classTeacher) return _res.status(403).json({ success: false, code: 'SUBJECT_NOT_ASSIGNED', message: 'You are not assigned to this subject or class.' });
+          }
+          req.subjectOwnership = { allowed: true, isClassTeacherOverride: false, subjectName: test.learningArea, learnerId: null, grade: test.grade };
+          return next();
+        }
+      }
+
+      // Creating an assessment uses grade + subject rather than a learner ID.
+      // Require a matching teacher assignment (or the selected class-teacher
+      // assignment) before creating a grade-level assessment.
+      if (!learnerId && body.grade && learningAreaRaw) {
+        const area = body.learningAreaId
+          ? await prisma.learningArea.findUnique({ where: { id: String(body.learningAreaId) }, select: { name: true, shortName: true } })
+          : null;
+        const areaNames = [learningAreaRaw, area?.name, area?.shortName].filter(Boolean) as string[];
+        const grade = String(body.grade);
+        const classId = body.classId ? String(body.classId) : null;
+        const [subjectAssignment, schedule, classTeacher] = await Promise.all([
+          prisma.subjectAssignment.findFirst({ where: { teacherId: userId, grade, active: true, ...(classId ? { classId } : {}), learningArea: { OR: areaNames.flatMap((name) => [{ name: { equals: name, mode: 'insensitive' as const } }, { shortName: { equals: name, mode: 'insensitive' as const } }]) } }, select: { id: true } }),
+          prisma.classSchedule.findFirst({ where: { teacherId: userId, active: true, subject: { in: areaNames, mode: 'insensitive' }, ...(classId ? { classId } : {}) }, select: { id: true } }),
+          classId ? prisma.class.findFirst({ where: { id: classId, grade, teacherId: userId, archived: false, active: true }, select: { id: true } }) : Promise.resolve(null),
+        ]);
+        if (!subjectAssignment && !schedule && !classTeacher) return _res.status(403).json({ success: false, code: 'SUBJECT_NOT_ASSIGNED', message: 'You are not assigned to this subject or class.' });
+        req.subjectOwnership = { allowed: true, isClassTeacherOverride: !!classTeacher && !subjectAssignment && !schedule, subjectName: learningAreaRaw, learnerId: null, grade };
+        return next();
+      }
 
       // If we can't determine subject context, allow through (let controller validate)
       if (!learnerId && !learningAreaRaw) {

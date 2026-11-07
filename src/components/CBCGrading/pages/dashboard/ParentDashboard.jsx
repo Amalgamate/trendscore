@@ -3,12 +3,8 @@
  *
  * Architecture: dashboard = family overview. Sidebar / nav = module entry points.
  *
- * Sections:
- *   Header        — greeting + date
- *   My Children   — scannable child cards (Present · Attendance · Balance · Term avg)
- *   My Balance    — total outstanding with per-child breakdown + pay/statement CTAs
- *   Communication — unified message preview (school msgs + chats merged)
- *   School Today  — child-aware timetable snapshot
+ * Sections: greeting, child summaries, fees, recent inbox item, and a link to
+ * the live attendance/schedule page.
  *
  * Removed: QuickActions, SchoolPulse, LatestNewsletterCard, AnnouncementsCard,
  *          FooterUtility, HeroCard
@@ -16,11 +12,9 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
-  AlertTriangle, ArrowRight, BarChart3, Bell,
-  BookOpen, Calendar, CheckCircle2, ChevronRight,
-  ClipboardCheck, Eye, EyeOff, FileText, GraduationCap,
-  HelpCircle, Loader2, MessageSquare, Pencil,
-  Users, Wallet,
+  AlertTriangle, BookOpen, Bus, Calendar, ChevronDown, ChevronRight,
+  Eye, EyeOff, FileText, Headphones, Loader2, MessageSquare, Pencil,
+  Settings, Users, Wallet,
 } from 'lucide-react';
 import { dashboardAPI } from '../../../../services/api';
 import { useRolePreview } from '../../../../contexts/RolePreviewContext';
@@ -29,7 +23,6 @@ import { hasPageAccess } from '../../utils/appAccess';
 import MobilePortalAppBar from '../../layout/MobilePortalAppBar';
 import EditStudentModal from '../parent/EditStudentModal';
 import { Skeleton } from '../../../ui';
-import { useUserNotifications } from '../../../../contexts/UserNotificationContext';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const fmt = (n) => Number(n || 0).toLocaleString('en-KE');
@@ -44,12 +37,12 @@ const getTimeGreeting = () => {
 };
 
 const attendanceColor = (rate) => {
-  if (rate >= 90) return 'text-emerald-600';
-  if (rate >= 75) return 'text-amber-500';
-  return 'text-rose-500';
+  if (rate >= 90) return 'text-emerald-800';
+  if (rate >= 75) return 'text-amber-800';
+  return 'text-rose-700';
 };
 
-const balanceColor = (bal) => bal > 0 ? 'text-rose-600' : 'text-emerald-600';
+const balanceColor = (bal) => bal > 0 ? 'text-rose-700' : 'text-emerald-800';
 
 const getChildPhoto = (child) =>
   child?.photoUrl || child?.profilePicture || child?.photo || child?.imageUrl || null;
@@ -66,21 +59,21 @@ function ChildCard({ child, showFees, onViewChild, onEditChild }) {
   const initials   = (child.name || '??').split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-      {/* Child identity row */}
-      <div className="flex items-center gap-3 px-4 pt-4 pb-3">
+    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+      <div className="flex items-center gap-2.5 px-3 py-2.5">
+        <button type="button" onClick={() => onViewChild(child)} className="flex min-w-0 flex-1 items-center gap-2.5 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-700">
         <div className="relative flex-shrink-0">
           {photoSrc ? (
             <img
               src={photoSrc}
               alt={child.name}
-              className="w-12 h-12 rounded-full object-cover border-2 border-[#3B1FA3]/30"
+              className="w-10 h-10 rounded-full object-cover border border-[#3B1FA3]/30"
               onError={e => { e.currentTarget.style.display = 'none'; e.currentTarget.nextSibling.style.display = 'flex'; }}
             />
           ) : null}
           <div
             style={{ display: photoSrc ? 'none' : 'flex' }}
-            className="w-12 h-12 rounded-full bg-[#3B1FA3]/10 border-2 border-[#3B1FA3]/20 text-[#3B1FA3] font-black text-base items-center justify-center flex-shrink-0"
+            className="w-10 h-10 rounded-full bg-[#3B1FA3]/10 border border-[#3B1FA3]/20 text-[#3B1FA3] font-black text-sm items-center justify-center flex-shrink-0"
           >
             {initials}
           </div>
@@ -90,55 +83,44 @@ function ChildCard({ child, showFees, onViewChild, onEditChild }) {
 
         <div className="flex-1 min-w-0">
           <p className="text-sm font-bold text-gray-900 truncate">{child.name}</p>
-          <p className="text-xs text-gray-500">{child.grade} · {child.className || 'Class'}</p>
-          <p className={`text-[10px] font-semibold mt-0.5 ${isPresent ? 'text-emerald-600' : 'text-gray-400'}`}>
-            {isPresent ? '● Present today' : '○ Absent today'}
+          <p className="text-xs text-slate-600">{child.grade} · {child.className || 'Class'}</p>
+          <p className={`mt-0.5 text-[10px] font-semibold ${isPresent ? 'text-emerald-800' : 'text-slate-600'}`}>
+            {isPresent ? 'Present today' : 'Not marked present'}
           </p>
         </div>
+        <ChevronRight size={17} className="shrink-0 text-slate-600" />
+        </button>
 
         <button
           type="button"
           onClick={() => onEditChild(child)}
-          className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 hover:bg-gray-200 flex-shrink-0"
+          aria-label={`Edit ${child.name}`}
+          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100"
         >
-          <Pencil size={12} />
+          <Pencil size={15} />
         </button>
       </div>
 
-      {/* Stats row */}
-      <div className={`grid gap-0 border-t border-gray-100 divide-x divide-gray-100 ${showFees ? 'grid-cols-3' : 'grid-cols-2'}`}>
-        <div className="px-3 py-2.5 text-center">
-          <p className="text-[9px] font-bold uppercase tracking-wider text-gray-400">Attendance</p>
-          <p className={`text-base font-black mt-0.5 ${attendanceColor(attendance)}`}>{attendance}%</p>
-          <p className="text-[9px] text-gray-400">This term</p>
+      <div className={`grid border-t border-slate-100 divide-x divide-slate-100 ${showFees ? 'grid-cols-3' : 'grid-cols-2'}`}>
+        <div className="px-2 py-2 text-center">
+          <p className="text-[9px] font-bold text-slate-600">Attendance</p>
+          <p className={`mt-0.5 text-sm font-extrabold ${attendanceColor(attendance)}`}>{attendance}%</p>
         </div>
         {showFees && (
-          <div className="px-3 py-2.5 text-center">
-            <p className="text-[9px] font-bold uppercase tracking-wider text-gray-400">Balance</p>
-            <p className={`text-base font-black mt-0.5 ${balanceColor(balance)}`}>
+          <div className="px-2 py-2 text-center">
+            <p className="text-[9px] font-bold text-slate-600">Balance</p>
+            <p className={`mt-0.5 text-sm font-extrabold ${balanceColor(balance)}`}>
               {balance > 0 ? `KES ${fmt(balance)}` : 'Cleared'}
             </p>
-            <p className="text-[9px] text-gray-400">{balance > 0 ? 'Due' : 'Settled'}</p>
           </div>
         )}
-        <div className="px-3 py-2.5 text-center">
-          <p className="text-[9px] font-bold uppercase tracking-wider text-gray-400">This term</p>
-          <p className={`text-base font-black mt-0.5 ${termAvg != null ? attendanceColor(termAvg) : 'text-gray-400'}`}>
+        <div className="px-2 py-2 text-center">
+          <p className="text-[9px] font-bold text-slate-600">Term average</p>
+          <p className={`mt-0.5 text-sm font-extrabold ${termAvg != null ? attendanceColor(termAvg) : 'text-slate-600'}`}>
             {termAvg != null ? `${termAvg}%` : '—'}
           </p>
-          <p className="text-[9px] text-gray-400">Avg score</p>
         </div>
       </div>
-
-      {/* View dashboard CTA */}
-      <button
-        type="button"
-        onClick={() => onViewChild(child)}
-        className="w-full flex items-center justify-between px-4 py-3 border-t border-gray-100 text-xs font-semibold text-[#3B1FA3] hover:bg-[#3B1FA3]/5 transition-colors"
-      >
-        View child dashboard
-        <ChevronRight size={14} />
-      </button>
     </div>
   );
 }
@@ -146,13 +128,11 @@ function ChildCard({ child, showFees, onViewChild, onEditChild }) {
 // ─── MyChildren ───────────────────────────────────────────────────────────────
 
 function MyChildren({ children, loading, showFees, onViewChild, onEditChild, onNavigate }) {
+  const [expanded, setExpanded] = useState(false);
   if (loading) {
     return (
       <section>
-        <SectionHeader title="My Children" action="View all" onAction={() => onNavigate('parent-portal-children')} />
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {[1, 2].map(i => <Skeleton key={i} className="h-44 rounded-2xl" />)}
-        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-3"><div className="mb-3 h-4 w-28 animate-pulse rounded bg-slate-200" /><div className="flex gap-2">{[1, 2].map(i => <Skeleton key={i} className="h-10 w-10 rounded-full" />)}</div></div>
       </section>
     );
   }
@@ -161,33 +141,39 @@ function MyChildren({ children, loading, showFees, onViewChild, onEditChild, onN
     return (
       <section>
         <SectionHeader title="My Children" />
-        <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-8 text-center">
-          <Users size={28} className="mx-auto mb-2 text-gray-300" />
-          <p className="text-sm text-gray-500">No children linked to your account</p>
+        <div className="bg-white rounded-xl border border-dashed border-slate-300 p-5 text-center">
+          <Users size={24} className="mx-auto mb-2 text-slate-500" />
+          <p className="text-sm font-semibold text-slate-800">No children are linked to your account yet.</p>
+          <p className="mt-1 text-xs text-slate-600">Ask the school to link your parent account.</p>
         </div>
       </section>
     );
   }
 
   return (
-    <section>
-      <SectionHeader
-        title="My Children"
-        subtitle={`${children.length} enrolled`}
-        action="View all"
-        onAction={() => onNavigate('parent-portal-children')}
-      />
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {children.map(child => (
-          <ChildCard
-            key={child.id}
-            child={child}
-            showFees={showFees}
-            onViewChild={onViewChild}
-            onEditChild={onEditChild}
-          />
-        ))}
-      </div>
+    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => setExpanded(value => !value)}
+        className="flex min-h-12 w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-700"
+      >
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-700 text-white"><Users size={19} /></span>
+        <span className="flex-1"><span className="block text-sm font-extrabold text-slate-950">My Children</span><span className="block text-xs font-semibold text-blue-800">{children.length} {children.length === 1 ? 'child' : 'children'}</span></span>
+        {children.slice(0, 3).map((child, index) => {
+          const photo = getChildPhoto(child);
+          const initials = (child.name || '?').split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
+          return photo
+            ? <img key={child.id} src={photo} alt="" className="-ml-1 h-8 w-8 rounded-full border-2 border-white object-cover ring-2 ring-white" style={{ zIndex: 3 - index }} onError={e => { e.currentTarget.style.display = 'none'; }} />
+            : <span key={child.id} aria-hidden="true" className="-ml-1 flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-indigo-100 text-[10px] font-extrabold text-indigo-900 ring-2 ring-white" style={{ zIndex: 3 - index }}>{initials}</span>;
+        })}
+        {children.length > 3 && <span className="-ml-1 flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-slate-100 text-[10px] font-bold text-slate-700 ring-1 ring-slate-200">+{children.length - 3}</span>}
+        <ChevronDown size={18} className={`shrink-0 text-slate-600 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+      </button>
+      {expanded && <div className="grid grid-cols-1 gap-2 border-t border-slate-100 bg-slate-50/60 p-2 sm:grid-cols-2">
+        {children.map(child => <ChildCard key={child.id} child={child} showFees={showFees} onViewChild={onViewChild} onEditChild={onEditChild} />)}
+        <button type="button" onClick={() => onNavigate('parent-portal-children')} className="flex min-h-11 items-center justify-center gap-1 rounded-lg border border-dashed border-slate-300 bg-white px-3 text-xs font-bold text-indigo-800 hover:bg-indigo-50">View all children <ChevronRight size={14} /></button>
+      </div>}
     </section>
   );
 }
@@ -197,171 +183,34 @@ function MyChildren({ children, loading, showFees, onViewChild, onEditChild, onN
 function MyBalance({ metrics, loading, onNavigate }) {
   const [visible, setVisible] = useState(true);
   const stats = metrics?.stats || {};
-  const children = metrics?.children || [];
   const total = Number(stats.totalBalance || 0);
 
-  if (loading) return <Skeleton className="h-36 rounded-2xl" />;
+  if (loading) return <Skeleton className="h-16 rounded-xl" />;
 
   return (
-    <section className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
-      <div className="flex items-center justify-between mb-3">
-        <div>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">My Balance</p>
-          <div className="flex items-center gap-2 mt-1">
-            <p className={`text-2xl font-black ${balanceColor(total)}`}>
+    <section className="rounded-xl border border-slate-200 bg-white px-3 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-50"><Wallet size={18} className="text-indigo-800" /></div>
+          <div className="min-w-0">
+            <p className="text-xs font-bold text-slate-700">Fees balance</p>
+            <div className="flex items-center gap-1.5">
+            <p className={`truncate text-base font-extrabold ${balanceColor(total)}`}>
               {visible ? `KES ${fmt(total)}` : 'KES ••••'}
             </p>
             <button
               type="button"
               onClick={() => setVisible(v => !v)}
-              className="text-gray-400 hover:text-gray-600"
+              aria-label={visible ? 'Hide fees balance' : 'Show fees balance'}
+              className="text-slate-600 hover:text-slate-950"
             >
               {visible ? <EyeOff size={14} /> : <Eye size={14} />}
             </button>
           </div>
-          <p className="text-[10px] text-gray-400 mt-0.5">Total outstanding</p>
-        </div>
-        <div className="w-12 h-12 rounded-2xl bg-[#3B1FA3]/10 flex items-center justify-center">
-          <Wallet size={20} className="text-[#3B1FA3]" />
-        </div>
-      </div>
-
-      {/* Per-child breakdown */}
-      {children.length > 0 && (
-        <div className="space-y-1.5 mb-3">
-          {children.map(child => {
-            const bal = Number(child.feeBalance || 0);
-            return (
-              <div key={child.id} className="flex items-center justify-between">
-                <p className="text-xs text-gray-600 font-medium truncate flex-1 mr-2">{child.name?.split(' ')[0]} {child.name?.split(' ')[1] || ''}</p>
-                <p className={`text-xs font-bold flex-shrink-0 ${balanceColor(bal)}`}>
-                  {bal > 0 ? `KES ${fmt(bal)}` : 'Cleared'}
-                </p>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      <div className="flex gap-2 mt-3">
-        <button
-          type="button"
-          onClick={() => onNavigate('parent-portal-fees')}
-          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-[#3B1FA3] text-white text-xs font-bold rounded-xl hover:bg-[#2d1680] transition-colors"
-        >
-          <Wallet size={13} /> Pay fees
-        </button>
-        <button
-          type="button"
-          onClick={() => onNavigate('fees-statements')}
-          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 border border-gray-200 text-gray-700 text-xs font-bold rounded-xl hover:bg-gray-50 transition-colors"
-        >
-          <FileText size={13} /> Statement
-        </button>
-      </div>
-    </section>
-  );
-}
-
-// ─── CommunicationPreview ─────────────────────────────────────────────────────
-
-function CommunicationPreview({ metrics, loading, onNavigate }) {
-  const { unreadCount = 0 } = useUserNotifications?.() || {};
-  const messages = (metrics?.messages || []).slice(0, 3);
-
-  const SENDER_COLORS = {
-    teacher: 'bg-violet-500',
-    admin: 'bg-blue-500',
-    school: 'bg-indigo-500',
-  };
-
-  const colorForSender = (msg) => {
-    const role = String(msg.senderRole || '').toLowerCase();
-    if (role.includes('teacher')) return SENDER_COLORS.teacher;
-    if (role.includes('admin')) return SENDER_COLORS.admin;
-    return SENDER_COLORS.school;
-  };
-
-  const dotColor = (msg) => {
-    const role = String(msg.senderRole || '').toLowerCase();
-    if (role.includes('teacher')) return 'bg-violet-500';
-    if (role.includes('admin')) return 'bg-blue-500';
-    return 'bg-indigo-500';
-  };
-
-  const fmtTime = (ts) => {
-    if (!ts) return '';
-    const d = new Date(ts);
-    const now = new Date();
-    const diff = now - d;
-    if (diff < 3600000) return `${Math.round(diff / 60000)} min ago`;
-    if (diff < 86400000) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    if (diff < 172800000) return 'Yesterday';
-    return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
-  };
-
-  return (
-    <section className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <p className="text-sm font-bold text-gray-900">Communication</p>
-          {unreadCount > 0 && (
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#3B1FA3] text-white">
-              {unreadCount} unread
-            </span>
-          )}
-        </div>
-        <button
-          type="button"
-          onClick={() => onNavigate('parent-portal-communication')}
-          className="text-xs font-semibold text-[#3B1FA3] flex items-center gap-0.5 hover:underline"
-        >
-          View all <ArrowRight size={12} />
-        </button>
-      </div>
-
-      {loading ? (
-        <div className="space-y-2">
-          {[1, 2].map(i => <Skeleton key={i} className="h-12 rounded-xl" />)}
-        </div>
-      ) : messages.length > 0 ? (
-        <div className="space-y-2">
-          {messages.map((msg, i) => (
-            <button
-              key={msg.id || i}
-              type="button"
-              onClick={() => onNavigate('parent-portal-communication')}
-              className="w-full flex items-start gap-3 p-3 rounded-xl hover:bg-gray-50 transition-colors text-left"
-            >
-              <div className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-white text-xs font-bold ${colorForSender(msg)}`}>
-                {(msg.senderName || 'S').slice(0, 1).toUpperCase()}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-xs font-semibold text-gray-900 truncate">{msg.senderName || 'School'}</p>
-                  <span className="text-[10px] text-gray-400 flex-shrink-0">{fmtTime(msg.createdAt || msg.timestamp)}</span>
-                </div>
-                <p className="text-xs text-gray-500 truncate mt-0.5">{msg.subject || msg.preview || msg.body || '—'}</p>
-              </div>
-              {(msg.unread || msg.isUnread) && (
-                <span className={`w-2 h-2 rounded-full flex-shrink-0 mt-1.5 ${dotColor(msg)}`} />
-              )}
-            </button>
-          ))}
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => onNavigate('parent-portal-communication')}
-          className="w-full flex items-center justify-between p-3 rounded-xl hover:bg-gray-50 transition-colors"
-        >
-          <div className="flex items-center gap-2 text-gray-500">
-            <MessageSquare size={16} />
-            <p className="text-xs font-medium">Go to messages</p>
           </div>
-          <ChevronRight size={14} className="text-gray-400" />
-        </button>
-      )}
+        </div>
+        <button type="button" onClick={() => onNavigate('parent-portal-fees')} className="inline-flex min-h-10 items-center gap-1.5 rounded-lg bg-[#3B1FA3] px-3 py-2 text-xs font-bold text-white hover:bg-[#2d1680]">View fees <ChevronRight size={14} /></button>
+      </div>
     </section>
   );
 }
@@ -370,109 +219,13 @@ function CommunicationPreview({ metrics, loading, onNavigate }) {
 // Child-aware timetable snapshot. No real endpoint yet — displays placeholder
 // with honest "No live timetable yet" state. TODO: GET /api/school-pulse?studentId=X
 
-function SchoolToday({ children, loading, onNavigate }) {
-  const [activeChild, setActiveChild] = useState(0);
-
-  // Placeholder slots — replaced when real API is available
-  const PLACEHOLDER = [
-    { label: 'Physical Education', time: '08:30–09:30' },
-    { label: 'Mathematics', time: '09:30–10:30' },
-  ];
-
-  const child = children[activeChild];
-
+function SchoolToday({ onNavigate }) {
   return (
-    <section className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-sm font-bold text-gray-900">School Today</p>
-        <button
-          type="button"
-          onClick={() => onNavigate('parent-portal-school-today')}
-          className="text-xs font-semibold text-[#3B1FA3] flex items-center gap-0.5 hover:underline"
-        >
-          View full schedule <ArrowRight size={12} />
-        </button>
-      </div>
-
-      {/* Child selector tabs — only when multiple children */}
-      {children.length > 1 && (
-        <div className="flex gap-1.5 mb-3 overflow-x-auto scrollbar-none">
-          <button
-            type="button"
-            onClick={() => setActiveChild(-1)}
-            className={`flex-shrink-0 px-3 py-1 rounded-full text-[11px] font-bold transition-colors ${activeChild === -1 ? 'bg-[#3B1FA3] text-white' : 'bg-gray-100 text-gray-600'}`}
-          >
-            All
-          </button>
-          {children.map((c, i) => (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => setActiveChild(i)}
-              className={`flex-shrink-0 px-3 py-1 rounded-full text-[11px] font-bold transition-colors ${activeChild === i ? 'bg-[#3B1FA3] text-white' : 'bg-gray-100 text-gray-600'}`}
-            >
-              {c.name?.split(' ')[0]}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {loading ? (
-        <div className="space-y-2">
-          {[1, 2].map(i => <Skeleton key={i} className="h-12 rounded-xl" />)}
-        </div>
-      ) : activeChild === -1 ? (
-        // All-children condensed view
-        <div className="space-y-2">
-          {children.map(c => {
-            const isPresent = c.todayStatus === 'PRESENT' || c.isPresent;
-            return (
-              <div key={c.id} className="flex items-start gap-3 p-3 rounded-xl bg-gray-50">
-                <span className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${isPresent ? 'bg-emerald-500' : 'bg-gray-300'}`} />
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-bold text-gray-900">{c.name?.split(' ')[0]}</p>
-                  <p className="text-[10px] text-gray-500">{isPresent ? 'At school' : 'Not present'} · {PLACEHOLDER[0].label} → {PLACEHOLDER[1].label}</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => onNavigate('parent-portal-school-today')}
-                  className="text-[10px] text-[#3B1FA3] font-semibold flex-shrink-0"
-                >
-                  Schedule →
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      ) : child ? (
-        // Single child detail
-        <div className="space-y-2">
-          {/* Present badge */}
-          <div className="flex items-center gap-2">
-            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold ${(child.todayStatus === 'PRESENT' || child.isPresent) ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${(child.todayStatus === 'PRESENT' || child.isPresent) ? 'bg-emerald-500' : 'bg-gray-400'}`} />
-              {child.name?.split(' ')[0]} {(child.todayStatus === 'PRESENT' || child.isPresent) ? 'is at school' : 'is not present'}
-            </span>
-          </div>
-          {/* Current + next lesson */}
-          <div className="grid grid-cols-2 gap-2">
-            <div className="rounded-xl bg-[#3B1FA3]/5 border border-[#3B1FA3]/15 p-3">
-              <p className="text-[9px] font-bold uppercase text-[#3B1FA3] tracking-wider">Now</p>
-              <p className="text-xs font-bold text-gray-900 mt-1">{PLACEHOLDER[0].label}</p>
-              <p className="text-[10px] text-gray-500">{PLACEHOLDER[0].time}</p>
-            </div>
-            <div className="rounded-xl bg-gray-50 border border-gray-100 p-3">
-              <p className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">Next</p>
-              <p className="text-xs font-bold text-gray-900 mt-1">{PLACEHOLDER[1].label}</p>
-              <p className="text-[10px] text-gray-500">{PLACEHOLDER[1].time}</p>
-            </div>
-          </div>
-          <p className="text-[9px] text-gray-400 text-center pt-1">⚠ Live timetable coming soon</p>
-        </div>
-      ) : (
-        <p className="text-xs text-gray-400 text-center py-4">No children linked</p>
-      )}
-    </section>
+    <button type="button" onClick={() => onNavigate('parent-portal-school-today')} className="flex min-h-14 w-full items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-700">
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-800"><Calendar size={19} /></span>
+      <span className="min-w-0 flex-1"><span className="block text-sm font-bold text-slate-950">Check today’s attendance and schedule</span><span className="block text-xs text-slate-700">See the latest update for each child.</span></span>
+      <ChevronRight size={17} className="shrink-0 text-slate-600" />
+    </button>
   );
 }
 
@@ -483,7 +236,7 @@ function SectionHeader({ title, subtitle, action, onAction }) {
     <div className="flex items-center justify-between mb-3">
       <div>
         <h2 className="text-sm font-bold text-gray-900">{title}</h2>
-        {subtitle && <p className="text-[10px] text-gray-400 mt-0.5">{subtitle}</p>}
+        {subtitle && <p className="mt-0.5 text-xs font-medium text-slate-600">{subtitle}</p>}
       </div>
       {action && (
         <button
@@ -548,7 +301,14 @@ const ParentDashboard = ({ user, onNavigate, onLogout, brandingSettings }) => {
     const ParentChildProfile = React.lazy(() => import('../parent/ParentChildProfile'));
     return (
       <React.Suspense fallback={<div className="flex justify-center py-24"><Loader2 size={24} className="animate-spin text-[#3B1FA3]" /></div>}>
-        <ParentChildProfile child={selectedChild} onBack={() => setSelectedChild(null)} initialTab="results" />
+        <ParentChildProfile
+          child={selectedChild}
+          siblings={metrics?.children || []}
+          onSelectChild={setSelectedChild}
+          onNavigate={onNavigate}
+          onBack={() => setSelectedChild(null)}
+          initialTab="diary"
+        />
       </React.Suspense>
     );
   }
@@ -568,12 +328,11 @@ const ParentDashboard = ({ user, onNavigate, onLogout, brandingSettings }) => {
 
   const children = metrics?.children || [];
   const firstName = user?.firstName || user?.name?.split(' ')?.[0] || 'there';
-  const today = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
 
   return (
-    <div className="pb-24">
+    <div>
       {/* Mobile app bar */}
-      <div className="block md:hidden -mx-4 -mt-4 mb-4">
+      <div className="block md:hidden -mt-4 mb-4">
         <MobilePortalAppBar
           user={user}
           onNavigate={onNavigate}
@@ -594,15 +353,13 @@ const ParentDashboard = ({ user, onNavigate, onLogout, brandingSettings }) => {
         />
       )}
 
-      <div className="px-4 md:px-0 space-y-6 pt-4">
+      <div className="px-3 md:px-0 space-y-4 pt-2 md:pt-0">
         {/* ── Greeting ── */}
         <div>
-          <h1 className="text-xl font-bold text-gray-900">
+          <h1 className="text-lg font-extrabold text-slate-950">
             {getTimeGreeting()}, {firstName}! 👋
           </h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Here's what's happening with your children today.
-          </p>
+          <p className="mt-0.5 text-xs font-medium text-slate-700">Choose a child to read the diary, check fees or view attendance.</p>
         </div>
 
         {/* ── My Children ── */}
@@ -615,18 +372,37 @@ const ParentDashboard = ({ user, onNavigate, onLogout, brandingSettings }) => {
           onNavigate={onNavigate}
         />
 
+        {children.length > 0 && <section aria-label="Parent actions" className="overflow-hidden rounded-xl border border-slate-200 bg-white divide-y divide-slate-100">
+          <button type="button" onClick={() => setSelectedChild(children[0])} className="flex min-h-12 w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-slate-50">
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-700 text-white"><BookOpen size={19} /></span><span className="flex-1 text-sm font-bold text-slate-950">Read the diary</span><ChevronRight size={17} className="text-slate-500" />
+          </button>
+          {showFees && <button type="button" onClick={() => onNavigate('parent-portal-fees')} className="flex min-h-12 w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-slate-50">
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-700 text-white"><Wallet size={19} /></span><span className="flex-1 text-sm font-bold text-slate-950">Pay or check school fees</span><ChevronRight size={17} className="text-slate-500" />
+          </button>}
+          <button type="button" onClick={() => onNavigate('parent-portal-school-today')} className="flex min-h-12 w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-slate-50">
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-violet-700 text-white"><Calendar size={19} /></span><span className="flex-1 text-sm font-bold text-slate-950">Check today’s attendance</span><ChevronRight size={17} className="text-slate-500" />
+          </button>
+          <button type="button" onClick={() => onNavigate('parent-portal-communication')} className="flex min-h-12 w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-slate-50">
+            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-orange-600 text-white"><MessageSquare size={19} /></span><span className="flex-1 text-sm font-bold text-slate-950">Message the school</span><ChevronRight size={17} className="text-slate-500" />
+          </button>
+        </section>}
+
         {/* ── My Balance (conditional on module access) ── */}
         {showFees && (
           <MyBalance metrics={metrics} loading={loading} onNavigate={onNavigate} />
         )}
 
-        {/* ── Communication preview ── */}
-        <CommunicationPreview metrics={metrics} loading={loading} onNavigate={onNavigate} />
-
         {/* ── School Today ── */}
-        {children.length > 0 && (
-          <SchoolToday children={children} loading={loading} onNavigate={onNavigate} />
-        )}
+        {children.length > 0 && <section className="grid grid-cols-2 gap-2">
+          {[
+            { id: 'parent-portal-transport', label: 'Check transport', icon: Bus, color: 'bg-amber-600' },
+            { id: 'parent-portal-documents', label: 'School documents', icon: FileText, color: 'bg-teal-700' },
+            { id: 'parent-portal-support', label: 'Get help', icon: Headphones, color: 'bg-slate-700' },
+            { id: 'parent-portal-more', label: 'Settings', icon: Settings, color: 'bg-indigo-700' },
+          ].filter(item => hasPageAccess({ ...(user || {}), enabledApps: activeSlugs }, item.id)).map(({ id, label, icon: Icon, color }) => (
+            <button key={id} type="button" onClick={() => onNavigate(id)} className="flex min-h-11 items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-left text-xs font-bold text-slate-900 hover:bg-slate-50"><span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-white ${color}`}><Icon size={17} /></span><span className="flex-1">{label}</span><ChevronRight size={14} className="text-slate-500" /></button>
+          ))}
+        </section>}
       </div>
     </div>
   );

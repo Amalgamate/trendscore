@@ -63,8 +63,12 @@ export class InventoryController {
     // MOVEMENTS
     async recordMovement(req: Request, res: Response) {
         try {
+            const { storeId, notes, ...movementData } = req.body;
             const movement = await inventoryService.recordMovement({
-                ...req.body,
+                ...movementData,
+                fromStoreId: movementData.fromStoreId ?? (movementData.type === 'OUT' ? storeId : undefined),
+                toStoreId: movementData.toStoreId ?? (movementData.type !== 'OUT' ? storeId : undefined),
+                description: notes ?? movementData.description,
                 performedById: (req as any).user?.id
             });
             res.json({ success: true, data: movement });

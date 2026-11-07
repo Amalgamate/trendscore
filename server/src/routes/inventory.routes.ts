@@ -34,8 +34,17 @@ const recordMovementSchema = z.object({
   itemId: z.string().min(1),
   type: z.enum(['IN', 'OUT', 'ADJUSTMENT']),
   quantity: z.number().min(0),
+  storeId: z.string().min(1).optional(),
+  fromStoreId: z.string().min(1).optional(),
+  toStoreId: z.string().min(1).optional(),
+  reference: z.string().max(100).optional(),
   notes: z.string().max(500).optional()
-});
+}).refine(
+  (movement) => movement.type === 'OUT'
+    ? Boolean(movement.storeId || movement.fromStoreId)
+    : Boolean(movement.storeId || movement.toStoreId || movement.fromStoreId),
+  { message: 'Select a store for this stock movement', path: ['storeId'] }
+);
 
 const createRequisitionSchema = z.object({
   itemId: z.string().min(1),

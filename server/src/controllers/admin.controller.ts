@@ -81,8 +81,13 @@ export class AdminController {
   async searchUsersForImpersonation(req: AuthRequest, res: Response, next: NextFunction) {
     const q = String(req.query.q ?? '');
     const limit = parseInt(String(req.query.limit ?? '10'), 10) || 10;
+    const offset = parseInt(String(req.query.offset ?? '0'), 10) || 0;
+    const browse = String(req.query.mode ?? '') === 'directory';
 
-    const results = await impersonationService.searchUsers(q, req.user!, limit);
+    const results = await impersonationService.searchUsers(q, req.user!, limit, {
+      browse,
+      offset,
+    });
     res.json({ success: true, data: results });
   }
 
@@ -127,7 +132,10 @@ export class AdminController {
    * POST /api/admin/impersonate/stop
    */
   async stopImpersonation(req: AuthRequest, res: Response, next: NextFunction) {
-    const token: string = req.cookies?.accessToken ?? '';
+    // Mobile/API clients authenticate with a Bearer token and do not carry
+    // the browser's httpOnly accessToken cookie. auth.middleware captures the
+    // verified raw token for this revocation operation.
+    const token: string = req.accessToken || req.cookies?.accessToken || '';
 
     if (!req.user?.isImpersonation) {
       throw new ApiError(400, 'Not in an impersonation session');

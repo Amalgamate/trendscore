@@ -46,11 +46,11 @@ test('unknown flag name returns false and does not throw', () => {
   } finally { cleanup(env); }
 });
 
-test('listFlags returns all 6 seeded flags with enabled as boolean', () => {
+test('listFlags returns all 7 seeded flags with enabled as boolean', () => {
   const env = setup();
   try {
     const flags = listFlags(env.db);
-    assert.equal(flags.length, 6);
+    assert.equal(flags.length, 7);
     assert.ok(flags.every(f => typeof f.enabled === 'boolean'));
   } finally { cleanup(env); }
 });

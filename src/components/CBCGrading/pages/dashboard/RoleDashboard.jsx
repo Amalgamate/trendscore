@@ -8,23 +8,18 @@ import { usePermissions } from '../../../../hooks/usePermissions';
 import { useAuth } from '../../../../hooks/useAuth';
 import { getSelectedInstitutionType } from '../../../../services/schoolContext';
 import AdminDashboard from './AdminDashboard';
-import SecondaryAdminDashboard from './SecondaryAdminDashboard';
-import HeadTeacherDashboard from './HeadTeacherDashboard';
-import CurriculumHeadDashboard from './CurriculumHeadDashboard';
+import DeputyHeadDashboard from './DeputyHeadDashboard';
 import SuperAdminDashboard from './SuperAdminDashboard';
 import TeacherDashboard from './TeacherDashboard';
 import ParentDashboard from './ParentDashboard';
 import AccountantDashboard from './AccountantDashboard';
 import ReceptionistDashboard from './ReceptionistDashboard';
-import StarterDashboard from './StarterDashboard';
+import RoleLandingDashboard, { OPERATIONAL_STAFF_ROLES } from './RoleLandingDashboard';
 import MobileDashboard from '../../dashboard/MobileDashboard';
-import TermCountdownCard from '../../dashboard/TermCountdownCard';
 import StudentDashboard from '../student/StudentDashboard';
 import ComingSoon from '../../shared/ComingSoon';
 import useMediaQuery from '../../hooks/useMediaQuery';
 import { MOBILE_MEDIA_QUERY } from '../../../../constants/breakpoints';
-import { useModuleAccess } from '../../../../contexts/ModuleAccessContext';
-import { isStarterPackageApps, isStarterPackageModules } from '../../../../utils/packageAccess';
 
 const RoleDashboardBody = ({ learners, pagination, teachers, user, onNavigate, brandingSettings, currentPage = 'dashboard' }) => {
   const { role } = usePermissions();
@@ -32,23 +27,6 @@ const RoleDashboardBody = ({ learners, pagination, teachers, user, onNavigate, b
   const selectedInstitutionType = String(getSelectedInstitutionType() || '').toUpperCase();
   const resolvedInstitutionType = selectedInstitutionType || String(institutionType || '').toUpperCase();
   const isMobile = useMediaQuery(MOBILE_MEDIA_QUERY);
-  const { activeSlugs, modules } = useModuleAccess();
-  const starterPackage = isStarterPackageApps(activeSlugs) || isStarterPackageModules(modules);
-  const starterDashboardRoles = ['OWNER', 'SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'RECEPTIONIST'];
-
-  if (starterPackage && starterDashboardRoles.includes(role)) {
-    return (
-      <StarterDashboard
-        learners={learners}
-        pagination={pagination}
-        teachers={teachers}
-        user={{ ...(user || {}), enabledApps: activeSlugs }}
-        onNavigate={onNavigate}
-        brandingSettings={brandingSettings}
-      />
-    );
-  }
-
   // Tertiary: whole module is Coming Soon
   if (resolvedInstitutionType === 'TERTIARY') {
     return (
@@ -63,7 +41,7 @@ const RoleDashboardBody = ({ learners, pagination, teachers, user, onNavigate, b
   // Secondary institution
   if (resolvedInstitutionType === 'SECONDARY') {
     if (isMobile) {
-      return <MobileDashboard user={user} onNavigate={onNavigate} currentPath={currentPage} brandingSettings={brandingSettings} />;
+      return <MobileDashboard user={{ ...(user || {}), role }} onNavigate={onNavigate} currentPath={currentPage} brandingSettings={brandingSettings} />;
     }
     switch (role) {
       case 'OWNER':
@@ -72,9 +50,13 @@ const RoleDashboardBody = ({ learners, pagination, teachers, user, onNavigate, b
       case 'SUPER_ADMIN':
         return <SuperAdminDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={onNavigate} />;
       case 'HEAD_TEACHER':
-        return <HeadTeacherDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={onNavigate} />;
+        return <RoleLandingDashboard user={user} role={role} onNavigate={onNavigate} />;
+      case 'DEPUTY_HEAD_TEACHER':
+        return <DeputyHeadDashboard learners={learners} teachers={teachers} user={user} onNavigate={onNavigate} />;
+      case 'RECEPTIONIST':
+        return <ReceptionistDashboard user={user} onNavigate={onNavigate} />;
       case 'HEAD_OF_CURRICULUM':
-        return <CurriculumHeadDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={onNavigate} />;
+        return <RoleLandingDashboard user={user} role={role} onNavigate={onNavigate} />;
       case 'TEACHER':
         return <TeacherDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={onNavigate} />;
       case 'PARENT':
@@ -83,16 +65,15 @@ const RoleDashboardBody = ({ learners, pagination, teachers, user, onNavigate, b
         return <StudentDashboard user={user} onNavigate={onNavigate} />;
       case 'ACCOUNTANT':
         return <AccountantDashboard learners={learners} pagination={pagination} user={user} onNavigate={onNavigate} />;
-      case 'RECEPTIONIST':
-        return <ReceptionistDashboard learners={learners} pagination={pagination} user={user} onNavigate={onNavigate} />;
       default:
-        return <SecondaryAdminDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={onNavigate} />;
+        if (OPERATIONAL_STAFF_ROLES.includes(role)) return <RoleLandingDashboard user={user} role={role} onNavigate={onNavigate} />;
+        return <ComingSoon badge="Workspace" title="Role workspace" description="A dashboard is not configured for this account role." />;
     }
   }
 
   // Primary CBC — mobile shell or role-based dashboard
   if (isMobile) {
-    return <MobileDashboard user={user} onNavigate={onNavigate} currentPath={currentPage} brandingSettings={brandingSettings} />;
+    return <MobileDashboard user={{ ...(user || {}), role }} onNavigate={onNavigate} currentPath={currentPage} brandingSettings={brandingSettings} />;
   }
 
   // Primary CBC desktop — role-based dashboard
@@ -103,9 +84,13 @@ const RoleDashboardBody = ({ learners, pagination, teachers, user, onNavigate, b
     case 'SUPER_ADMIN':
       return <SuperAdminDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={onNavigate} />;
     case 'HEAD_TEACHER':
-      return <HeadTeacherDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={onNavigate} />;
+      return <RoleLandingDashboard user={user} role={role} onNavigate={onNavigate} />;
+    case 'DEPUTY_HEAD_TEACHER':
+      return <DeputyHeadDashboard learners={learners} teachers={teachers} user={user} onNavigate={onNavigate} />;
+    case 'RECEPTIONIST':
+      return <ReceptionistDashboard user={user} onNavigate={onNavigate} />;
     case 'HEAD_OF_CURRICULUM':
-      return <CurriculumHeadDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={onNavigate} />;
+      return <RoleLandingDashboard user={user} role={role} onNavigate={onNavigate} />;
     case 'TEACHER':
       return <TeacherDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={onNavigate} />;
     case 'PARENT':
@@ -114,26 +99,15 @@ const RoleDashboardBody = ({ learners, pagination, teachers, user, onNavigate, b
       return <StudentDashboard user={user} onNavigate={onNavigate} />;
     case 'ACCOUNTANT':
       return <AccountantDashboard learners={learners} pagination={pagination} user={user} onNavigate={onNavigate} />;
-    case 'RECEPTIONIST':
-      return <ReceptionistDashboard learners={learners} pagination={pagination} user={user} onNavigate={onNavigate} />;
     default:
-      return (
-        <div className="text-center py-12">
-          <p className="text-gray-600">Invalid user role</p>
-        </div>
-      );
+      if (OPERATIONAL_STAFF_ROLES.includes(role)) return <RoleLandingDashboard user={user} role={role} onNavigate={onNavigate} />;
+      return <ComingSoon badge="Workspace" title="Role workspace" description="A dashboard is not configured for this account role." />;
   }
 };
 
-/**
- * Single mount point for every role / institution type / mobile shell: the compact
- * Term Countdown card sits above whichever dashboard the role resolves to.
- */
-const RoleDashboard = (props) => (
-  <>
-    <TermCountdownCard />
-    <RoleDashboardBody {...props} />
-  </>
-);
+/** Single mount point for role and institution specific dashboards. */
+const RoleDashboard = (props) => {
+  return <RoleDashboardBody {...props} />;
+};
 
 export default RoleDashboard;

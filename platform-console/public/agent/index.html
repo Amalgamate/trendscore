@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="manifest" href="/agent/manifest.json">
-  <link rel="stylesheet" href="/agent/agent.css?v=20261027d">
+  <link rel="stylesheet" href="/agent/agent.css?v=20261101b">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='10' fill='%230f766e'/><text x='50' y='67' font-size='48' font-weight='900' fill='%23f97316' text-anchor='middle' font-family='sans-serif'>TS</text></svg>">
 </head>
 <body>
@@ -58,13 +58,17 @@
               </div>
 
               <div class="form-group">
-                <label class="form-label" for="loginPin">4-Digit Security PIN</label>
+                <label class="form-label" for="loginPin">6-Digit Security PIN</label>
                 <input type="password" id="loginPin" class="form-input" placeholder="••••" maxlength="6" inputmode="numeric" required autocomplete="current-password">
               </div>
 
               <button type="submit" id="btnLogin" class="submit-btn login-btn-accent" style="margin-top: 14px;">
                 <span>Sign In to Portal</span>
               </button>
+
+              <div class="auth-switch-prompt" style="margin-top:10px">
+                <a href="javascript:void(0)" onclick="requestForgotPin()">Forgot PIN?</a>
+              </div>
 
               <div class="auth-switch-prompt">
                 <span>New field agent?</span>
@@ -97,7 +101,7 @@
             <img src="/agent/trendscore-logo.png" alt="TrendSCORE" class="login-logo-img">
           </div>
           <h2 class="register-title">Field Agent Self-Registration</h2>
-          <p class="register-desc">Join Kenya's CBC school analytics network across all 47 counties. Earn 10% recurring commission on onboarding and school subscription renewals.</p>
+          <p class="register-desc">Join Kenya's CBC school analytics network across all 47 counties. Earn commission per school: 25% on its first invoice and 10% on later term payments. Agent-specific terms may apply.</p>
         </div>
 
         <form id="formRegister" onsubmit="handleRegister(event)" class="register-form">
@@ -135,7 +139,7 @@
               <span class="section-step-num">2</span>
               <div>
                 <h3 class="section-step-title">Operating Territory &amp; Payout</h3>
-                <p class="section-step-sub">Your assigned county and M-Pesa line for instant commission cashouts</p>
+                <p class="section-step-sub">Your assigned county and M-Pesa destination for commission settlements</p>
               </div>
             </div>
 
@@ -197,19 +201,19 @@
               <span class="section-step-num">3</span>
               <div>
                 <h3 class="section-step-title">Account Security PIN</h3>
-                <p class="section-step-sub">Create a 4-digit numeric PIN for logging into your agent portal</p>
+                <p class="section-step-sub">Create a 6-digit numeric PIN for logging into your agent portal</p>
               </div>
             </div>
 
             <div class="form-grid-2">
               <div class="form-group">
-                <label class="form-label" for="regPin">Create 4-Digit PIN *</label>
-                <input type="password" id="regPin" class="form-input" placeholder="••••" maxlength="4" inputmode="numeric" required autocomplete="new-password">
+                <label class="form-label" for="regPin">Create 6-Digit PIN *</label>
+                <input type="password" id="regPin" class="form-input" placeholder="••••••" maxlength="6" inputmode="numeric" required autocomplete="new-password">
               </div>
 
               <div class="form-group">
-                <label class="form-label" for="regPinConfirm">Confirm 4-Digit PIN *</label>
-                <input type="password" id="regPinConfirm" class="form-input" placeholder="••••" maxlength="4" inputmode="numeric" required autocomplete="new-password">
+                <label class="form-label" for="regPinConfirm">Confirm 6-Digit PIN *</label>
+                <input type="password" id="regPinConfirm" class="form-input" placeholder="••••••" maxlength="6" inputmode="numeric" required autocomplete="new-password">
               </div>
             </div>
           </div>
@@ -217,7 +221,7 @@
           <!-- Agent Perks Strip -->
           <div class="register-perks-strip">
             <div class="perk-pill">✓ 10% Recurring Commission</div>
-            <div class="perk-pill">✓ Instant M-Pesa Disbursals</div>
+            <div class="perk-pill">✓ M-Pesa wallet settlements</div>
             <div class="perk-pill">✓ Real-time Pipeline Tracker</div>
             <div class="perk-pill">✓ CBC Digital Marketplace</div>
           </div>
@@ -272,8 +276,8 @@
           </button>
 
           <button class="sidebar-nav-item" id="navDesktopEarnings" onclick="switchTab('earnings')">
-            <svg viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-            <span>Commission Ledger</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7.5A2.5 2.5 0 0 1 5.5 5H20a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5.5A2.5 2.5 0 0 1 3 16.5z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8h15a2 2 0 0 1 2 2v1h-4a2 2 0 0 0 0 4h4v1M16 13h.01"/></svg>
+            <span>My Wallet</span>
           </button>
 
           <button class="sidebar-nav-item" id="navDesktopMarketplace" onclick="switchTab('marketplace')">
@@ -362,8 +366,8 @@
                 </button>
 
                 <button class="avatar-menu-item" onclick="onMenuSelectEarnings()">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                  <span>Commission Statement</span>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H20a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5.5A2.5 2.5 0 0 1 3 16.5z"/><path d="M3 8h15a2 2 0 0 1 2 2v1h-4a2 2 0 0 0 0 4h4v1M16 13h.01"/></svg>
+                  <span>My Wallet</span>
                 </button>
 
                 <button class="avatar-menu-item" onclick="onMenuRefreshData()">
@@ -432,9 +436,9 @@
               </div>
 
               <div class="balance-action-row">
-                <button class="withdraw-btn" onclick="openWithdrawModal()">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                  <span>Transfer to M-Pesa</span>
+                <button class="withdraw-btn" onclick="switchTab('earnings')">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H20a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5.5A2.5 2.5 0 0 1 3 16.5z"/><path d="M3 8h15a2 2 0 0 1 2 2v1h-4a2 2 0 0 0 0 4h4v1M16 13h.01"/></svg>
+                  <span>Open Wallet &amp; Settle</span>
                 </button>
               </div>
 
@@ -464,11 +468,11 @@
               </div>
               <div class="action-btn-card" onclick="switchTab('earnings')">
                 <div class="action-icon teal">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H20a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5.5A2.5 2.5 0 0 1 3 16.5z"/><path d="M3 8h15a2 2 0 0 1 2 2v1h-4a2 2 0 0 0 0 4h4v1M16 13h.01"/></svg>
                 </div>
                 <div class="action-text">
-                  <h4>Commission Ledger</h4>
-                  <p>Track earnings &amp; payouts</p>
+                  <h4>My Wallet</h4>
+                  <p>Balance, earnings &amp; M-Pesa</p>
                 </div>
               </div>
             </div>
@@ -508,14 +512,52 @@
           </div>
         </section>
 
-        <!-- Tab 3: Earnings & Commission Ledger -->
+        <!-- Tab 3: Agent Wallet -->
         <section id="tabEarnings" class="tab-page" style="display: none;">
-          <div class="section-header">
-            <h3 class="section-title">Commission Ledger</h3>
+          <div class="wallet-page-header">
+            <div>
+              <span class="wallet-eyebrow">AGENT PAYOUTS</span>
+              <h2 class="wallet-page-title">My Wallet</h2>
+              <p class="wallet-page-subtitle">Track commission, request a settlement, and follow each M-Pesa transfer.</p>
+            </div>
+            <button id="walletRefreshBtn" class="wallet-secondary-btn" type="button" onclick="refreshWallet()" aria-label="Refresh wallet">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.6 9A7 7 0 0 1 18 6l2 6M4 12l2 6a7 7 0 0 0 12.4-3"/></svg>
+              <span>Refresh</span>
+            </button>
           </div>
-          <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 14px;">
-            Auto-credited commissions linked to school subscription payments and renewals.
-          </p>
+
+          <div id="walletProviderNotice" class="wallet-provider-notice" role="status" aria-live="polite">
+            <span class="wallet-notice-icon">…</span><div><strong>Checking M-Pesa settlement status</strong><p>Wallet activity is loading.</p></div>
+          </div>
+
+          <div class="wallet-summary-grid">
+            <article class="wallet-balance-card">
+              <div class="wallet-balance-top"><span>AVAILABLE TO WITHDRAW</span><span class="wallet-card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H20a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5.5A2.5 2.5 0 0 1 3 16.5z"/><path d="M3 8h15a2 2 0 0 1 2 2v1h-4a2 2 0 0 0 0 4h4v1M16 13h.01"/></svg></span></div>
+              <div class="wallet-main-amount"><small>KES</small><strong id="walletAvailable">0</strong></div>
+              <div class="wallet-balance-foot"><span id="walletPayoutPhone">M-Pesa number not set</span><button type="button" onclick="switchTab('profile')">Manage</button></div>
+              <button id="walletWithdrawBtn" class="wallet-withdraw-btn" type="button" onclick="openWithdrawModal()" disabled>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 17v3h14v-3"/></svg>Settle to M-Pesa
+              </button>
+              <p id="walletActionHint" class="wallet-action-hint">Checking withdrawal availability…</p>
+            </article>
+            <article class="wallet-stat-card"><span class="wallet-stat-icon wallet-stat-teal">↗</span><span class="wallet-stat-label">TOTAL COMMISSION</span><strong id="walletLifetime">KES 0</strong><small>All credited commissions</small></article>
+            <article class="wallet-stat-card"><span class="wallet-stat-icon wallet-stat-orange">✓</span><span class="wallet-stat-label">PAID OUT</span><strong id="walletPaid">KES 0</strong><small>Confirmed transfers and recorded payouts</small></article>
+            <article class="wallet-stat-card"><span class="wallet-stat-icon wallet-stat-blue">◷</span><span class="wallet-stat-label">IN TRANSFER</span><strong id="walletPending">KES 0</strong><small>Reserved while confirmation is pending</small></article>
+          </div>
+
+          <div class="wallet-section-heading"><div><h3>Settlement activity</h3><p>Every request and Safaricom result appears here.</p></div><span id="walletPayoutCount" class="wallet-count-pill">0 transfers</span></div>
+          <div id="walletPayoutsList" class="wallet-transfer-list"></div>
+
+          <div class="wallet-settlement-guide">
+            <div class="wallet-guide-heading"><span class="wallet-guide-icon">↗</span><div><h3>How M-Pesa settlement works</h3><p>Three steps from commission to your phone.</p></div></div>
+            <div class="wallet-guide-steps">
+              <div><span>1</span><strong>Commission is credited</strong><p>When an assigned school’s invoice payment is confirmed.</p></div>
+              <div><span>2</span><strong>Request a settlement</strong><p>Choose an amount of at least KES 500 and authorize with your 6-digit PIN.</p></div>
+              <div><span>3</span><strong>Track Safaricom’s result</strong><p>Your balance is reserved while pending. It is paid after confirmation or restored if the transfer fails.</p></div>
+            </div>
+          </div>
+
+          <div class="wallet-section-heading wallet-commission-heading"><div><h3>Commission statement</h3><p>School invoice payments that built this wallet.</p></div><span class="wallet-count-pill">First invoice <span id="walletFirstRate">25%</span> · Later <span id="walletRecurringRate">10%</span></span></div>
           <div id="fullEarningsList" class="ledger-list">
             <!-- Injected via agent.js -->
           </div>
@@ -535,12 +577,10 @@
             <div style="font-size: 12px; color: var(--text-subtle); margin-top: 6px;" id="profTerms">-</div>
           </div>
 
-          <!-- Payout History -->
-          <div class="section-header">
-            <h3 class="section-title">Disbursement History</h3>
-          </div>
-          <div id="profPayoutsList" class="ledger-list" style="margin-bottom: 24px;">
-            <!-- Injected via agent.js -->
+          <div class="school-card" style="margin-bottom: 20px;">
+            <h4 style="font-size:13px;font-weight:700;margin-bottom:8px;color:var(--text-main)">Account Security</h4>
+            <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px">Use a 6-digit PIN. Avoid repeated digits and simple sequences.</p>
+            <button class="submit-btn" type="button" onclick="openPinChangeOverlay(false)" style="padding:10px;font-size:13px">Change Security PIN</button>
           </div>
 
           <!-- M-Pesa Details Form -->
@@ -649,8 +689,8 @@
           Schools
         </button>
         <button class="nav-tab" id="navEarnings" onclick="switchTab('earnings')">
-          <svg viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-          Earnings
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7.5A2.5 2.5 0 0 1 5.5 5H20a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H5.5A2.5 2.5 0 0 1 3 16.5z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8h15a2 2 0 0 1 2 2v1h-4a2 2 0 0 0 0 4h4v1M16 13h.01"/></svg>
+          Wallet
         </button>
         <button class="nav-tab" id="navMarketplace" onclick="switchTab('marketplace')">
           <svg viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
@@ -726,7 +766,7 @@
       <div class="bottom-sheet">
         <div class="sheet-handle"></div>
         <div class="sheet-header">
-          <h3 class="sheet-title">Transfer to M-Pesa</h3>
+          <h3 class="sheet-title">Request M-Pesa Settlement</h3>
           <button class="icon-btn" onclick="closeWithdrawModal()">✕</button>
         </div>
 
@@ -736,7 +776,7 @@
               <div class="dest-phone-label">DESTINATION PHONE</div>
               <div class="dest-phone-val" id="withdrawPhoneDisplay">07...</div>
             </div>
-            <span class="status-badge onboarded">Verified</span>
+            <span class="status-badge onboarded" id="withdrawPhoneStatus">Saved on profile</span>
           </div>
 
           <div class="form-group">
@@ -744,7 +784,7 @@
               <label class="form-label" for="withdrawAmount">Amount (KES) *</label>
               <span style="font-size:11px; color:var(--teal-700); font-weight:700;">Available: KES <span id="withdrawAvailBal">0</span></span>
             </div>
-            <input type="number" id="withdrawAmount" class="form-input" min="500" step="50" placeholder="Minimum KES 500" required>
+            <input type="number" id="withdrawAmount" class="form-input" min="500" step="1" placeholder="Minimum KES 500" required>
             
             <div class="quick-chips">
               <button type="button" class="chip-btn" onclick="setWithdrawAmount(500)">500</button>
@@ -755,19 +795,22 @@
           </div>
 
           <div class="form-group">
-            <label class="form-label" for="withdrawPin">4-Digit Security PIN *</label>
-            <input type="password" id="withdrawPin" class="form-input" placeholder="••••" maxlength="6" inputmode="numeric" required autocomplete="current-password">
+            <label class="form-label" for="withdrawPin">6-Digit Security PIN *</label>
+            <input type="password" id="withdrawPin" class="form-input" placeholder="••••••" maxlength="6" inputmode="numeric" required autocomplete="current-password">
           </div>
 
           <div class="fee-calc-box">
-            <strong>B2C Transfer Details:</strong>
+            <strong>Before you request:</strong>
             <div>• Minimum withdrawal: <strong>KES 500</strong></div>
-            <div>• Disbursement: <strong>Instant to M-Pesa</strong></div>
-            <div>• B2C Fee: <strong style="color:var(--teal-700);">Absorbed by TrendSCORE (0 KES)</strong></div>
+            <div>• Your balance is reserved while the request is pending.</div>
+            <div>• The wallet updates after Safaricom confirms success or failure.</div>
+            <div>• Any applicable fee treatment follows the configured payout policy.</div>
           </div>
 
+          <label class="wallet-confirm-row"><input type="checkbox" id="withdrawConfirm" required><span>I confirm the amount and M-Pesa destination shown above.</span></label>
+
           <button type="submit" id="btnSubmitWithdraw" class="submit-btn" style="background:var(--orange-600); border:1px solid var(--orange-700);">
-            <span>Authorize &amp; Transfer to M-Pesa</span>
+            <span>Authorize Settlement Request</span>
           </button>
         </form>
       </div>
@@ -876,7 +919,21 @@
     </div>
   </div><!-- end #viewApp -->
 
+  <div id="pinChangeOverlay" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="pinChangeTitle">
+    <div class="bottom-sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header"><h3 class="sheet-title" id="pinChangeTitle">Change Security PIN</h3><button id="pinChangeClose" type="button" class="icon-btn" onclick="closePinChangeOverlay()" aria-label="Close PIN change">✕</button></div>
+      <p id="pinChangeMessage" style="font-size:13px;color:var(--text-muted);margin:0 0 14px">Enter your current PIN and choose a new 6-digit PIN.</p>
+      <form id="pinChangeForm" onsubmit="submitPinChange(event)">
+        <div class="form-group"><label class="form-label" for="pinCurrent">Current or temporary PIN</label><input id="pinCurrent" class="form-input" type="password" inputmode="numeric" maxlength="6" autocomplete="current-password" required></div>
+        <div class="form-group"><label class="form-label" for="pinNew">New 6-digit PIN</label><input id="pinNew" class="form-input" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password" required></div>
+        <div class="form-group"><label class="form-label" for="pinConfirm">Confirm new PIN</label><input id="pinConfirm" class="form-input" type="password" inputmode="numeric" maxlength="6" autocomplete="new-password" required></div>
+        <button id="pinChangeSubmit" type="submit" class="submit-btn">Save New PIN</button>
+      </form>
+    </div>
+  </div>
 
-  <script src="/agent/agent.js?v=20261027d"></script>
+
+  <script src="/agent/agent.js?v=20261101b"></script>
 </body>
 </html>

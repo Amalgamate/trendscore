@@ -42,6 +42,9 @@ jest.mock('../src/services/compliance.service', () => ({
 
 jest.mock('../src/services/redis-cache.service', () => ({
   redisCacheService: {
+    getSecurityValue: jest.fn(async () => null),
+    setSecurityValue: jest.fn(async () => undefined),
+    incrementSecurityCounter: jest.fn(async () => 1),
     get: jest.fn(async () => null),
     set: jest.fn(async () => undefined),
     delete: jest.fn(async () => false),
@@ -406,8 +409,10 @@ describe('Fee collection end-to-end', () => {
         paymentDate: `${bulkAcademicYear}-08-24`,
         paymentMethod: 'OTHER',
         referenceNumber: 'BULK-RECON'
-      })
-      .expect(201);
+      });
+    if (markPaidResponse.status !== 201) {
+      throw new Error(`Bulk mark-paid failed (${markPaidResponse.status}): ${JSON.stringify(markPaidResponse.body)}`);
+    }
 
     expect(markPaidResponse.body).toHaveProperty('success', true);
     expect(markPaidResponse.body.count).toBeGreaterThan(0);

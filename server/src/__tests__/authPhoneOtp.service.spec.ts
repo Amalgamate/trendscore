@@ -217,7 +217,7 @@ describe('AuthPhoneOtpService', () => {
 
     expect(result.smsConfigured).toBe(false);
     expect(result.autofillAllowed).toBe(false);
-    expect(result.message).toBe('SMS login is unavailable. Please sign in with your Parent ID and password.');
+    expect(result.message).toBe('This school requires OTP, but SMS delivery is not configured. Ask the school administrator to configure SMS or turn off OTP.');
     expect(result.devOtp).toBeUndefined();
   });
 

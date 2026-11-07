@@ -40,6 +40,7 @@ const createCampaignSchema = z.object({
 
 const bulkSendSchema = z.object({
   channel: z.enum(['sms', 'whatsapp']),
+  recipientSource: z.string().max(80).optional(),
   messageTemplate: z.string().min(1),
   messagePreview: z.string().optional(),
   recipients: z.array(z.object({

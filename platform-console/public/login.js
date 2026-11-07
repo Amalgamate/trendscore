@@ -22,6 +22,11 @@
   const submitBtn  = document.getElementById('lg-submit');
   const errorBox   = document.getElementById('lg-error');
   const userChip   = document.getElementById('user-chip');
+  const accountWrap = document.getElementById('topbar-account-wrap');
+  const accountMenu = document.getElementById('topbar-account-menu');
+  const profileOverlay = document.getElementById('profile-overlay');
+  const profileCloseBtn = document.getElementById('profile-close-btn');
+  const profileDoneBtn = document.getElementById('profile-done-btn');
   const chipLabel  = document.getElementById('user-chip-label');
   const chipRole   = document.getElementById('user-chip-role');
   const chipAvatar = document.getElementById('user-chip-avatar');
@@ -61,7 +66,11 @@
   }
 
   function roleLabel(role) {
-    return role === 'super_admin' ? 'Super Admin' : 'Platform Owner';
+    if (role === 'super_admin') return 'Super Admin';
+    if (role === 'platform_owner') return 'Platform Owner';
+    if (role === 'finance_approver') return 'Finance Approver';
+    if (role === 'billing_operator') return 'Billing Operator';
+    return 'Administrator';
   }
 
   function formatDuration(ms) {
@@ -120,6 +129,8 @@
     overlay.classList.remove('hidden');
     shell.classList.add('auth-locked');
     userChip.classList.remove('visible');
+    closeAccountMenu();
+    closeProfileModal();
 
     // Hide Sign Out button
     if (logoutBtn) {
@@ -155,6 +166,14 @@
     if (chipRole) chipRole.textContent = roleText;
     if (chipAvatar) chipAvatar.textContent = initialsForUser(user);
     userChip.classList.add('visible');
+    const profileName = document.getElementById('profile-modal-name');
+    const profileRole = document.getElementById('profile-modal-role');
+    const profileEmail = document.getElementById('profile-modal-email');
+    const profileAvatar = document.getElementById('profile-modal-avatar');
+    if (profileName) profileName.textContent = user.name || user.email || roleText;
+    if (profileRole) profileRole.textContent = roleText;
+    if (profileEmail) profileEmail.textContent = user.email || '—';
+    if (profileAvatar) profileAvatar.textContent = initialsForUser(user);
 
     // Show Sign Out button with the .visible class
     if (logoutBtn) {
@@ -315,10 +334,50 @@
     lockConsole();
   }
 
-  // Sign Out button → open modal
-  if (logoutBtn) {
-    logoutBtn.addEventListener('click', openLogoutModal);
+  function closeAccountMenu() {
+    if (accountMenu) accountMenu.hidden = true;
+    if (userChip) userChip.setAttribute('aria-expanded', 'false');
   }
+
+  function toggleAccountMenu() {
+    if (!accountMenu || !currentUser) return;
+    const willOpen = accountMenu.hidden;
+    accountMenu.hidden = !willOpen;
+    userChip?.setAttribute('aria-expanded', String(willOpen));
+  }
+
+  function openProfileModal() {
+    closeAccountMenu();
+    if (!profileOverlay || !currentUser) return;
+    profileOverlay.classList.add('open');
+    profileDoneBtn?.focus();
+  }
+
+  function closeProfileModal() {
+    profileOverlay?.classList.remove('open');
+  }
+
+  userChip?.addEventListener('click', toggleAccountMenu);
+  document.getElementById('btn-menu-logout')?.addEventListener('click', () => {
+    closeAccountMenu();
+    openLogoutModal();
+  });
+  document.getElementById('btn-open-profile')?.addEventListener('click', openProfileModal);
+  profileCloseBtn?.addEventListener('click', closeProfileModal);
+  profileDoneBtn?.addEventListener('click', closeProfileModal);
+  profileOverlay?.addEventListener('click', event => { if (event.target === profileOverlay) closeProfileModal(); });
+  document.addEventListener('click', event => {
+    if (accountWrap && !accountWrap.contains(event.target)) closeAccountMenu();
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      closeAccountMenu();
+      closeProfileModal();
+    }
+  });
+
+  // Retain the hidden legacy button handler for compatibility.
+  if (logoutBtn) logoutBtn.addEventListener('click', openLogoutModal);
 
   // Modal cancel
   if (logoutCancelBtn) {

@@ -19,7 +19,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   ChevronDown, ChevronUp, BookOpen, CheckCircle2,
-  Clock, AlertCircle, Star, Users,
+  Clock, AlertCircle, Star, Users, CalendarDays,
 } from 'lucide-react';
 import api from '../../../../services/api';
 import { dashboardAPI } from '../../../../services/api';
@@ -40,7 +40,7 @@ function statusConfig(statusSummary, isOverdue) {
   }
   switch (statusSummary) {
     case 'MARKED':
-      return { label: 'Graded', cls: 'bg-emerald-100 text-emerald-700 border border-emerald-200', icon: Star };
+      return { label: 'Feedback ready', cls: 'bg-emerald-100 text-emerald-700 border border-emerald-200', icon: Star };
     case 'SUBMITTED':
       return { label: 'Submitted', cls: 'bg-blue-100 text-blue-700 border border-blue-200', icon: CheckCircle2 };
     case 'LATE':
@@ -48,7 +48,7 @@ function statusConfig(statusSummary, isOverdue) {
     case 'IN_PROGRESS':
       return { label: 'In progress', cls: 'bg-violet-100 text-violet-700 border border-violet-200', icon: Clock };
     case 'RETURNED':
-      return { label: 'Needs revision', cls: 'bg-orange-100 text-orange-700 border border-orange-200', icon: AlertCircle };
+      return { label: 'Needs revision', cls: 'bg-violet-100 text-violet-900 border border-violet-200', icon: AlertCircle };
     case 'RESUBMITTED':
       return { label: 'Resubmitted', cls: 'bg-blue-100 text-blue-700 border border-blue-200', icon: CheckCircle2 };
     default:
@@ -70,10 +70,12 @@ function overdueCount(assignments) {
 // ─── Assignment Row ────────────────────────────────────────────────────────────
 
 function AssignmentRow({ assignment }) {
-  const { label, cls, icon: Icon } = statusConfig(
-    assignment.statusSummary,
-    assignment.isOverdue,
-  );
+  const paperState = String(assignment.offlineCompletion?.status || assignment.offlineCompletionStatus || assignment.completionStatus || '').toUpperCase();
+  const doneOnPaper = ['DONE', 'DONE_ON_PAPER', 'COMPLETED_OFFLINE'].includes(paperState);
+  const status = doneOnPaper
+    ? { label: 'Done on paper', cls: 'bg-emerald-100 text-emerald-900 border border-emerald-200', icon: CheckCircle2 }
+    : statusConfig(assignment.statusSummary, assignment.isOverdue);
+  const { label, cls, icon: Icon } = status;
   const subject = assignment.learningArea?.name || '—';
   const marks   = assignment.mySubmission?.marks;
   const total   = assignment.totalMarks;
@@ -85,7 +87,9 @@ function AssignmentRow({ assignment }) {
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-bold text-gray-900 truncate">{assignment.title}</p>
-        <p className="text-[10px] text-gray-500 mt-0.5">{subject} · Due {fmtDate(assignment.dueDate)}</p>
+        <p className="text-[10px] text-gray-600 mt-0.5">
+          {[assignment.workType === 'HOLIDAY' || assignment.assignmentType === 'HOLIDAY' ? 'Holiday homework' : 'Daily homework', subject, `Due ${fmtDate(assignment.dueDate)}`].filter(Boolean).join(' · ')}
+        </p>
         {assignment.statusSummary === 'MARKED' && marks != null && total != null && (
           <p className="text-[10px] font-bold text-emerald-600 mt-0.5">{marks}/{total} marks</p>
         )}
@@ -105,11 +109,11 @@ function AssignmentRow({ assignment }) {
 
 // ─── Child Homework Card ───────────────────────────────────────────────────────
 
-function ChildHomeworkCard({ child }) {
+function ChildHomeworkCard({ child, initiallyExpanded = false, hideHeader = false }) {
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState(null);
-  const [expanded, setExpanded]       = useState(false);
+  const [expanded, setExpanded]       = useState(initiallyExpanded);
   const [filter, setFilter]           = useState('all'); // 'all' | 'pending' | 'graded'
 
   const load = useCallback(async () => {
@@ -139,7 +143,7 @@ function ChildHomeworkCard({ child }) {
   return (
     <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white">
       {/* Header row */}
-      <button
+      {!hideHeader && <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
         className="w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-gray-50 transition-colors"
@@ -188,7 +192,7 @@ function ChildHomeworkCard({ child }) {
         {expanded
           ? <ChevronUp size={15} className="text-gray-400 flex-shrink-0" />
           : <ChevronDown size={15} className="text-gray-400 flex-shrink-0" />}
-      </button>
+      </button>}
 
       {/* Expanded content */}
       {expanded && (
@@ -319,5 +323,10 @@ const ParentPortalHomework = ({ onNavigate }) => {
     </div>
   );
 };
+
+export function ParentChildDiaryWork({ child }) {
+  if (!child?.id) return null;
+  return <ChildHomeworkCard child={child} initiallyExpanded hideHeader />;
+}
 
 export default ParentPortalHomework;
