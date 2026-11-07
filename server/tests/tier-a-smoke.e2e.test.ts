@@ -62,6 +62,9 @@ jest.mock('../src/services/redis-cache.service', () => {
 
   return {
     redisCacheService: {
+      getSecurityValue: get,
+      setSecurityValue: set,
+      incrementSecurityCounter: async () => 1,
       get,
       set,
       delete: deleteFn,
