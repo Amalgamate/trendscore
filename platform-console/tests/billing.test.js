@@ -328,6 +328,8 @@ test('reset is refused once an invoice has been issued', async () => {
 test('Daraja matches the entered school name only when one customer and one open invoice are unambiguous', async () => {
   const flag = await api('PUT', '/api/feature-flags/MPESA_C2B_ENABLED', { enabled: true });
   assert.equal(flag.status, 200, JSON.stringify(flag.body));
+  const paymentDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Nairobi' }).format(new Date());
+  const transactionTime = `${paymentDate.replaceAll('-', '')}120000`;
   const customer = await newCustomer('Canonical School Name', 'canonical-school-name');
 
   async function createIssuedInvoice() {
@@ -347,7 +349,7 @@ test('Daraja matches the entered school name only when one customer and one open
   const firstInvoice = await createIssuedInvoice();
   const autoAllocated = await api('POST', '/api/mpesa/c2b/billing-c2b-test-token/confirmation', {
     TransID: 'C2B-SCHOOL-NAME-001', TransAmount: '1000', BillRefNumber: '  CANONICAL   SCHOOL NAME  ',
-    TransTime: '20261101120000', MSISDN: '254700000001',
+    TransTime: transactionTime, MSISDN: '254700000001',
   }, { auth: false });
   assert.equal(autoAllocated.status, 200, JSON.stringify(autoAllocated.body));
   assert.equal(autoAllocated.body.ResultDesc, 'Payment recorded');
@@ -357,14 +359,14 @@ test('Daraja matches the entered school name only when one customer and one open
   await createIssuedInvoice();
   const ambiguous = await api('POST', '/api/mpesa/c2b/billing-c2b-test-token/confirmation', {
     TransID: 'C2B-SCHOOL-NAME-002', TransAmount: '1000', BillRefNumber: 'Canonical School Name',
-    TransTime: '20261101121000', MSISDN: '254700000001',
+    TransTime: transactionTime, MSISDN: '254700000001',
   }, { auth: false });
   assert.equal(ambiguous.status, 200, JSON.stringify(ambiguous.body));
   assert.equal(ambiguous.body.ResultDesc, 'Received and queued for billing review');
 
   const unknown = await api('POST', '/api/mpesa/c2b/billing-c2b-test-token/confirmation', {
     TransID: 'C2B-SCHOOL-NAME-003', TransAmount: '500', BillRefNumber: 'Unknown Academy',
-    TransTime: '20261101122000', MSISDN: '254700000002',
+    TransTime: transactionTime, MSISDN: '254700000002',
   }, { auth: false });
   assert.equal(unknown.status, 200, JSON.stringify(unknown.body));
 
@@ -375,7 +377,7 @@ test('Daraja matches the entered school name only when one customer and one open
   assert.equal(duplicateSchoolName.status, 201, JSON.stringify(duplicateSchoolName.body));
   const duplicateMatch = await api('POST', '/api/mpesa/c2b/billing-c2b-test-token/confirmation', {
     TransID: 'C2B-SCHOOL-NAME-004', TransAmount: '500', BillRefNumber: 'Canonical School Name',
-    TransTime: '20261101123000', MSISDN: '254700000003',
+    TransTime: transactionTime, MSISDN: '254700000003',
   }, { auth: false });
   assert.equal(duplicateMatch.status, 200, JSON.stringify(duplicateMatch.body));
 
@@ -386,7 +388,7 @@ test('Daraja matches the entered school name only when one customer and one open
   assert.match(review.body.events.find(item => item.transaction_id === 'C2B-SCHOOL-NAME-003').review_reason, /No billing customer matches/);
   assert.match(review.body.events.find(item => item.transaction_id === 'C2B-SCHOOL-NAME-004').review_reason, /More than one billing customer/);
   const unverifiedManualMatch = await api('POST', '/api/billing/mpesa-c2b-events/C2B-SCHOOL-NAME-003/allocate', {
-    invoiceId: firstInvoice.id, paymentDate: '2026-11-01',
+    invoiceId: firstInvoice.id, paymentDate,
   });
   assert.equal(unverifiedManualMatch.status, 400);
   assert.match(unverifiedManualMatch.body.error, /explanation/);
@@ -408,5 +410,5 @@ test('Daraja matches the entered school name only when one customer and one open
     invoiceId: firstInvoice.id, paymentDate: '2026-11-01',
   });
   assert.equal(allocated.status, 201, JSON.stringify(allocated.body));
-  assert.equal(allocated.body.payment.paymentDate, '2026-11-01');
+  assert.equal(allocated.body.payment.paymentDate, paymentDate);
 });
