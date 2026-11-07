@@ -407,8 +407,8 @@ test('Daraja matches the entered school name only when one customer and one open
   assert.match(crossSchoolAllocation.body.error, /does not belong to the customer matched/);
 
   const allocated = await api('POST', '/api/billing/mpesa-c2b-events/C2B-SCHOOL-NAME-002/allocate', {
-    invoiceId: firstInvoice.id, paymentDate: '2026-11-01',
+    invoiceId: firstInvoice.id, paymentDate,
   });
-  assert.equal(allocated.status, 201, JSON.stringify({ body: allocated.body, paymentDate, invoiceIssuedAt: firstInvoice.invoiceSnapshot.issuedAt, now: new Date().toISOString(), todayNairobi: new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Nairobi' }).format(new Date()) }));
+  assert.equal(allocated.status, 201, JSON.stringify(allocated.body));
   assert.equal(allocated.body.payment.paymentDate, paymentDate);
 });
