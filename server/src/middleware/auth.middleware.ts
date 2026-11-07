@@ -112,7 +112,7 @@ export const authenticate = async (
       next(new ApiError(401, 'Token expired').withCode('TOKEN_EXPIRED'));
     } else if (authError.name === 'JsonWebTokenError') {
       next(new ApiError(401, 'Invalid token').withCode('INVALID_TOKEN'));
-    } else if (authError.name === 'SecurityStateUnavailableError') {
+    } else if ((authError.name === 'SecurityStateUnavailableError' || authError.constructor.name === 'SecurityStateUnavailableError')) {
       next(new ApiError(503, 'Authentication service is temporarily unavailable').withCode('AUTH_STATE_UNAVAILABLE'));
     } else {
       next(new ApiError(401, 'Authentication failed').withCode('AUTH_REQUIRED'));
