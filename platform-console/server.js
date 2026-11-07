@@ -3540,7 +3540,7 @@ app.post('/api/billing/mpesa-c2b-events/:transactionId/allocate', requireAuth, r
   if (!/^\d{4}-\d{2}-\d{2}$/.test(eventDate) || !Number.isFinite(parsedEventDate.getTime())
       || parsedEventDate.toISOString().slice(0, 10) !== eventDate || eventDate > todayNairobi
       || (invoiceIssueDate && eventDate < invoiceIssueDate)) {
-    return res.status(409).json({ ok: false, error: 'The C2B payment date is invalid, in the future, or before the invoice issue date; review the receipt before allocation.' });
+    return res.status(409).json({ ok: false, error: 'The C2B payment date is invalid, in the future, or before the invoice issue date; review the receipt before allocation.', ...(process.env.NODE_ENV === 'test' ? { dateDebug: { eventDate, invoiceIssueDate, todayNairobi } } : {}) });
   }
   try {
     const payment = billingStore.recordPayment({
