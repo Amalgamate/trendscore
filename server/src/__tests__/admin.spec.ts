@@ -1,3 +1,13 @@
+jest.mock('../middleware/auth.middleware', () => ({
+  authenticate: (req: any, res: any, next: any) => {
+    const authorization = req.headers.authorization;
+    if (!authorization) return res.status(401).json({ success: false });
+    const token = authorization.split(' ')[1];
+    req.user = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
+    next();
+  },
+}));
+
 import express from 'express';
 import request from 'supertest';
 import { authenticate } from '../middleware/auth.middleware';
