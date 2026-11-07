@@ -1462,8 +1462,17 @@ describe('HR Routes — API smoke tests', () => {
     });
 
     // Helper — creates request with auth header
-    const authReq = (method: 'get' | 'post' | 'put' | 'delete', url: string) =>
-        (request(app) as any)[method](url).set('Authorization', `Bearer ${jwtToken}`);
+    const authReq = (method: 'get' | 'post' | 'put' | 'delete', url: string) => {
+        (mockPrisma.user.findUnique as Mock).mockResolvedValueOnce({
+            id: ADMIN_USER.userId,
+            email: ADMIN_USER.email,
+            role: 'ADMIN',
+            status: 'ACTIVE',
+            archived: false,
+            authVersion: 0,
+        });
+        return (request(app) as any)[method](url).set('Authorization', `Bearer ${jwtToken}`);
+    };
 
     describe('GET /api/hr/dashboard', () => {
         it('returns 200 with live stats shape', async () => {
