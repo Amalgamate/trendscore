@@ -1446,6 +1446,14 @@ describe('HR Routes — API smoke tests', () => {
 
         // Mint a valid JWT for ADMIN
         jwtToken = jwt.sign(ADMIN_USER, process.env.JWT_SECRET!, { expiresIn: '1h' });
+        (mockPrisma.user.findUnique as Mock).mockResolvedValue({
+            id: ADMIN_USER.userId,
+            email: ADMIN_USER.email,
+            role: 'ADMIN',
+            status: 'ACTIVE',
+            archived: false,
+            authVersion: 0,
+        });
 
         app = express();
         app.use(express.json());
