@@ -5,7 +5,7 @@ import { ApiError } from '../utils/error.util';
 import { Role } from '../config/permissions';
 import { normalizeRole, getCanonicalRoles } from '../utils/roleNormalizer';
 import { isTokenGloballyInvalidated } from '../services/auth-session.service';
-import { redisCacheService, SecurityStateUnavailableError } from '../services/redis-cache.service';
+import { redisCacheService } from '../services/redis-cache.service';
 import { revokedImpersonationKey } from '../services/impersonation.service';
 import prisma from '../config/database';
 
@@ -112,7 +112,7 @@ export const authenticate = async (
       next(new ApiError(401, 'Token expired').withCode('TOKEN_EXPIRED'));
     } else if (authError.name === 'JsonWebTokenError') {
       next(new ApiError(401, 'Invalid token').withCode('INVALID_TOKEN'));
-    } else if (error instanceof SecurityStateUnavailableError) {
+    } else if (authError.name === 'SecurityStateUnavailableError') {
       next(new ApiError(503, 'Authentication service is temporarily unavailable').withCode('AUTH_STATE_UNAVAILABLE'));
     } else {
       next(new ApiError(401, 'Authentication failed').withCode('AUTH_REQUIRED'));
