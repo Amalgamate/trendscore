@@ -8,6 +8,7 @@ import React from 'react';
 import { getMobileNavConfig } from './MobileNavigationConfig';
 import { useModuleAccess } from '../../../../contexts/ModuleAccessContext';
 import { hasPageAccess } from '../../utils/appAccess';
+import { hasPermission } from '../../../../config/permissions';
 
 const MOBILE_LABELS = {
   dashboard: 'Home',
@@ -15,6 +16,7 @@ const MOBILE_LABELS = {
   timetable: 'Schedule',
   collections: 'Fees',
   grades: 'Assess',
+  inbox: 'Inbox',
 };
 
 /**
@@ -30,24 +32,31 @@ const MobileBottomNav = ({ role, currentPath = 'dashboard', onNavigate }) => {
 
   if (!navConfig) return null;
 
-  const accessUser = { role, enabledApps: activeSlugs };
+  const permissionRole = String(role).toUpperCase() === 'OWNER' ? 'ADMIN' : String(role).toUpperCase();
+  const accessUser = { role: permissionRole, enabledApps: activeSlugs };
   const items = navConfig.items
+    .filter((item) => !item.permission || hasPermission(permissionRole, item.permission))
     .filter((item) => hasPageAccess(accessUser, item.path))
     .filter((item) => item.id !== 'reports' && item.label?.toLowerCase() !== 'reports');
+
+  if (!items.length) return null;
+
+  const compactLabels = items.length > 5;
+  const blueShades = ['#1d4ed8', '#1e40af', '#1e3a8a', '#2563eb', '#1e479f'];
 
   return (
     <nav
       aria-label="Mobile navigation"
-      className="fixed bottom-0 left-0 right-0 z-[80] border-t border-slate-200/90 bg-white/95 backdrop-blur-md shadow-[0_-2px_12px_rgba(0,0,0,0.04)]"
+      className="fixed bottom-0 left-0 right-0 z-[80] w-full bg-[#172554] shadow-[0_-3px_14px_rgba(15,23,42,0.18)]"
       style={{
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
       }}
     >
       <div
-        className="grid w-full max-w-md mx-auto h-16 p-1.5 gap-1"
+        className="grid h-[68px] w-full"
         style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}
       >
-        {items.map((item) => {
+        {items.map((item, index) => {
           const Icon = item.icon;
           const displayLabel = item.shortLabel || MOBILE_LABELS[item.id] || item.label;
           const activePaths = item.activePaths || [];
@@ -62,21 +71,19 @@ const MobileBottomNav = ({ role, currentPath = 'dashboard', onNavigate }) => {
               type="button"
               onClick={() => onNavigate(item.path)}
               aria-label={item.label}
+              title={item.label}
               aria-current={isActive ? 'page' : undefined}
-              className={`relative min-w-0 h-full flex flex-col items-center justify-center gap-1 rounded-xl transition-all duration-150 active:scale-95 focus:outline-none ${
+              className={`relative flex h-full min-w-0 flex-col items-center justify-center gap-1 border-r border-white/15 px-0.5 text-white transition-colors duration-150 last:border-r-0 active:brightness-110 focus:outline-none focus-visible:z-10 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white ${
                 isActive
-                  ? 'bg-blue-700 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100/70'
+                  ? 'bg-blue-600'
+                  : 'hover:bg-blue-800'
               }`}
+              style={{ backgroundColor: isActive ? '#2563eb' : blueShades[index % blueShades.length] }}
             >
-              <Icon size={19} strokeWidth={isActive ? 2.2 : 1.8} />
-              <span
-                className={`block w-full truncate text-center text-[10px] tracking-tight leading-none ${
-                  isActive ? 'font-bold text-white' : 'font-medium'
-                }`}
-              >
+              <Icon size={compactLabels ? 22 : 21} strokeWidth={isActive ? 2.3 : 2} />
+              {!compactLabels && <span className={`block w-full truncate text-center text-[10px] leading-none tracking-tight ${isActive ? 'font-bold' : 'font-semibold text-blue-50'}`}>
                 {displayLabel}
-              </span>
+              </span>}
             </button>
           );
         })}

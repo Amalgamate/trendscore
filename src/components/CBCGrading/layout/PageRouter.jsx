@@ -12,8 +12,8 @@ import { PRODUCT_DISPLAY_NAME } from '../../../config/productIdentity';
 // ── Dashboard — EAGERLY imported: it's the first page every user sees after login.
 // Never lazy-load the default landing page — it forces a Suspense stall on every cold open.
 import RoleDashboard from '../pages/dashboard/RoleDashboard';
-// Student dashboard also eager — it's the default page for STUDENT role
-import StudentDashboardView from '../pages/student/StudentDashboard';
+// Student's compact action workspace is eager — it is the default page for STUDENT role.
+import StudentWorkspacePage from '../pages/student/StudentWorkspacePage';
 import FeeCollectionPage from '../pages/FeeCollectionPage';
 const LearnersList = lazy(() => import('../pages/LearnersList'));
 const StudentOverviewPage = lazy(() => import('../pages/StudentOverviewPage'));
@@ -180,6 +180,9 @@ const AnalyticsDashboard = lazy(() => import('../pages/analytics/AnalyticsDashbo
 // LMS Module
 const LMSManager = lazy(() => import('../pages/LMSManager'));
 const AssignmentsPage = lazy(() => import('../pages/lms/assignments/AssignmentsPage'));
+const DigitalDiaryTeacherPage = lazy(() => import('../pages/lms/DigitalDiaryTeacherPage'));
+const DigitalDiaryLeadershipPage = lazy(() => import('../pages/lms/DigitalDiaryLeadershipPage'));
+const StudentDigitalDiaryPage = lazy(() => import('../pages/student/StudentDigitalDiaryPage'));
 const AssignmentBuilder = lazy(() => import('../pages/lms/assignments/AssignmentBuilder'));
 const AssignmentDetail = lazy(() => import('../pages/lms/assignments/AssignmentDetail'));
 const StudentAssignmentView = lazy(() => import('../pages/lms/assignments/StudentAssignmentView'));
@@ -306,13 +309,15 @@ const PARENT_PORTAL_TITLES = {
   'parent-portal-children':       'My Children',
   'parent-portal-fees':           'School Fees',
   'parent-portal-messages':       'Messages',
-  'parent-portal-more':           'Menu',
+  'parent-portal-more':           'Settings',
   'parent-portal-results':        'Results',
   'parent-portal-attendance':     'Attendance',
   'parent-portal-transport':      'Transport',
   'parent-portal-documents':      'Documents',
   'parent-portal-support':        'Support',
-  'parent-portal-homework':       'Homework',
+  'parent-portal-homework':       'Diary & Homework',
+  'digital-diary':                'Digital Diary',
+  'student-diary':                'My Diary',
   'parent-portal-pathway':        'Pathway Planner',
   'parent-portal-schools':        'School Shortlist',
   'parent-portal-academics':      'Academics',
@@ -477,7 +482,7 @@ const PageRouter = ({
       {(() => {
         switch (normalizedPage) {
           case 'dashboard':
-            if (effectiveRole === 'STUDENT') return <StudentDashboardView user={user} onNavigate={handleNavigate} />;
+            if (effectiveRole === 'STUDENT') return <StudentWorkspacePage user={user} onNavigate={handleNavigate} />;
             if (parentPortal) return <ParentDashboard user={user} onNavigate={handleNavigate} brandingSettings={brandingSettings} onLogout={handlers?.onLogout} />;
             return <RoleDashboard learners={learners} pagination={pagination} teachers={teachers} user={user} onNavigate={handleNavigate} currentPage={currentPage} brandingSettings={brandingSettings} />;
           case 'finance-dashboard':
@@ -786,6 +791,10 @@ const PageRouter = ({
           case 'learning-dashboard': 
             if (effectiveRole === 'STUDENT') return <StudentLearningTab onNavigate={handleNavigate} />;
             return <LearningAnalyticsPage />;
+          case 'digital-diary':
+            if (['ADMIN', 'SUPER_ADMIN', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER', 'HEAD_OF_CURRICULUM'].includes(effectiveRole)) return <DigitalDiaryLeadershipPage user={user} />;
+            if (effectiveRole !== 'TEACHER') return <ComingSoon title="Digital Diary" description="The Diary experience is being prepared for this role." />;
+            return <DigitalDiaryTeacherPage user={user} onNavigate={handleNavigate} />;
           case 'learning-assignments': return <AssignmentsPage onNavigate={handleNavigate} />;
           case 'learning-assignment-create': return <AssignmentBuilder onNavigate={handleNavigate} />;
           case 'learning-assignment-edit': return <AssignmentBuilder assignmentId={pageParams?.assignmentId || pageParams?.id} onNavigate={handleNavigate} />;
@@ -808,6 +817,7 @@ const PageRouter = ({
           case 'learning-settings': return <LMSSettingsPage user={user} onNavigate={handleNavigate} />;
 
           // Student Portal
+          case 'student-diary': return <ErrorBoundary><StudentDigitalDiaryPage /></ErrorBoundary>;
           case 'student-courses': return <ErrorBoundary><MyCourses onNavigate={handleNavigate} /></ErrorBoundary>;
           case 'student-assignments': return <ErrorBoundary><MyAssignments onNavigate={handleNavigate} /></ErrorBoundary>;
           case 'student-results': return <ErrorBoundary><MyResults user={user} onNavigate={handleNavigate} /></ErrorBoundary>;

@@ -158,6 +158,13 @@ export class ClassController {
   async getClassById(req: AuthRequest, res: Response) {
     const { id } = req.params;
     const institutionType = getInstitutionType(req);
+    if (req.user?.role === 'TEACHER') {
+      const assigned = await prisma.class.findFirst({
+        where: { id, OR: [{ teacherId: req.user.userId }, { teacherAssignments: { some: { teacherId: req.user.userId } } }] },
+        select: { id: true },
+      });
+      if (!assigned) throw new ApiError(403, 'You can only view learners in your assigned classes');
+    }
 
     const classData = await prisma.class.findFirst({
       where: { id, institutionType },
@@ -201,6 +208,19 @@ export class ClassController {
     });
 
     if (!classData) throw new ApiError(404, 'Class not found');
+    if (req.user?.role === 'TEACHER') {
+      const teacherView = {
+        ...classData,
+        enrollments: classData.enrollments.map((enrollment) => {
+          const learner = enrollment.learner as typeof enrollment.learner & { feeInvoices?: unknown };
+          const { feeInvoices: _feeInvoices, ...learnerDetails } = learner;
+          void _feeInvoices;
+          return { ...enrollment, learner: learnerDetails };
+        }),
+      };
+      res.json({ success: true, data: teacherView });
+      return;
+    }
     res.json({ success: true, data: classData });
   }
 
@@ -356,6 +376,10 @@ export class ClassController {
 
   async getTeacherWorkload(req: AuthRequest, res: Response) {
     const { teacherId } = req.params;
+    const callerId = req.user?.userId;
+    const callerRoles = new Set([req.user?.role, ...((req.user?.roles || []) as string[])]);
+    const privileged = ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'].some((role) => callerRoles.has(role));
+    if (!privileged && callerId !== teacherId) throw new ApiError(403, 'You can only view your own class workload');
     let { academicYear, term } = req.query;
 
     if (!academicYear || !term) {
@@ -473,6 +497,10 @@ export class ClassController {
 
   async getTeacherSchedules(req: AuthRequest, res: Response) {
     const { teacherId } = req.params;
+    const callerId = req.user?.userId;
+    const callerRoles = new Set([req.user?.role, ...((req.user?.roles || []) as string[])]);
+    const privileged = ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'].some((role) => callerRoles.has(role));
+    if (!privileged && callerId !== teacherId) throw new ApiError(403, 'You can only view your own timetable');
     let { academicYear, term } = req.query;
 
     if (!academicYear || !term) {

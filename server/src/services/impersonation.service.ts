@@ -96,6 +96,7 @@ export class ImpersonationService {
     query: string,
     requestingUser: RequestingUser,
     limit: number = 10,
+    options: { browse?: boolean; offset?: number } = {},
   ): Promise<UserSearchResult[]> {
     // Scope guard — only SUPER_ADMIN and ADMIN may use this endpoint.
     const callerRole = requestingUser.role as string;
@@ -104,26 +105,34 @@ export class ImpersonationService {
         .withCode('ROLE_FORBIDDEN');
     }
 
-    // Early exit for blank / whitespace-only queries (Req 1.3).
+    // Keep the existing empty-search contract unless the caller explicitly
+    // requests the bounded directory page used by the mobile chooser.
     const trimmed = query.trim();
-    if (trimmed.length === 0) {
+    const browse = options.browse === true;
+    if (trimmed.length === 0 && !browse) {
       return [];
     }
 
-    // Cap limit at 10 (Req 2.5).
-    const safeLimit = Math.min(Math.max(1, limit), 10);
+    // Search stays small; directory browsing is paged and capped separately.
+    const safeLimit = Math.min(Math.max(1, limit), browse ? 100 : 10);
+    const safeOffset = browse
+      ? Math.min(Math.max(0, Math.floor(options.offset || 0)), 100_000)
+      : 0;
 
     // Scope filter: ADMIN cannot see SUPER_ADMIN accounts (Req 2.1).
     const scopeFilter =
       callerRole === 'ADMIN'
         ? { role: { not: 'SUPER_ADMIN' as Role } }
         : {};
+    const directoryRoleFilter = browse
+      ? { role: { notIn: ['SUPER_ADMIN', 'PARENT', 'STUDENT'] as Role[] } }
+      : {};
 
     // Multi-term search — each whitespace-separated token must match at
     // least one of the indexed fields (Req 1.4, 2.2, 2.3).
     const searchTerms = trimmed.split(/\s+/).filter(Boolean);
 
-    const searchFilter = {
+    const searchFilter = searchTerms.length > 0 ? {
       AND: searchTerms.map((term) => ({
         OR: [
           { firstName:  { contains: term, mode: 'insensitive' as const } },
@@ -141,16 +150,18 @@ export class ImpersonationService {
           },
         ],
       })),
-    };
+    } : {};
 
     const users = await prisma.user.findMany({
       where: {
         archived: false,
         status: 'ACTIVE',
         ...scopeFilter,
+        ...directoryRoleFilter,
         ...searchFilter,
       },
       take: safeLimit,
+      skip: safeOffset,
       orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
       select: {
         id:             true,

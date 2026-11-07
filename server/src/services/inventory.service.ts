@@ -57,15 +57,47 @@ export class InventoryService {
     }
 
     async getItems(categoryId?: string) {
-        return prisma.inventoryItem.findMany({
+        const items = await prisma.inventoryItem.findMany({
             where: {
                 isActive: true,
                 ...(categoryId ? { categoryId } : {})
             },
             include: {
                 category: true,
-                _count: { select: { movements: true } }
+                _count: { select: { movements: true } },
+                movements: {
+                    select: {
+                        type: true,
+                        quantity: true,
+                        fromStoreId: true,
+                        toStoreId: true,
+                    },
+                },
             }
+        });
+
+        return items.map((item: any) => {
+            let stockLevel = 0;
+            const stockByStore: Record<string, number> = {};
+            for (const movement of item.movements) {
+                const quantity = Number(movement.quantity);
+                if (movement.type === 'IN') {
+                    stockLevel += quantity;
+                    if (movement.toStoreId) stockByStore[movement.toStoreId] = (stockByStore[movement.toStoreId] ?? 0) + quantity;
+                } else if (movement.type === 'OUT') {
+                    stockLevel -= quantity;
+                    if (movement.fromStoreId) stockByStore[movement.fromStoreId] = (stockByStore[movement.fromStoreId] ?? 0) - quantity;
+                } else if (movement.type === 'ADJUSTMENT') {
+                    stockLevel += quantity;
+                    const storeId = movement.toStoreId ?? movement.fromStoreId;
+                    if (storeId) stockByStore[storeId] = (stockByStore[storeId] ?? 0) + quantity;
+                } else if (movement.type === 'TRANSFER') {
+                    if (movement.fromStoreId) stockByStore[movement.fromStoreId] = (stockByStore[movement.fromStoreId] ?? 0) - quantity;
+                    if (movement.toStoreId) stockByStore[movement.toStoreId] = (stockByStore[movement.toStoreId] ?? 0) + quantity;
+                }
+            }
+            const { movements: _movements, ...itemData } = item;
+            return { ...itemData, stockLevel, stockByStore };
         });
     }
 
@@ -79,6 +111,16 @@ export class InventoryService {
         description?: string;
         performedById?: string;
     }) {
+        if (!Number.isFinite(data.quantity) || data.quantity <= 0) {
+            throw new Error('Movement quantity must be greater than zero');
+        }
+        if ((data.type === 'IN' || data.type === 'ADJUSTMENT') && !data.toStoreId && !data.fromStoreId) {
+            throw new Error('Select the store receiving the stock');
+        }
+        if (data.type === 'OUT' && !data.fromStoreId) {
+            throw new Error('Select the store issuing the stock');
+        }
+
         return prisma.$transaction(async (tx) => {
             // 1. Record the movement
             const movement = await tx.stockMovement.create({

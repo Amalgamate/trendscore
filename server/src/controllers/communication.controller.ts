@@ -99,7 +99,7 @@ const encryptSetting = (label: string, value: string): string => {
  */
 export const getCommunicationConfig = async (req: AuthRequest, res: Response) => {
     const config = await prisma.communicationConfig.findFirst();
-    const otpEnabled = (config?.emailTemplates as any)?.__security?.otpEnabled !== false;
+    const otpEnabled = (config?.emailTemplates as any)?.__security?.otpEnabled === true;
 
     if (!config) {
         return res.status(200).json({
@@ -135,7 +135,7 @@ export const getCommunicationConfig = async (req: AuthRequest, res: Response) =>
                     instanceId: ''
                 },
                 otp: {
-                    enabled: true
+                    enabled: false
                 },
                 ai: getPublicAISettings(undefined)
             }

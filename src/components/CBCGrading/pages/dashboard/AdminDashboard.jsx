@@ -1,13 +1,6 @@
 import React from 'react';
-import ExecutiveOwnerDashboard from '../../dashboard/ExecutiveOwnerDashboard';
+import SchoolAdminDashboard from './SchoolAdminDashboard';
 
-const AdminDashboard = ({ user, onNavigate, brandingSettings }) => (
-  <ExecutiveOwnerDashboard
-    user={user}
-    onNavigate={onNavigate}
-    brandingSettings={brandingSettings}
-    mode="desktop"
-  />
-);
+const AdminDashboard = ({ user, onNavigate }) => <SchoolAdminDashboard user={user} onNavigate={onNavigate} />;
 
 export default AdminDashboard;

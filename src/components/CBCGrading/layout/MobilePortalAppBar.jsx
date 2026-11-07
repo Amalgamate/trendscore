@@ -133,7 +133,7 @@ const MobilePortalAppBar = ({
 
   return (
     <div className="bg-white sticky top-0 z-30 border-b border-gray-200 shadow-sm">
-      <div className="flex items-center justify-between px-4 pt-6 pb-4 min-h-[86px]">
+      <div className="flex items-center justify-between px-5 pt-6 pb-4 min-h-[86px]">
 
         {/* ── Left: school logo ── */}
         <div className="flex items-center gap-2 min-w-0">
@@ -143,7 +143,7 @@ const MobilePortalAppBar = ({
             <img
               src={schoolLogo}
               alt={schoolName}
-              className="w-10 h-10 object-contain"
+              className="w-full h-full p-1 object-contain"
               onError={(e) => { e.currentTarget.style.display = 'none'; }}
             />
           </div>

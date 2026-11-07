@@ -126,7 +126,7 @@ export class AuthPhoneOtpService {
     const communicationConfig = await prisma.communicationConfig.findFirst({
       select: { emailTemplates: true },
     });
-    // Password is the safe default. A school opts into OTP only after SMS is configured.
+    // OTP is opt-in; when enabled, delivery failures must never downgrade to password-only login.
     const otpEnabled = (communicationConfig?.emailTemplates as any)?.__security?.otpEnabled === true;
 
     if (!otpEnabled && !fixedOtpConfig) {
@@ -204,8 +204,8 @@ export class AuthPhoneOtpService {
     if (!fixedOtpConfig && !smsConfigured) {
       return {
         success: true, challengeId: '', phone: normalized.e164, expiresAt: new Date(), resendAfterSeconds: 0,
-        message: 'SMS login is unavailable. Please sign in with your Parent ID and password.',
-        requiresOtp: false, smsConfigured: false, autofillAllowed: false,
+        message: 'This school requires OTP, but SMS delivery is not configured. Ask the school administrator to configure SMS or turn off OTP.',
+        requiresOtp: true, smsConfigured: false, autofillAllowed: false,
       };
     }
 
@@ -243,8 +243,8 @@ export class AuthPhoneOtpService {
         console.warn('[AuthPhoneOtpService] OTP SMS delivery failed:', error?.message || error);
         return {
           success: true, challengeId: '', phone: normalized.e164, expiresAt: new Date(), resendAfterSeconds: 0,
-          message: 'We could not send an OTP. Please sign in with your Parent ID and password.',
-          requiresOtp: false, smsConfigured: false, autofillAllowed: false,
+          message: 'This school requires OTP, but we could not deliver the code. Ask the school administrator to check SMS delivery or turn off OTP.',
+          requiresOtp: true, smsConfigured: false, autofillAllowed: false,
         };
       }
     }

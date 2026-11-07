@@ -257,6 +257,7 @@ export const sendBulkBroadcast = async (req: AuthRequest, res: Response) => {
     recipients, // Array of { phone, name, message, studentName, grade, id (learnerId) }
     messageTemplate,
     messagePreview,
+    recipientSource,
   } = req.body;
 
   const senderId = req.user?.userId || (req as any).user?.id;
@@ -299,7 +300,8 @@ export const sendBulkBroadcast = async (req: AuthRequest, res: Response) => {
       totalRecipients: recipients.length,
       successCount: sentCount,
       failedCount: failedCount,
-      recipientSource: 'BULK_API',
+      recipientSource: recipientSource || 'BULK_API',
+      messageChannel: channel.toUpperCase(),
       sentAt: new Date(),
       status: failedCount === 0 ? 'DELIVERED' : 'PARTIAL',
       recipients: {

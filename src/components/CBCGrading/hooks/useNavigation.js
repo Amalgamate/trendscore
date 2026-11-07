@@ -31,6 +31,7 @@ const focusModules = ['dashboard', 'learners', 'teachers', 'attendance', 'assess
 const SCHOOL_SECTION_ORDER = ['learners', 'students', 'teachers', 'lecturers', 'attendance', 'assessment', 'secondary-assessment', 'tertiary-assessment'];
 
 const STUDENT_PORTAL_ITEMS = [
+    { id: 'student-diary', label: 'My Diary', path: 'student-diary', icon: BookOpen, permission: null },
     { id: 'student-courses', label: 'My Courses', path: 'student-courses', icon: BookOpen, permission: null },
     { id: 'student-assignments', label: 'My Assignments', path: 'student-assignments', icon: ClipboardList, permission: null },
     { id: 'student-quizzes', label: 'Quizzes & Progress', path: 'student-quizzes', icon: BarChart3, permission: null },
@@ -281,12 +282,13 @@ export const allNavSections = [
     },
     {
         id: 'digital-learning',
-        label: 'Learning',
+        label: 'Digital Diary',
         icon: BookOpen,
         app: 'lms-professional',
         permission: 'ACCESS_LMS',
         items: [
             { id: 'learning-dashboard',    label: 'Dashboard',         path: 'learning-dashboard',    permission: 'ACCESS_LMS'             },
+            { id: 'digital-diary',          label: 'Digital Diary',      path: 'digital-diary',          permission: 'ACCESS_LMS'             },
             { id: 'learning-assignments',  label: 'Assignments',       path: 'learning-assignments',  permission: 'ACCESS_LMS'             },
             { id: 'learning-lessons',      label: 'Lessons',           path: 'learning-lessons',      permission: 'ACCESS_LMS'             },
             { id: 'learning-interactive',  label: 'Quizzes & Activities', path: 'learning-interactive',  permission: 'ACCESS_LMS'             },
@@ -843,6 +845,13 @@ export const useNavigation = () => {
 
     const buildNav = (sourceSections) => {
         const isItemVisible = (item) => {
+            if (item.id === 'digital-diary' && !['TEACHER', 'ADMIN', 'SUPER_ADMIN', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER', 'HEAD_OF_CURRICULUM'].some(isRole)) return false;
+            // Keep the teacher's learning actions together in one Diary workspace.
+            if (isRole('TEACHER') && [
+                'learning-dashboard', 'learning-assignments', 'learning-lessons',
+                'learning-interactive', 'learning-revision', 'learning-analytics',
+                'learning-settings', 'learning-marketplace', 'learning-hub-assignments',
+            ].includes(item.id)) return false;
             if (item.id === 'planner-term-setup' && !['ADMIN', 'SUPER_ADMIN'].some((allowedRole) => isRole(allowedRole))) return false;
             // Teachers may access their own class admissions only (special override).
             if (item.path === 'learners-admissions' && isRole('TEACHER')) return true;
@@ -959,6 +968,12 @@ export const useNavigation = () => {
 
     const navSections = useMemo(() => {
         const isItemVisible = (item) => {
+            if (item.id === 'digital-diary' && !['TEACHER', 'ADMIN', 'SUPER_ADMIN', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER', 'HEAD_OF_CURRICULUM'].some(isRole)) return false;
+            if (isRole('TEACHER') && [
+                'learning-dashboard', 'learning-assignments', 'learning-lessons',
+                'learning-interactive', 'learning-revision', 'learning-analytics',
+                'learning-settings', 'learning-marketplace', 'learning-hub-assignments',
+            ].includes(item.id)) return false;
             if (item.id === 'planner-term-setup' && !['ADMIN', 'SUPER_ADMIN'].some((allowedRole) => isRole(allowedRole))) return false;
             // A junior school guides transition decisions; it does not deliver
             // Grade 10–12 subjects. School Offerings is therefore a senior-only

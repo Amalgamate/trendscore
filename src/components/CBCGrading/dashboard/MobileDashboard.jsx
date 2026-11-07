@@ -10,6 +10,9 @@ import AccountantMobileDashboard from './mobile/AccountantMobileDashboard';
 import TeacherMobileDashboard from './mobile/TeacherMobileDashboard';
 import ParentMobileDashboard from './mobile/ParentMobileDashboard';
 import StudentMobileDashboard from './mobile/StudentMobileDashboard';
+import DeputyHeadDashboard from '../pages/dashboard/DeputyHeadDashboard';
+import ReceptionistDashboard from '../pages/dashboard/ReceptionistDashboard';
+import RoleLandingDashboard, { OPERATIONAL_STAFF_ROLES } from '../pages/dashboard/RoleLandingDashboard';
 
 /**
  * Loading fallback for lazy-loaded dashboards
@@ -44,7 +47,6 @@ const MobileDashboard = ({
   const renderDashboard = () => {
     switch (role) {
       case 'OWNER':
-      case 'SUPER_ADMIN':
       case 'ADMIN':
         return (
           <OwnerMobileDashboard 
@@ -54,6 +56,11 @@ const MobileDashboard = ({
             brandingSettings={brandingSettings}
           />
         );
+
+      case 'SUPER_ADMIN':
+      case 'HEAD_TEACHER':
+      case 'HEAD_OF_CURRICULUM':
+        return <RoleLandingDashboard user={user} role={role} onNavigate={onNavigate} />;
 
       case 'ACCOUNTANT':
         return (
@@ -66,7 +73,6 @@ const MobileDashboard = ({
         );
 
       case 'TEACHER':
-      case 'HEAD_TEACHER':
         return (
           <TeacherMobileDashboard 
             user={user} 
@@ -75,6 +81,12 @@ const MobileDashboard = ({
             brandingSettings={brandingSettings}
           />
         );
+
+      case 'DEPUTY_HEAD_TEACHER':
+        return <DeputyHeadDashboard user={user} onNavigate={onNavigate} />;
+
+      case 'RECEPTIONIST':
+        return <ReceptionistDashboard user={user} onNavigate={onNavigate} />;
 
       case 'PARENT':
         return (
@@ -97,15 +109,10 @@ const MobileDashboard = ({
         );
 
       default:
-        // Fallback to Owner dashboard for unknown roles
-        return (
-          <OwnerMobileDashboard 
-            user={user} 
-            onNavigate={onNavigate} 
-            currentPath={currentPath}
-            brandingSettings={brandingSettings}
-          />
-        );
+        if (OPERATIONAL_STAFF_ROLES.includes(String(role || '').toUpperCase())) {
+          return <RoleLandingDashboard user={user} role={role} onNavigate={onNavigate} />;
+        }
+        return <div className="min-h-[50vh] px-5 py-12 text-center text-sm font-semibold text-slate-700">A dashboard is not configured for this account role.</div>;
     }
   };
 

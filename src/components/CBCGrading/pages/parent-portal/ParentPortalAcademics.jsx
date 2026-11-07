@@ -258,7 +258,7 @@ export default function ParentPortalAcademics({ onNavigate }) {
           />
           <NavCard
             icon={BookOpen}
-            label="Assignments & Homework"
+            label="Diary & Homework"
             sublabel="Pending and completed work"
             color="text-amber-600"
             bgColor="bg-amber-50"

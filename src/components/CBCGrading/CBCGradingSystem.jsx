@@ -13,6 +13,7 @@ import GitNotificationDialog from './layout/GitNotificationDialog';
 import ModuleHelpAssistant from '../help/ModuleHelpAssistant';
 import { findModuleGuide } from '../help/moduleGuides';
 import AIAssistant from '../help/AIAssistant';
+import ParentHelpChat from './pages/parent-portal/ParentHelpChat';
 import RoleOnboarding from '../help/RoleOnboarding';
 import { findRoleOnboarding, getRoleOnboarding } from '../help/roleOnboardingJourneys';
 import { useSetupProgress } from '../help/useSetupProgress';
@@ -322,6 +323,13 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
     if (user?.role === 'ACCOUNTANT' && currentPage === 'dashboard') {
       setCurrentPage('finance-dashboard');
       return;
+    }
+    if (String(accessUser?.role || '').toUpperCase() === 'TEACHER' && currentPage === 'dashboard') {
+      const teacherLandingPage = resolveDashboardPage(accessUser);
+      if (teacherLandingPage !== 'dashboard') {
+        setCurrentPage(teacherLandingPage);
+        return;
+      }
     }
     if (!parentPortal && isParentPortalPage(currentPage)) {
       setCurrentPage(resolveDashboardPage(accessUser));
@@ -679,11 +687,15 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
     // shared MobileBottomNav rendered once here so every current and future
     // parent-portal page automatically gets it without per-page wiring.
     if (parentPortal) {
+      const isParentLanding = currentPage === 'parent-portal-home';
       return (
         <>
           <div className="h-[100dvh] w-full flex flex-col overflow-hidden bg-[var(--app-page-bg)]">
-            {/* Scrollable content — pb-24 ensures content clears the bottom nav */}
-            <div className="flex-1 overflow-y-auto pb-24">
+            {/* Landing page uses the full viewport; child pages reserve room for the footer nav. */}
+            <div
+              className="min-h-0 flex-1 overflow-y-auto"
+              style={{ paddingBottom: isParentLanding ? 'calc(4.25rem + env(safe-area-inset-bottom, 0px))' : 'calc(8.25rem + env(safe-area-inset-bottom, 0px))' }}
+            >
               <ErrorBoundary>
                 <PageRouter
                   currentPage={currentPage}
@@ -703,12 +715,12 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
                 />
               </ErrorBoundary>
             </div>
-            {/* Single global bottom nav for all parent portal pages */}
-            <MobileBottomNav
+            {!isParentLanding && <MobileBottomNav
               role={accessUser?.role}
               currentPath={currentPage}
               onNavigate={handleNavigate}
-            />
+            />}
+            <ParentHelpChat onNavigate={handleNavigate} hasBottomNav={!isParentLanding} />
             <ModuleHelpAssistant currentPage={currentPage} user={accessUser} onNavigate={handleNavigate} open={helpOpen} onOpenChange={setHelpOpen} />
             <AIAssistant currentPage={currentPage} user={accessUser} onNavigate={handleNavigate} />
             <RoleOnboarding currentPage={currentPage} user={accessUser} onNavigate={handleNavigate} open={onboardingOpen} onOpenChange={setOnboardingOpen} progress={setupProgress} />

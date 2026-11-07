@@ -233,11 +233,12 @@ export const secondaryNavSections = [
   // ── Digital Learning (Professional LMS) ───────────────────────────────────
   {
     id: 'digital-learning',
-    label: 'Learning',
+    label: 'Digital Diary',
     icon: BookOpen,
     permission: 'ACCESS_LMS',
     items: [
       { id: 'learning-dashboard',    label: 'Dashboard',        path: 'learning-dashboard',    permission: 'ACCESS_LMS' },
+      { id: 'digital-diary',          label: 'Digital Diary',     path: 'digital-diary',          permission: 'ACCESS_LMS' },
       { id: 'learning-assignments',  label: 'Assignments',      path: 'learning-assignments',  permission: 'ACCESS_LMS' },
       { id: 'learning-lessons',      label: 'Lessons',          path: 'learning-lessons',      permission: 'ACCESS_LMS' },
       { id: 'learning-revision',     label: 'Revision Library', path: 'learning-revision',     permission: 'ACCESS_LMS' },

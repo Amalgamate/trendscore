@@ -193,7 +193,7 @@ const CommunicationSettings = () => {
     customAuthHeader: 'Authorization',
     customToken: '',
     enabled: false,
-    otpEnabled: true
+    otpEnabled: false
   });
 
   const [testContact, setTestContact] = useState('');
@@ -1376,6 +1376,9 @@ const CommunicationSettings = () => {
                   </div>
                 )}
               </div>
+              <p className="mt-2 text-xs text-gray-600">
+                When enabled, staff and parent accounts must verify a code sent through the configured SMS provider. If delivery is unavailable, their sign-in stays blocked until SMS is fixed or OTP is turned off here.
+              </p>
             </div>
           </div>
 

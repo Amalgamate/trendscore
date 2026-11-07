@@ -1140,10 +1140,12 @@ export const generateTestsBulk = async (req: AuthRequest, res: Response) => {
 export const getSummativeTests = async (req: AuthRequest, res: Response) => {
   try {
     const { term, academicYear, grade, stream, learningArea } = req.query;
+    const callerRoles = new Set([req.user?.role, ...((req.user?.roles || []) as string[])]);
+    const teacherOnly = callerRoles.has('TEACHER') && !['ADMIN', 'SUPER_ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'].some((role) => callerRoles.has(role));
 
     // Parameterised cache key — all write operations bust via deleteByPrefix('tests:')
     const cacheKey = `tests:${term || ''}:${academicYear || ''}:${grade || ''}:${stream || ''}:${learningArea || ''}`;
-    const cached = await redisCacheService.get<any[]>(cacheKey);
+    const cached = teacherOnly ? null : await redisCacheService.get<any[]>(cacheKey);
     if (cached) {
       return res.json({ success: true, data: cached, count: cached.length, _cached: true });
     }
@@ -1177,6 +1179,18 @@ export const getSummativeTests = async (req: AuthRequest, res: Response) => {
       whereClause.OR = resolvedArea.id
         ? [{ learningAreaId: resolvedArea.id }, { learningArea: String(learningArea) }]
         : [{ learningArea: String(learningArea) }];
+    }
+
+    let teacherSubjects: string[] = [];
+    if (teacherOnly) {
+      const teacherId = req.user?.userId;
+      const [assignments, schedules] = await Promise.all([
+        prisma.subjectAssignment.findMany({ where: { teacherId, grade: String(grade || ''), active: true }, include: { learningArea: { select: { name: true, shortName: true } } } }),
+        prisma.classSchedule.findMany({ where: { teacherId, active: true, class: { grade: String(grade || ''), active: true, archived: false } }, select: { subject: true } }),
+      ]);
+      teacherSubjects = Array.from(new Set([...assignments.flatMap((item) => [item.learningArea.name, item.learningArea.shortName]), ...schedules.map((item) => item.subject)].filter((name): name is string => Boolean(name))));
+      if (teacherSubjects.length === 0) return res.json({ success: true, data: [], count: 0 });
+      whereClause.AND = [...(whereClause.AND || []), { learningArea: { in: teacherSubjects } }];
     }
 
     let tests: any[] = [];
@@ -1228,6 +1242,7 @@ export const getSummativeTests = async (req: AuthRequest, res: Response) => {
           return true;
         })
         .filter((t: any) => !learningArea || t.learningArea === learningArea)
+        .filter((t: any) => !teacherOnly || teacherSubjects.some((subject) => subject.toLowerCase() === String(t.learningArea || '').toLowerCase()))
         .map((t: any) => ({
           ...t,
           creator: null,
@@ -1239,7 +1254,7 @@ export const getSummativeTests = async (req: AuthRequest, res: Response) => {
       }
     }
 
-    await redisCacheService.set(cacheKey, tests, TESTS_CACHE_TTL);
+    if (!teacherOnly) await redisCacheService.set(cacheKey, tests, TESTS_CACHE_TTL);
 
     res.json({
       success: true,
@@ -1287,9 +1302,29 @@ export const getSummativeTest = async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ success: false, message: 'Test not found' });
     }
 
+    const callerRoles = new Set([req.user?.role, ...((req.user?.roles || []) as string[])]);
+    const teacherOnly = callerRoles.has('TEACHER') && !['ADMIN', 'SUPER_ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'].some((role) => callerRoles.has(role));
+    let responseTest: any = test;
+    if (teacherOnly) {
+      const teacherId = req.user?.userId;
+      const [assignments, schedules, classes] = await Promise.all([
+        prisma.subjectAssignment.findMany({ where: { teacherId, grade: test.grade, active: true, learningArea: { OR: [{ name: { equals: test.learningArea, mode: 'insensitive' } }, { shortName: { equals: test.learningArea, mode: 'insensitive' } }] } }, select: { classId: true } }),
+        prisma.classSchedule.findMany({ where: { teacherId, active: true, subject: { equals: test.learningArea, mode: 'insensitive' }, class: { grade: test.grade, active: true, archived: false } }, select: { classId: true } }),
+        prisma.class.findMany({ where: { OR: [{ teacherId }, { teacherAssignments: { some: { teacherId } } }], grade: test.grade, active: true, archived: false }, select: { id: true } }),
+      ]);
+      const classIds = new Set([...assignments.map((item) => item.classId).filter(Boolean), ...schedules.map((item) => item.classId), ...classes.map((item) => item.id)] as string[]);
+      const gradeWide = assignments.some((item) => !item.classId);
+      if (!gradeWide && classIds.size === 0) return res.status(403).json({ success: false, message: 'You are not assigned to this subject or class.' });
+      if (!gradeWide) {
+        const enrollments = await prisma.classEnrollment.findMany({ where: { classId: { in: [...classIds] }, active: true, archived: false }, select: { learnerId: true } });
+        const allowedLearners = new Set(enrollments.map((item) => item.learnerId));
+        responseTest = { ...test, results: test.results.filter((result) => allowedLearners.has(result.learnerId)), _count: { results: test.results.filter((result) => allowedLearners.has(result.learnerId)).length } };
+      }
+    }
+
     res.json({
       success: true,
-      data: test
+      data: responseTest
     });
 
   } catch (error: any) {
@@ -1899,20 +1934,22 @@ export const getSummativeByLearner = async (req: AuthRequest, res: Response) => 
  * Get Results for a Specific Test — cached
  * GET /api/assessments/summative/results/test/:testId
  */
-export const getTestResults = async (req: Request, res: Response) => {
+export const getTestResults = async (req: AuthRequest, res: Response) => {
   try {
     const { testId } = req.params;
     const institutionScope = getInstitutionType(req).toUpperCase();
 
     const test = await prisma.summativeTest.findUnique({
       where: { id: testId },
-      select: { id: true, grade: true }
+      select: { id: true, grade: true, learningArea: true }
     });
     if (!test) throw new ApiError(404, 'Test not found');
     assertGradeAllowedForInstitution(institutionScope, String(test.grade || ''), 'Get test results');
 
+    const roles = new Set([req.user?.role, ...((req.user?.roles || []) as string[])]);
+    const isTeacherOnly = roles.has('TEACHER') && !['ADMIN', 'SUPER_ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'].some((r) => roles.has(r));
     const cacheKey = `results:${institutionScope}:${testId}`;
-    const cached = await redisCacheService.get<any[]>(cacheKey);
+    const cached = isTeacherOnly ? null : await redisCacheService.get<any[]>(cacheKey);
     if (cached) {
       return res.json({ success: true, data: cached, count: cached.length, _cached: true });
     }
@@ -1990,7 +2027,24 @@ export const getTestResults = async (req: Request, res: Response) => {
     }
 
     results = results.map(normalizeSummativeResultForResponse);
-    await redisCacheService.set(cacheKey, results, RESULTS_CACHE_TTL);
+    if (isTeacherOnly) {
+      const teacherId = req.user?.userId;
+      const [subjectAssignments, schedules, teacherClasses] = await Promise.all([
+        prisma.subjectAssignment.findMany({ where: { teacherId, grade: test.grade, active: true, learningArea: { OR: [{ name: { equals: test.learningArea, mode: 'insensitive' } }, { shortName: { equals: test.learningArea, mode: 'insensitive' } }] } }, select: { classId: true } }),
+        prisma.classSchedule.findMany({ where: { teacherId, active: true, subject: { equals: test.learningArea, mode: 'insensitive' }, class: { grade: test.grade, active: true, archived: false } }, select: { classId: true } }),
+        prisma.class.findMany({ where: { OR: [{ teacherId }, { teacherAssignments: { some: { teacherId } } }], grade: test.grade, active: true, archived: false }, select: { id: true } }),
+      ]);
+      const classIds = new Set([...subjectAssignments.map((a) => a.classId).filter(Boolean), ...schedules.map((s) => s.classId), ...teacherClasses.map((c) => c.id)] as string[]);
+      const gradeWideSubjectAssignment = subjectAssignments.some((a) => !a.classId);
+      if (!gradeWideSubjectAssignment && classIds.size === 0) return res.status(403).json({ success: false, message: 'You are not assigned to this subject or class.' });
+      if (!gradeWideSubjectAssignment) {
+        const enrollments = await prisma.classEnrollment.findMany({ where: { classId: { in: [...classIds] }, active: true, archived: false }, select: { learnerId: true } });
+        const allowedLearners = new Set(enrollments.map((enrollment) => enrollment.learnerId));
+        results = results.filter((result: any) => allowedLearners.has(result.learnerId));
+      }
+    } else {
+      await redisCacheService.set(cacheKey, results, RESULTS_CACHE_TTL);
+    }
 
     res.json({
       success: true,
@@ -2025,6 +2079,28 @@ export const getBulkSummativeResults = async (req: AuthRequest, res: Response) =
       return res.status(400).json({ success: false, message: 'Missing required filters: grade, academicYear, term' });
     }
 
+    const callerRoles = new Set([req.user?.role, ...((req.user?.roles || []) as string[])]);
+    const teacherOnly = callerRoles.has('TEACHER') && !['ADMIN', 'SUPER_ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'].some((role) => callerRoles.has(role));
+    let teacherSubjects: string[] = [];
+    let teacherLearners: Set<string> | null = null;
+    if (teacherOnly) {
+      const teacherId = req.user?.userId;
+      const [assignments, schedules, teacherClasses] = await Promise.all([
+        prisma.subjectAssignment.findMany({ where: { teacherId, grade: String(grade), active: true }, include: { learningArea: { select: { name: true, shortName: true } } } }),
+        prisma.classSchedule.findMany({ where: { teacherId, active: true, class: { grade: String(grade), active: true, archived: false } }, select: { classId: true, subject: true } }),
+        prisma.class.findMany({ where: { OR: [{ teacherId }, { teacherAssignments: { some: { teacherId } } }], grade: String(grade), active: true, archived: false, ...(stream ? { stream: String(stream) as any } : {}) }, select: { id: true } }),
+      ]);
+      teacherSubjects = Array.from(new Set([...assignments.flatMap((item) => [item.learningArea.name, item.learningArea.shortName]), ...schedules.map((item) => item.subject)].filter((name): name is string => Boolean(name))));
+      if (!teacherSubjects.length) return res.json({ success: true, data: [], count: 0, communications: [], predictions: {} });
+      const classIds = new Set([...assignments.map((item) => item.classId).filter(Boolean), ...schedules.map((item) => item.classId), ...teacherClasses.map((item) => item.id)] as string[]);
+      const gradeWideAssignment = assignments.some((item) => !item.classId);
+      if (!gradeWideAssignment) {
+        if (!classIds.size) return res.json({ success: true, data: [], count: 0, communications: [], predictions: {} });
+        const enrollments = await prisma.classEnrollment.findMany({ where: { classId: { in: [...classIds] }, active: true, archived: false }, select: { learnerId: true } });
+        teacherLearners = new Set(enrollments.map((item) => item.learnerId));
+      }
+    }
+
     logger.info('[getBulkSummativeResults] Filters:', { grade, stream, academicYear, term, testType, testId, testDate });
 
     const parsedTestDate = testDate ? new Date(String(testDate)) : null;
@@ -2050,6 +2126,10 @@ export const getBulkSummativeResults = async (req: AuthRequest, res: Response) =
         ...(testTypeFilter ? { testType: { in: testTypeFilter } } : {})
       }
     };
+
+    if (teacherOnly) {
+      whereClause.test.AND = [...(whereClause.test.AND || []), { learningArea: { in: teacherSubjects } }];
+    }
 
     logger.info('📋 [ASSESSMENT] Prisma whereClause:', JSON.stringify(whereClause, null, 2));
 
@@ -2307,6 +2387,10 @@ export const getBulkSummativeResults = async (req: AuthRequest, res: Response) =
         marks: results[0].marksObtained
       } : 'NO RESULTS'
     });
+
+    if (teacherOnly) {
+      results = results.filter((result: any) => teacherSubjects.some((subject) => subject.toLowerCase() === String(result.test?.learningArea || '').toLowerCase()) && (!teacherLearners || teacherLearners.has(result.learnerId)));
+    }
 
     const learnerIds = Array.from(new Set(results.map(r => r.learnerId)));
 

@@ -188,6 +188,7 @@ router.post(
   '/tests',
   authenticate,
   requireRole(['ADMIN', 'SUPER_ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER']),
+  checkSubjectOwnership({ required: true }),
   rateLimit({ windowMs: 60_000, maxRequests: 20 }),
   validate(createSummativeTestSchema),
   auditLog('CREATE_SUMMATIVE_TEST'),
@@ -283,7 +284,7 @@ router.post(
 router.post(
   '/summative/results/bulk',
   authenticate,
-  checkSubjectOwnership({ required: false }),
+  checkSubjectOwnership({ required: true }),
   rateLimit({ windowMs: 60_000, maxRequests: 60 }),
   // NOTE: checkNotLocked is NOT applied here because the testId comes from
   // the request body, not params, and checkNotLocked only reads req.params.

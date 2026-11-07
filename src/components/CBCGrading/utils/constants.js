@@ -196,6 +196,7 @@ export const PAGE_TITLES = {
   // Learning Hub
   'learning-hub-materials': 'Resource Center',
   'learning-hub-assignments': 'Assignments',
+  'digital-diary': 'Digital Diary',
   'learning-hub-lesson-plans': 'Lesson Plans',
   'learning-hub-library': 'Resource Library',
   'inventory-books': 'Inventory Management',

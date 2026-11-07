@@ -29,10 +29,13 @@ export class SubjectAssignmentController {
      */
     async getAllAssignments(req: AuthRequest, res: Response) {
         const { grade, teacherId, learningAreaId, classId } = req.query;
+        const callerRoles = new Set([req.user?.role, ...((req.user?.roles || []) as string[])]);
+        const privileged = ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'].some((role) => callerRoles.has(role));
 
         const where: Record<string, unknown> = {};
         if (grade)          where.grade          = grade as string;
-        if (teacherId)      where.teacherId      = teacherId as string;
+        if (teacherId && (privileged || teacherId === req.user?.userId)) where.teacherId = teacherId as string;
+        else if (!privileged) where.teacherId = req.user?.userId;
         if (learningAreaId) where.learningAreaId = learningAreaId as string;
         if (classId)        where.classId        = classId as string;
 

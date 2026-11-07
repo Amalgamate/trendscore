@@ -106,7 +106,8 @@ describe('appAccess', () => {
     expect(resolveDashboardPage({ role: 'PARENT' })).toBe('parent-portal-home');
     expect(resolveDashboardPage({ role: 'ACCOUNTANT' })).toBe('finance-dashboard');
     expect(resolveDashboardPage({ role: 'STUDENT' })).toBe('dashboard');
-    expect(resolveDashboardPage({ role: 'TEACHER' })).toBe('dashboard');
+    expect(resolveDashboardPage({ role: 'TEACHER' })).toBe('digital-diary');
+    expect(resolveDashboardPage({ role: 'TEACHER', enabledApps: ['attendance'] })).toBe('dashboard');
     expect(resolveDashboardPage({ role: 'ADMIN' })).toBe('dashboard');
     expect(userHasParentPortalAccess({ role: 'ADMIN' })).toBe(false);
   });
