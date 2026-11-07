@@ -409,8 +409,10 @@ describe('Fee collection end-to-end', () => {
         paymentDate: `${bulkAcademicYear}-08-24`,
         paymentMethod: 'OTHER',
         referenceNumber: 'BULK-RECON'
-      })
-      .expect(201);
+      });
+    if (markPaidResponse.status !== 201) {
+      throw new Error(`Bulk mark-paid failed (${markPaidResponse.status}): ${JSON.stringify(markPaidResponse.body)}`);
+    }
 
     expect(markPaidResponse.body).toHaveProperty('success', true);
     expect(markPaidResponse.body.count).toBeGreaterThan(0);
