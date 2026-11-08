@@ -244,12 +244,12 @@ export const useLearners = (options = {}) => {
     }
   }, [fetchLearners, pagination]);
 
-  const promoteLearners = useCallback(async (learnerIds, newGrade) => {
+  const promoteLearners = useCallback(async (promotionData) => {
     try {
       setLoading(true);
       setError(null);
 
-      const response = await api.learners.bulkPromote({ learnerIds, nextGrade: newGrade });
+      const response = await api.learners.bulkPromote(promotionData);
 
       if (response.success) {
         await fetchLearners({

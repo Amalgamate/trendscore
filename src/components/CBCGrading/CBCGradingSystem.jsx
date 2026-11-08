@@ -36,6 +36,7 @@ import { MOBILE_MEDIA_QUERY } from '../../constants/breakpoints';
 import { clearAllSchoolData } from '../../utils/schoolDataCleanup';
 import { refreshBus } from '../../utils/refreshBus';
 import axiosInstance from '../../services/api/axiosConfig';
+import { cacheDelPrefix } from '../../services/api';
 import { userAPI } from '../../services/api/user.api';
 import { hasPageAccess, isParentPortalPage, resolveDashboardPage, userHasParentPortalAccess } from './utils/appAccess';
 import { resolveLearnerSaveIntent } from './utils/learnerSaveIntent';
@@ -424,18 +425,17 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
     }
   }, [deleteLearner, fetchLearnersFromApi]);
 
-  const promoteLearners = useCallback(async (learnerIds, newGrade) => {
+  const promoteLearners = useCallback(async (promotionData) => {
     try {
-      const res = await axiosInstance.post('/learners/bulk-promote', {
-        learnerIds, nextGrade: newGrade,
-      });
+      const res = await axiosInstance.post('/learners/bulk-promote', promotionData);
       if (res.data?.success) {
+        cacheDelPrefix('learners:');
         await fetchLearnersFromApi();
-        return { success: true };
+        return { success: true, message: res.data.message, data: res.data.data };
       }
       return { success: false, error: res.data?.message };
     } catch (err) {
-      return { success: false, error: err.message };
+      return { success: false, error: err.response?.data?.message || err.message, blockers: err.response?.data?.blockers || [] };
     }
   }, [fetchLearnersFromApi]);
 

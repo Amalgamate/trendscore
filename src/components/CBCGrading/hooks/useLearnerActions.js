@@ -73,13 +73,13 @@ export const useLearnerActions = ({
     }
   }, [bulkDeleteLearners, showSuccess]);
 
-  const handlePromoteLearners = useCallback(async (learnerIds, nextGrade) => {
-    const result = await promoteLearners(learnerIds, nextGrade);
+  const handlePromoteLearners = useCallback(async (promotionData) => {
+    const result = await promoteLearners(promotionData);
     if (!result.success && result.error) {
-      showSuccess('Error promoting students: ' + result.error);
+      showError('Error promoting students: ' + result.error);
     }
     return result;
-  }, [promoteLearners, showSuccess]);
+  }, [promoteLearners, showError]);
 
   const handleMarkAsExited = useCallback((learnerId) => {
     setConfirmAction(() => async () => {

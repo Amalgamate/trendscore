@@ -386,7 +386,8 @@ const PageRouter = ({
     handleViewParent,
     handleDeleteParent,
     handleArchiveParent,
-    showSuccess
+    showSuccess,
+    showError
   } = handlers;
 
   const renderParentPortalShell = (content, options = {}) => (
@@ -550,7 +551,7 @@ const PageRouter = ({
           case 'learners-transfers-in': return <TransfersInPage />;
           case 'learners-exited': return <ExitedLearnersPage />;
           case 'learners-promotion':
-            return <PromotionPage learners={learners} onPromote={handlePromoteLearners} showNotification={showSuccess} />;
+            return <PromotionPage learners={learners} onPromote={handlePromoteLearners} showNotification={showSuccess} showError={showError} />;
           case 'learners-transfer-out':
             return <TransferOutPage learners={learners} onTransferOut={handleTransferOut} showNotification={showSuccess} />;
           case 'learners-uniform': return <UniformAllocationPage />;
