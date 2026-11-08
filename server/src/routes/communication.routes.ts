@@ -11,6 +11,7 @@ import {
     getBirthdaysToday,
     sendBirthdayWishes,
     getInboxMessages,
+    archiveInboxMessage,
     markMessageRead,
     getBroadcastRecipients,
     getStaffContacts,
@@ -200,6 +201,12 @@ router.patch(
     '/messages/receipts/:id/read',
     rateLimit({ windowMs: 60_000, maxRequests: 100 }),
     markMessageRead
+);
+
+router.patch(
+    '/messages/receipts/:id/archive',
+    rateLimit({ windowMs: 60_000, maxRequests: 100 }),
+    archiveInboxMessage
 );
 
 // Send Test Email

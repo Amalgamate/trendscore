@@ -28,6 +28,13 @@ const createGroupSchema = z.object({
   avatarUrl: z.string().url().optional(),
 });
 
+const inboxPreferencesSchema = z.object({
+  archived: z.boolean().optional(),
+  pinned: z.boolean().optional(),
+  mutedUntil: z.string().datetime().nullable().optional(),
+  markUnread: z.boolean().optional(),
+});
+
 // ---------------------------------------------------------------------------
 // Controller
 // ---------------------------------------------------------------------------
@@ -38,8 +45,9 @@ export class ChatController {
   async getInbox(req: AuthRequest, res: Response) {
     const userId = req.user?.userId;
     if (!userId) throw new ApiError(401, 'Unauthorized');
-    const inbox = await ChatService.getInbox(userId);
-    const unreadCounts = await ChatService.getUnreadCounts(userId);
+    const includeArchived = req.query.includeArchived === 'true';
+    const inbox = await ChatService.getInbox(userId, includeArchived);
+    const unreadCounts = await ChatService.getUnreadCounts(userId, includeArchived);
     // Merge unread counts
     const enriched = inbox.map((c: any) => ({ ...c, unreadCount: unreadCounts[c.id] ?? 0 }));
     res.json({ success: true, data: enriched });
@@ -59,6 +67,9 @@ export class ChatController {
     const userId = req.user?.userId;
     if (!userId) throw new ApiError(401, 'Unauthorized');
     const { otherUserId, initialMessage } = createDirectSchema.parse(req.body);
+    if (!(await ChatService.canStartDirect(userId, otherUserId))) {
+      throw new ApiError(403, 'You cannot start a conversation with this user');
+    }
     const conversation = await ChatService.getOrCreateDirect({ creatorId: userId, otherUserId });
     if (initialMessage) {
       await ChatService.sendMessage({ conversationId: conversation.id, senderId: userId, body: initialMessage });
@@ -71,6 +82,9 @@ export class ChatController {
     const userId = req.user?.userId;
     if (!userId) throw new ApiError(401, 'Unauthorized');
     const { name, participantIds, avatarUrl } = createGroupSchema.parse(req.body);
+    if (!(await ChatService.canCreateGroup(userId, participantIds))) {
+      throw new ApiError(403, 'Group conversations are currently available to school staff only');
+    }
     const conversation = await ChatService.createGroup({ creatorId: userId, name, participantIds, avatarUrl });
     res.status(201).json({ success: true, data: conversation });
   }
@@ -80,6 +94,9 @@ export class ChatController {
     const userId = req.user?.userId;
     if (!userId) throw new ApiError(401, 'Unauthorized');
     const { id } = req.params;
+    if (!(await ChatService.canAccessConversation(id, userId))) {
+      throw new ApiError(403, 'You cannot access this conversation');
+    }
     const cursor = req.query.cursor as string | undefined;
     const limit = Math.min(Number(req.query.limit ?? 40), 100);
     const messages = await ChatService.getMessages(id, userId, cursor, limit);
@@ -91,6 +108,9 @@ export class ChatController {
     const userId = req.user?.userId;
     if (!userId) throw new ApiError(401, 'Unauthorized');
     const { id } = req.params;
+    if (!(await ChatService.canAccessConversation(id, userId))) {
+      throw new ApiError(403, 'You cannot access this conversation');
+    }
     const input = sendMessageSchema.parse(req.body);
     const message = await ChatService.sendMessage({ conversationId: id, senderId: userId, ...input });
     res.status(201).json({ success: true, data: message });
@@ -119,8 +139,19 @@ export class ChatController {
   async markRead(req: AuthRequest, res: Response) {
     const userId = req.user?.userId;
     if (!userId) throw new ApiError(401, 'Unauthorized');
+    if (!(await ChatService.canAccessConversation(req.params.id, userId))) {
+      throw new ApiError(403, 'You cannot access this conversation');
+    }
     await ChatService.markRead(req.params.id, userId);
     res.json({ success: true });
+  }
+
+  async updateInboxPreferences(req: AuthRequest, res: Response) {
+    const userId = req.user?.userId;
+    if (!userId) throw new ApiError(401, 'Unauthorized');
+    const preferences = inboxPreferencesSchema.parse(req.body);
+    const participant = await ChatService.updateInboxPreferences(req.params.id, userId, preferences);
+    res.json({ success: true, data: participant });
   }
 
   /** POST /api/chat/messages/:id/reactions */

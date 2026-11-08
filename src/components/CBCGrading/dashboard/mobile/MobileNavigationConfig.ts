@@ -75,6 +75,14 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
         permission: 'ACCESS_TIMETABLE',
         activePaths: ['planner-timetable', 'timetable'],
         color: 'text-indigo-600'
+      },
+      {
+        id: 'inbox',
+        label: 'Inbox',
+        icon: Mail,
+        path: 'comm-messages',
+        permission: 'VIEW_INBOX',
+        color: 'text-violet-700'
       }
     ]
   },
@@ -135,6 +143,14 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
         permission: 'ACCESS_TIMETABLE',
         activePaths: ['planner-timetable', 'timetable'],
         color: 'text-indigo-600'
+      },
+      {
+        id: 'inbox',
+        label: 'Inbox',
+        icon: Mail,
+        path: 'comm-messages',
+        permission: 'VIEW_INBOX',
+        color: 'text-violet-700'
       }
     ]
   },
@@ -343,6 +359,14 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
         path: 'student-timetable',
         activePaths: ['student-timetable'],
         color: 'text-indigo-600'
+      },
+      {
+        id: 'inbox',
+        label: 'Inbox',
+        icon: Mail,
+        path: 'comm-messages',
+        permission: 'VIEW_INBOX',
+        color: 'text-violet-700'
       }
     ]
   },

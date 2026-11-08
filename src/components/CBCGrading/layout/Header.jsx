@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Bell, Zap, ChevronDown, ClipboardList, BarChart3, MessageSquare, Calendar, Gift, User as UserIcon, GitBranch, Compass, HelpCircle } from 'lucide-react';
+import { Bell, Zap, ChevronDown, ClipboardList, BarChart3, Calendar, Gift, User as UserIcon, GitBranch, Compass, HelpCircle } from 'lucide-react';
 import { usePermissions } from '../../../hooks/usePermissions';
 import { useRolePreview } from '../../../contexts/RolePreviewContext';
 import api from '../../../services/api';
@@ -13,7 +13,6 @@ import { useUserNotifications } from '../../../contexts/UserNotificationContext'
 import { useChat } from '../../../contexts/ChatContext';
 import { refreshBus } from '../../../utils/refreshBus';
 import AccountSwitcherMenu from '../../common/AccountSwitcherMenu';
-import ChatPanel from '../../chat/ChatPanel';
 import SmsBalanceWidget from './SmsBalanceWidget';
 import '../../../styles/notifications.css';
 
@@ -41,25 +40,12 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
     markAsRead,
     markAllAsRead: markAllSystemAsRead
   } = useUserNotifications();
-
-  // Chat context for the messaging button
-  const { unreadTotal: chatUnreadCount, isChatOpen, setIsChatOpen } = useChat();
-  const [chatInitialTab, setChatInitialTab] = useState('messages');
+  const { unreadTotal: chatUnreadCount } = useChat();
 
   const notificationRef = useRef(null);
   const dropdownRef = useRef(null);
   const sessionStartedAtRef = useRef(Date.now());
   const { role } = usePermissions();
-
-  // Listen for AI tab open requests (fired by AIAssistant when ASK_AI_EVENT is received)
-  useEffect(() => {
-    const handleOpenAITab = () => {
-      setChatInitialTab('ai');
-      setIsChatOpen(true);
-    };
-    window.addEventListener('trendscore:open-ai-tab', handleOpenAITab);
-    return () => window.removeEventListener('trendscore:open-ai-tab', handleOpenAITab);
-  }, [setIsChatOpen]);
 
   useEffect(() => {
     try {
@@ -187,7 +173,7 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
   const notificationItems = [...birthdayNotificationItems, ...noticeNotificationItems];
   
   // Combined totals for the UI badge
-  const totalUnreadCount = notificationItems.length + systemUnreadCount;
+  const totalUnreadCount = notificationItems.length + systemUnreadCount + chatUnreadCount;
 
   useEffect(() => {
     if (!lastBuzzAt) return undefined;
@@ -718,54 +704,6 @@ const Header = React.memo(({ user, onLogout, brandingSettings, title, onNavigate
       </div>
     </header>
 
-    {/* ── Chat FAB — bottom-right floating button ────────────────────────── */}
-    <div className="fixed bottom-6 right-6 z-[60] flex flex-col items-end gap-3">
-      {/* Chat panel — slides up from the FAB */}
-      {isChatOpen && (
-        <>
-          {/* Backdrop */}
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => { setIsChatOpen(false); setChatInitialTab('messages'); }}
-          />
-          <div className="relative z-50 w-[380px] h-[560px] bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden flex flex-col animate-in slide-in-from-bottom-4 duration-200">
-            <ChatPanel
-              onClose={() => { setIsChatOpen(false); setChatInitialTab('messages'); }}
-              initialTab={chatInitialTab}
-              currentPage={title}
-              onNavigate={onNavigate}
-            />
-          </div>
-        </>
-      )}
-
-      {/* FAB button */}
-      <button
-        onClick={() => {
-          if (isChatOpen) {
-            setIsChatOpen(false);
-            setChatInitialTab('messages');
-          } else {
-            setIsChatOpen(true);
-          }
-        }}
-        className={cn(
-          "relative h-14 w-14 rounded-full shadow-lg flex items-center justify-center transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-brand-purple focus:ring-offset-2",
-          isChatOpen
-            ? "bg-gray-700 hover:bg-gray-800 rotate-0"
-            : "bg-brand-purple hover:bg-brand-purple/90"
-        )}
-        title="Messages & AI"
-        aria-label="Open messages and AI"
-      >
-        <MessageSquare size={22} className="text-white" />
-        {!isChatOpen && chatUnreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 h-5 min-w-[20px] px-1 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-white animate-in zoom-in-50 duration-300">
-            {chatUnreadCount > 99 ? '99+' : chatUnreadCount}
-          </span>
-        )}
-      </button>
-    </div>
     </>
   );
 });

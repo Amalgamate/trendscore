@@ -6,6 +6,7 @@ import { normalizeRole } from '../utils/roleNormalizer';
 import { isTokenGloballyInvalidated } from './auth-session.service';
 import { redisCacheService } from './redis-cache.service';
 import { revokedImpersonationKey } from './impersonation.service';
+import { ChatService } from './chat.service';
 
 interface SocketClaims {
     userId?: string;
@@ -230,7 +231,9 @@ export const initializeSocket = (httpServer: import('http').Server) => {
                     where: { conversationId, userId, leftAt: null },
                     select: { id: true },
                 });
-                if (participant) await socket.join(`conv:${conversationId}`);
+                if (participant && await ChatService.canAccessConversation(conversationId, userId)) {
+                    await socket.join(`conv:${conversationId}`);
+                }
             } catch (error) {
                 console.error('Socket conversation authorization failed:', error);
             }

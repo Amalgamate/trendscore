@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowRight,
+  Bell,
   BookOpen,
   ChevronDown,
   ClipboardList,
@@ -11,8 +12,9 @@ import {
   X,
 } from 'lucide-react';
 import MobileBottomNav from '../dashboard/mobile/MobileBottomNav';
-import MobileCommunicationCenter from './MobileCommunicationCenter';
 import axiosInstance from '../../../services/api/axiosConfig';
+import { useChat } from '../../../contexts/ChatContext';
+import { useUserNotifications } from '../../../contexts/UserNotificationContext';
 
 // ── MobileSearchSheet ─────────────────────────────────────────────────────
 // Slide-up full-screen search panel for quickly finding learners by name or
@@ -178,6 +180,8 @@ function MobileSearchSheet({ open, onClose, onNavigate }) {
 // fixed bottom nav. Brand colors come from CSS vars set by branding settings
 // so every school gets its own look automatically.
 const MobileAppShell = ({ children, user, onNavigate, onLogout, currentPage, brandingSettings }) => {
+  const { unreadTotal: chatUnreadCount = 0 } = useChat();
+  const { unreadCount: notificationUnreadCount = 0 } = useUserNotifications();
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const avatarMenuRef = useRef(null);
@@ -268,13 +272,21 @@ const MobileAppShell = ({ children, user, onNavigate, onLogout, currentPage, bra
             <button
               type="button"
               onClick={() => setSearchOpen(true)}
-              className="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/15 flex items-center justify-center text-white border border-white/15 transition-colors"
+              className="relative w-9 h-9 rounded-xl bg-white/10 hover:bg-white/15 flex items-center justify-center text-white border border-white/15 transition-colors"
               aria-label="Search learners"
             >
               <Search size={16} />
             </button>
 
-            <MobileCommunicationCenter user={user} onNavigate={onNavigate} />
+            <button
+              type="button"
+              onClick={() => onNavigate?.('notification-center')}
+              className="relative w-9 h-9 rounded-xl bg-white/10 hover:bg-white/15 flex items-center justify-center text-white border border-white/15 transition-colors"
+              aria-label="Open notifications"
+            >
+              <Bell size={17} />
+              {(chatUnreadCount + notificationUnreadCount) > 0 && <span className="absolute -right-1 -top-1 flex h-[17px] min-w-[17px] items-center justify-center rounded-full border-2 border-blue-700 bg-red-500 px-1 text-[9px] font-black text-white">{Math.min(chatUnreadCount + notificationUnreadCount, 99)}</span>}
+            </button>
 
             {/* Avatar / account menu */}
             <div className="relative" ref={avatarMenuRef}>

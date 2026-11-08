@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, Bot, Check, Loader2, Send, Sparkles, Trash2, X } from 'lucide-react';
+import { ArrowRight, Bot, Check, Loader2, MessageCircle, Send, Sparkles, Trash2, X } from 'lucide-react';
 import { aiAPI } from '../../services/api/ai.api';
 import { ASK_AI_EVENT } from './AskAIButton';
 import './helpDrawers.css';
@@ -32,8 +32,7 @@ const exchangeMessages = (history) => history.flatMap((exchange) => [
 ]);
 
 // ─── AIAssistantPanel ─────────────────────────────────────────────────────────
-// Inline panel body — designed to be embedded as a tab inside ChatPanel.
-// No floating button, no fixed positioning — just the content.
+// Inline assistant conversation body, shared by the global assistant drawer.
 
 export function AIAssistantPanel({ currentPage, user, onNavigate, isActive }) {
   const userId = user?.id || user?.userId || 'anonymous';
@@ -318,22 +317,53 @@ export function AIAssistantPanel({ currentPage, user, onNavigate, isActive }) {
 }
 
 // ─── AIAssistant ──────────────────────────────────────────────────────────────
-// Legacy default export kept for compatibility.
-// Now it simply dispatches the ASK_AI_EVENT to open the chat panel on the AI tab.
-// The old standalone floating button is retired.
+// Global assistant surface, separate from school-to-school-user conversations.
 
-export default function AIAssistant({ currentPage, user, onNavigate }) {
-  // Wire "Ask AI" card events so the chat FAB opens on the AI tab.
-  // The actual panel is rendered inside ChatPanel as a tab.
-  // This component no longer renders any UI of its own.
+export default function AIAssistant({ currentPage, user, onNavigate, showLauncher = true, panelBottom = 'calc(5.5rem + env(safe-area-inset-bottom, 0px))' }) {
+  const [open, setOpen] = useState(false);
+
   useEffect(() => {
     const handleContextRequest = (event) => {
-      // Re-dispatch a custom event that Header.jsx listens for to switch to the AI tab
-      window.dispatchEvent(new CustomEvent('trendscore:open-ai-tab', { detail: event?.detail || {} }));
+      setOpen(true);
     };
+    const handleOpen = () => setOpen(true);
+    window.addEventListener('trendscore:open-ai-tab', handleOpen);
     window.addEventListener(ASK_AI_EVENT, handleContextRequest);
-    return () => window.removeEventListener(ASK_AI_EVENT, handleContextRequest);
+    return () => {
+      window.removeEventListener('trendscore:open-ai-tab', handleOpen);
+      window.removeEventListener(ASK_AI_EVENT, handleContextRequest);
+    };
   }, []);
 
-  return null;
+  return (
+    <>
+      {open && <section
+        className="fixed right-3 z-[120] flex h-[min(72dvh,620px)] w-[min(410px,calc(100vw-24px))] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl sm:right-6"
+        style={{ bottom: panelBottom }}
+        role="dialog"
+        aria-label="TrendSCORE Assistant"
+      >
+        <header className="flex items-center gap-3 border-b border-slate-200 px-4 py-3">
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-800 text-white"><Bot size={19} /></span>
+          <div className="min-w-0 flex-1"><h2 className="text-sm font-extrabold text-slate-950">TrendSCORE Assistant</h2><p className="text-[11px] text-slate-600">Ask a question or find a school task</p></div>
+          <button type="button" onClick={() => setOpen(false)} aria-label="Close assistant" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><X size={18} /></button>
+        </header>
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <AIAssistantPanel currentPage={currentPage} user={user} onNavigate={onNavigate} isActive={open} />
+        </div>
+      </section>}
+
+      {showLauncher && <button
+        type="button"
+        onClick={() => setOpen(value => !value)}
+        aria-label={open ? 'Close TrendSCORE Assistant' : 'Ask TrendSCORE Assistant'}
+        aria-expanded={open}
+        title="Ask TrendSCORE Assistant"
+        className="fixed right-3 z-[110] flex h-12 w-12 items-center justify-center rounded-full bg-blue-800 text-white shadow-lg transition hover:bg-blue-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-700 focus-visible:ring-offset-2 sm:right-6 sm:h-14 sm:w-14"
+        style={{ bottom: panelBottom }}
+      >
+        {open ? <X size={21} /> : <Sparkles size={22} />}
+      </button>}
+    </>
+  );
 }

@@ -1031,23 +1031,25 @@ function InboxList({ conversations, currentUserId, activeConversationId, onOpen,
 
 // ─── PanelHeader ──────────────────────────────────────────────────────────────
 
-function PanelHeader({ user, onClose, onNew, activeTab, onTabChange, chatUnreadCount }) {
+function PanelHeader({ user, onClose, onNew, activeTab, onTabChange, chatUnreadCount, assistantOnly = false }) {
   return (
     <div className="bg-white border-b border-gray-100">
       {/* Top row: title + actions */}
       <div className="flex items-center justify-between px-4 pt-3 pb-2">
         <div className="flex items-center gap-2.5">
-          <Avatar user={user} size="sm" online />
+          {assistantOnly ? (
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-700 text-white"><Sparkles size={17} /></span>
+          ) : <Avatar user={user} size="sm" online />}
           <div>
             <p className="text-sm font-bold text-gray-900 leading-tight">
-              {user ? `${user.firstName} ${user.lastName}` : 'Messages'}
+              {assistantOnly ? 'TrendSCORE Assistant' : user ? `${user.firstName} ${user.lastName}` : 'Messages'}
             </p>
-            <p className="text-[9px] text-emerald-500 font-semibold uppercase tracking-wider">● Online</p>
+            <p className="text-[9px] text-gray-500 font-semibold">{assistantOnly ? 'Ask a question or find a school task' : '● Online'}</p>
           </div>
         </div>
 
         <div className="flex items-center gap-1">
-          {activeTab === 'messages' && (
+          {!assistantOnly && activeTab === 'messages' && (
             <button
               onClick={onNew}
               className="h-7 w-7 rounded-full bg-brand-purple text-white flex items-center justify-center hover:bg-brand-purple/90 transition-colors"
@@ -1066,8 +1068,9 @@ function PanelHeader({ user, onClose, onNew, activeTab, onTabChange, chatUnreadC
         </div>
       </div>
 
-      {/* Tab strip */}
-      <div className="flex border-t border-gray-100">
+      {/* Real conversations live in Inbox. The global assistant entry point
+          opens this panel in assistant-only mode. */}
+      {!assistantOnly && <div className="flex border-t border-gray-100">
         <button
           onClick={() => onTabChange('messages')}
           className={cn(
@@ -1104,7 +1107,7 @@ function PanelHeader({ user, onClose, onNew, activeTab, onTabChange, chatUnreadC
             <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full bg-violet-600" />
           )}
         </button>
-      </div>
+      </div>}
     </div>
   );
 }
@@ -1141,11 +1144,11 @@ function GreetingBanner({ user, onDismiss }) {
 
 // ─── Main ChatPanel ───────────────────────────────────────────────────────────
 
-export default function ChatPanel({ onClose, initialTab = 'messages', currentPage, onNavigate }) {
+export default function ChatPanel({ onClose, initialTab = 'messages', currentPage, onNavigate, assistantOnly = false }) {
   const { user } = useAuth();
-  const { conversations, activeConversationId, openConversation, isChatOpen, unreadTotal } = useChat();
+  const { conversations, activeConversationId, openConversation, unreadTotal } = useChat();
 
-  const [activeTab, setActiveTab] = useState(initialTab);
+  const [activeTab, setActiveTab] = useState(assistantOnly ? 'ai' : initialTab);
   const [view, setView] = useState('inbox');     // 'inbox' | 'thread' | 'new'
   const [showGreeting, setShowGreeting] = useState(true);
   const [showVideoFromHeader, setShowVideoFromHeader] = useState(false);
@@ -1153,8 +1156,8 @@ export default function ChatPanel({ onClose, initialTab = 'messages', currentPag
 
   // Honour external tab switches (e.g. when ASK_AI_EVENT fires)
   useEffect(() => {
-    setActiveTab(initialTab);
-  }, [initialTab]);
+    setActiveTab(assistantOnly ? 'ai' : initialTab);
+  }, [initialTab, assistantOnly]);
 
   // Auto-dismiss greeting after 8s
   useEffect(() => {
@@ -1296,6 +1299,7 @@ export default function ChatPanel({ onClose, initialTab = 'messages', currentPag
           activeTab={activeTab}
           onTabChange={setActiveTab}
           chatUnreadCount={unreadTotal}
+          assistantOnly={assistantOnly}
         />
       )}
 

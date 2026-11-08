@@ -190,11 +190,20 @@ export class MessageService {
     return dueMessages.length;
   }
 
-  async getInboxMessages(userId: string) {
+  async getInboxMessages(userId: string, includeArchived = false) {
     return prisma.messageReceipt.findMany({
-      where: { recipientId: userId },
+      where: { recipientId: userId, ...(includeArchived ? {} : { archivedAt: null }) },
       include: { message: true },
       orderBy: { createdAt: 'desc' }
+    });
+  }
+
+  async archiveReceipt(receiptId: string, userId: string, archived: boolean) {
+    const receipt = await prisma.messageReceipt.findFirst({ where: { id: receiptId, recipientId: userId } });
+    if (!receipt) throw new Error('Message receipt not found or access denied');
+    return prisma.messageReceipt.update({
+      where: { id: receiptId },
+      data: { archivedAt: archived ? new Date() : null },
     });
   }
 

@@ -2,7 +2,7 @@ import { fetchWithAuth } from './core';
 
 export const chatAPI = {
   // Inbox
-  getInbox: () => fetchWithAuth('/chat/inbox'),
+  getInbox: (includeArchived = false) => fetchWithAuth(`/chat/inbox${includeArchived ? '?includeArchived=true' : ''}`),
   getTotalUnread: () => fetchWithAuth('/chat/unread-count'),
 
   // Start conversations
@@ -34,6 +34,11 @@ export const chatAPI = {
     }),
   markRead: (conversationId) =>
     fetchWithAuth(`/chat/conversations/${conversationId}/read`, { method: 'PATCH' }),
+  updateInboxPreferences: (conversationId, preferences) =>
+    fetchWithAuth(`/chat/conversations/${conversationId}/preferences`, {
+      method: 'PATCH',
+      body: JSON.stringify(preferences),
+    }),
   editMessage: (messageId, body) =>
     fetchWithAuth(`/chat/messages/${messageId}`, {
       method: 'PATCH',
