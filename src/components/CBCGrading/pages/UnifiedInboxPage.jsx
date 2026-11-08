@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Archive, ArrowLeft, BellOff, Check, CheckCheck, Inbox, Loader2, Mail,
-  MessageCircle, Pin, Plus, RotateCcw, Search, Send, Sparkles, UserRound, X,
+  MessageCircle, Pin, Plus, RotateCcw, Search, Send, Sparkles, User, X,
 } from 'lucide-react';
 import { chatAPI } from '../../../services/api/chat.api';
 import { communicationAPI } from '../../../services/api';
@@ -334,7 +334,7 @@ export default function UnifiedInboxPage({ user }) {
           {recipients.map(contact => <button key={contact.id} type="button" onClick={() => { setSelectedRecipient(contact); setRecipients([]); }} className="flex w-full items-center gap-3 border-b border-slate-100 px-3 py-2.5 text-left last:border-b-0 hover:bg-blue-50">
             <span className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-100 text-xs font-extrabold text-blue-900">{initials(`${contact.firstName} ${contact.lastName}`)}</span>
             <span className="min-w-0 flex-1"><span className="block truncate text-sm font-bold text-slate-900">{contact.firstName} {contact.lastName}</span><span className="block text-xs capitalize text-slate-600">{roleLabel(contact.role)}</span></span>
-            <UserRound size={16} className="text-blue-700" />
+            <User size={16} className="text-blue-700" />
           </button>)}
         </div>}
         {query.trim().length >= 2 && !searchingRecipients && recipients.length === 0 && !selectedRecipient && <p className="text-xs text-slate-600">No approved contacts found for that search.</p>}
