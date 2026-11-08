@@ -313,6 +313,7 @@ export class MessageService {
         dateOfBirth: true,
         guardianPhone: true,
         emergencyPhone: true,
+        parentId: true,
         grade: true
       }
     });
@@ -351,7 +352,11 @@ export class MessageService {
           scheduledFor: { gte: todayStart, lt: tomorrowStart }
         }
       });
-      if (existingMessage) continue;
+      const existingBirthdayDelivery = await prisma.assessmentSmsAudit.findFirst({
+        where: { learnerId: learner.id, assessmentType: 'BIRTHDAY', sentAt: { gte: todayStart, lt: tomorrowStart } },
+        select: { id: true },
+      });
+      if (existingMessage || existingBirthdayDelivery) continue;
 
       const firstName = formatTitleCase(learner.firstName);
       const lastName = formatTitleCase(learner.lastName);
@@ -385,19 +390,32 @@ export class MessageService {
 
       // ── Dispatch per channel strategy ────────────────────────────────────────
       try {
+        const channelDeliveries: Array<{ channel: 'SMS' | 'WHATSAPP'; success: boolean; error?: string }> = [];
         if (channelStrategy === 'WhatsApp Only') {
           const waResult = await whatsappService.sendMessage({ to: phoneNumber, message: messageText } as any);
+          channelDeliveries.push({ channel: 'WHATSAPP', success: !!waResult.success, error: waResult.error });
           if (!waResult.success) logger.warn(`[BirthdayService] WhatsApp failed for ${fullName}: ${waResult.error}`);
 
         } else if (channelStrategy === 'SMS Only') {
-          await SmsService.sendSms(phoneNumber, messageText);
+          const smsResult = await SmsService.sendSms(phoneNumber, messageText);
+          channelDeliveries.push({ channel: 'SMS', success: !!smsResult.success, error: smsResult.error });
 
         } else if (channelStrategy === 'Both Channels') {
           // Fire both in parallel, don't let one failure block the other
-          const [waResult] = await Promise.allSettled([
+          const [waResult, smsResult] = await Promise.allSettled([
             whatsappService.sendMessage({ to: phoneNumber, message: messageText } as any),
             SmsService.sendSms(phoneNumber, messageText)
           ]);
+          channelDeliveries.push({
+            channel: 'WHATSAPP',
+            success: waResult.status === 'fulfilled' && !!waResult.value.success,
+            error: waResult.status === 'rejected' ? String(waResult.reason) : waResult.value.error,
+          });
+          channelDeliveries.push({
+            channel: 'SMS',
+            success: smsResult.status === 'fulfilled' && !!smsResult.value.success,
+            error: smsResult.status === 'rejected' ? String(smsResult.reason) : smsResult.value.error,
+          });
           if (waResult.status === 'rejected') logger.warn(`[BirthdayService] WhatsApp failed for ${fullName}: ${waResult.reason}`);
 
         } else {
@@ -406,16 +424,41 @@ export class MessageService {
           try {
             const waResult = await whatsappService.sendMessage({ to: phoneNumber, message: messageText } as any);
             delivered = !!waResult?.success;
-          } catch { /* will fall through to SMS */ }
+            channelDeliveries.push({ channel: 'WHATSAPP', success: delivered, error: waResult?.error });
+          } catch (error: any) {
+            channelDeliveries.push({ channel: 'WHATSAPP', success: false, error: error?.message || 'WhatsApp delivery failed' });
+          }
 
           if (!delivered) {
             logger.info(`[BirthdayService] WhatsApp unavailable for ${fullName}, falling back to SMS.`);
-            await SmsService.sendSms(phoneNumber, messageText);
+            const smsResult = await SmsService.sendSms(phoneNumber, messageText);
+            channelDeliveries.push({ channel: 'SMS', success: !!smsResult.success, error: smsResult.error });
           }
         }
 
+        const successfulDeliveries = channelDeliveries.filter(delivery => delivery.success);
+        if (channelDeliveries.length) {
+          await prisma.assessmentSmsAudit.createMany({
+            data: channelDeliveries.map(delivery => ({
+              learnerId: learner.id,
+              parentId: learner.parentId || null,
+              parentPhone: phoneNumber,
+              learnerName: fullName,
+              learnerGrade: learner.grade,
+              assessmentType: 'BIRTHDAY',
+              templateType: 'BIRTHDAY',
+              messageContent: messageText,
+              smsStatus: delivery.success ? 'SENT' : 'FAILED',
+              failureReason: delivery.success ? null : delivery.error || 'Delivery failed',
+              sentByUserId: null,
+              channel: delivery.channel,
+              sentAt: now,
+            })),
+          });
+        }
+
         // Record in message history (as SMS for auditability)
-        await this.createMessageRecord({
+        if (successfulDeliveries.length) await this.createMessageRecord({
           senderId: 'system',
           senderType: 'ADMIN',
           recipientType: 'INDIVIDUAL',

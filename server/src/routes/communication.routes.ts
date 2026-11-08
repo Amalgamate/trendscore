@@ -11,6 +11,7 @@ import {
     getBirthdaysToday,
     sendBirthdayWishes,
     getInboxMessages,
+    getParentDeliveryInbox,
     archiveInboxMessage,
     markMessageRead,
     getBroadcastRecipients,
@@ -193,6 +194,13 @@ router.get(
     '/messages/inbox',
     rateLimit({ windowMs: 60_000, maxRequests: 100 }),
     getInboxMessages
+);
+
+router.get(
+    '/messages/deliveries',
+    requireRole(['PARENT']),
+    rateLimit({ windowMs: 60_000, maxRequests: 100 }),
+    getParentDeliveryInbox
 );
 
 // Mark Receipt Read

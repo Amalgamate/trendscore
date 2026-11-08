@@ -314,6 +314,9 @@ const HorizontalSubmenu = ({ currentPage, pageParams, onNavigate }) => {
     { id: 'birthdays', label: "This Week's Birthdays", icon: Gift, color: 'text-purple-700', active: 'border-purple-600' },
   ];
 
+  // The unified inbox owns its own All / Unread / Announcements / Archived
+  // filters. Hide the redundant navigation row after every hook has run.
+  if (['parent-portal-messages', 'parent-portal-communication', 'comm-messages', 'comm-history'].includes(currentPage)) return null;
   if (!activeSection) return null;
   if (activeSection.hideHorizontalSubmenu) return null;
   if (hasGroups && !(activeSection.items || []).length) return null;

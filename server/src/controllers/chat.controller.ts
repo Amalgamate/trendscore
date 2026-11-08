@@ -53,6 +53,16 @@ export class ChatController {
     res.json({ success: true, data: enriched });
   }
 
+  /** GET /api/chat/outbox */
+  async getOutbox(req: AuthRequest, res: Response) {
+    const userId = req.user?.userId;
+    if (!userId) throw new ApiError(401, 'Unauthorized');
+    const requestedLimit = Number.parseInt(String(req.query.limit ?? '100'), 10);
+    const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 200) : 100;
+    const messages = await ChatService.getOutbox(userId, limit);
+    res.json({ success: true, data: messages });
+  }
+
   /** GET /api/chat/unread-count — total unread across all conversations */
   async getTotalUnread(req: AuthRequest, res: Response) {
     const userId = req.user?.userId;
@@ -181,6 +191,12 @@ export class ChatController {
       recordType: z.string().min(1),
       recordId: z.string().min(1),
     }).parse(req.query);
+
+    // Record chatter is staff-only; without this any logged-in user (including
+    // parents and students) could create or join the thread of any record.
+    if (!(await ChatService.canUseRecordThreads(userId))) {
+      throw new ApiError(403, 'Record threads are available to school staff only');
+    }
 
     const thread = await ChatService.getRecordThread(recordType, recordId, userId);
 

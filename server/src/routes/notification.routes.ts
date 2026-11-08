@@ -19,24 +19,47 @@ const router = Router();
 const notificationController = new NotificationController();
 
 // Validation schemas
+// NOTE: these schemas must list every field the matching controller reads.
+// Zod strips unknown keys, so a field missing here is silently dropped and the
+// controller then rejects the request (the previous schemas caused that).
 const sendNotificationSchema = z.object({
   learnerId: z.string().min(1),
+  assessmentType: z.string().max(40).optional(), // 'Formative' | 'Summative' (defaults to Summative)
+  subject: z.string().max(200).optional(),
+  grade: z.string().max(40).optional(),
+  term: z.string().max(40).optional()
+});
+
+const sendCustomMessageSchema = z.object({
+  learnerId: z.string().min(1).optional(),
+  parentId: z.string().min(1).optional(),
   message: z.string().min(1).max(5000),
   channel: z.enum(['SMS', 'WHATSAPP', 'EMAIL']).optional()
+}).refine((data) => Boolean(data.learnerId || data.parentId), {
+  message: 'learnerId or parentId is required'
 });
 
 const sendBulkNotificationSchema = z.object({
+  learnerIds: z.array(z.string().min(1)).max(500).optional(),
   classId: z.string().min(1).optional(),
-  grade: z.string().optional(),
-  message: z.string().min(1).max(5000),
-  channel: z.enum(['SMS', 'WHATSAPP', 'EMAIL']).optional()
+  grade: z.string().max(40).optional(),
+  assessmentType: z.string().max(40).optional(),
+  subject: z.string().max(200).optional(),
+  term: z.string().max(40).optional()
+}).refine((data) => Boolean((data.learnerIds && data.learnerIds.length) || data.classId || data.grade), {
+  message: 'learnerIds, classId or grade is required'
 });
 
 const sendAnnouncementSchema = z.object({
   title: z.string().min(1).max(200),
-  message: z.string().min(1).max(5000),
+  message: z.string().min(1).max(5000).optional(),
+  content: z.string().min(1).max(5000).optional(),
   targetAudience: z.enum(['ALL', 'CLASS', 'GRADE']).optional(),
-  classId: z.string().optional()
+  classId: z.string().min(1).optional(),
+  grade: z.string().max(40).optional(),
+  stream: z.string().max(40).optional()
+}).refine((data) => Boolean(data.message || data.content), {
+  message: 'message is required'
 });
 
 const sendAssessmentReportSchema = z.object({
@@ -106,7 +129,7 @@ router.post(
   authenticate,
   requirePermission('SEND_MESSAGES'),
   rateLimit({ windowMs: 60_000, maxRequests: 50 }),
-  validate(sendNotificationSchema),
+  validate(sendCustomMessageSchema),
   auditLog('SEND_CUSTOM_MESSAGE'),
   asyncHandler(notificationController.sendCustomMessage.bind(notificationController))
 );
@@ -214,6 +237,7 @@ router.post(
 router.get(
   '/whatsapp/status',
   authenticate,
+  requirePermission('SEND_MESSAGES'),
   rateLimit({ windowMs: 60_000, maxRequests: 100 }),
   asyncHandler(whatsappStatusController.getStatus.bind(whatsappStatusController))
 );
@@ -226,6 +250,7 @@ router.get(
 router.get(
   '/whatsapp/qr',
   authenticate,
+  requireRole(['SUPER_ADMIN', 'ADMIN']),
   rateLimit({ windowMs: 60_000, maxRequests: 20 }),
   asyncHandler(whatsappStatusController.getQRCode.bind(whatsappStatusController))
 );
@@ -238,7 +263,9 @@ router.get(
 router.post(
   '/whatsapp/initialize',
   authenticate,
+  requireRole(['SUPER_ADMIN', 'ADMIN']),
   rateLimit({ windowMs: 60_000, maxRequests: 5 }),
+  auditLog('INITIALIZE_WHATSAPP'),
   asyncHandler(whatsappStatusController.initialize.bind(whatsappStatusController))
 );
 
@@ -250,18 +277,21 @@ router.post(
 router.post(
   '/whatsapp/logout',
   authenticate,
+  requireRole(['SUPER_ADMIN', 'ADMIN']),
   rateLimit({ windowMs: 60_000, maxRequests: 5 }),
+  auditLog('LOGOUT_WHATSAPP'),
   asyncHandler(whatsappStatusController.logout.bind(whatsappStatusController))
 );
 
 /**
  * @route   GET /api/notifications/audit-logs
  * @desc    Get message history audit logs (SMS & WhatsApp)
- * @access  Authenticated
+ * @access  Staff who can send messages (teachers see only their own sends)
  */
 router.get(
   '/audit-logs',
   authenticate,
+  requirePermission('SEND_MESSAGES'),
   rateLimit({ windowMs: 60_000, maxRequests: 50 }),
   asyncHandler(notificationController.getAuditLogs.bind(notificationController))
 );

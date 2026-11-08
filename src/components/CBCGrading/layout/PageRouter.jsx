@@ -49,7 +49,7 @@ const PerformanceScale = lazy(() => import('../pages/PerformanceScale'));
 const LearningAreasManagement = lazy(() => import('../pages/LearningAreasManagement'));
 const FacilityManager = lazy(() => import('../pages/FacilityManager'));
 const NoticesPage = lazy(() => import('../pages/NoticesPage'));
-const MessageHistoryPage = lazy(() => import('../pages/MessageHistoryPage'));
+const BroadcastMessagesPage = lazy(() => import('../pages/BroadcastMessagesPage'));
 const SupportHub = lazy(() => import('../pages/SupportHub'));
 const KnowledgeBase = lazy(() => import('../pages/KnowledgeBase'));
 const ReportsCenterPage = lazy(() => import('../pages/ReportsCenterPage'));
@@ -390,7 +390,7 @@ const PageRouter = ({
   } = handlers;
 
   const renderParentPortalShell = (content, options = {}) => (
-    <div className="px-4 md:px-0">
+    <div className={options.edgeToEdge ? 'w-full' : 'px-4 md:px-0'}>
       <div className="block md:hidden -mx-4 -mt-4 mb-4">
         <MobilePortalAppBar
           user={user}
@@ -625,7 +625,7 @@ const PageRouter = ({
           case 'parent-portal-fees':
             return renderParentPortalShell(<ParentPortalFees user={user} onNavigate={handleNavigate} />);
           case 'parent-portal-messages':
-            return renderParentPortalShell(<UnifiedInboxPage user={user} onNavigate={handleNavigate} />);
+            return renderParentPortalShell(<UnifiedInboxPage user={user} onNavigate={handleNavigate} />, { edgeToEdge: true });
           case 'parent-portal-more':
             return renderParentPortalShell(<ParentPortalMore user={user} onNavigate={handleNavigate} onLogout={handlers?.onLogout} />);
           case 'parent-portal-results':
@@ -655,7 +655,7 @@ const PageRouter = ({
           case 'parent-portal-academics':
             return renderParentPortalShell(<ParentPortalAcademics onNavigate={handleNavigate} />, { hideBack: false });
           case 'parent-portal-communication':
-            return renderParentPortalShell(<UnifiedInboxPage user={user} onNavigate={handleNavigate} />, { hideBack: false });
+            return renderParentPortalShell(<UnifiedInboxPage user={user} onNavigate={handleNavigate} />, { hideBack: false, edgeToEdge: true });
           case 'parent-portal-school-today':
             return renderParentPortalShell(<ParentPortalSchoolToday onNavigate={handleNavigate} />, { hideBack: false });
           case 'parent-portal-suggestion':
@@ -883,10 +883,9 @@ const PageRouter = ({
               ? <UnifiedInboxPage user={user} onNavigate={handleNavigate} />
               : <NoticesPage initialTab={pageParams.activeTab} />;
           case 'comm-messages': return <UnifiedInboxPage user={user} onNavigate={handleNavigate} />;
+          case 'comm-broadcasts': return <BroadcastMessagesPage onNavigate={handleNavigate} />;
           case 'comm-history':
-            return user?.role === 'PARENT'
-              ? <UnifiedInboxPage user={user} onNavigate={handleNavigate} />
-              : <MessageHistoryPage />;
+            return <UnifiedInboxPage user={user} onNavigate={handleNavigate} />;
 
           case 'inventory-items': return <InventoryItems />;
           case 'inventory-categories': return <InventoryCategories />;

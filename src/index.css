@@ -185,6 +185,13 @@
     padding-top: var(--app-content-top-gap) !important;
   }
 
+  .app-layout-content--edge-to-edge {
+    width: 100%;
+    max-width: none;
+    min-height: 100%;
+    padding: 0;
+  }
+
   .module-tab-nav-shell {
     margin-top: calc(var(--app-content-top-gap) * -1);
     margin-left: calc(var(--app-gutter-x) * -1);

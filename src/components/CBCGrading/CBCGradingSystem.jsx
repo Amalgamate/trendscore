@@ -768,7 +768,11 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
     );
   }
 
-  const contentClassName = user?.role === 'ACCOUNTANT' && currentPage === 'finance-dashboard'
+  const isInboxPage = ['parent-portal-messages', 'parent-portal-communication', 'comm-messages', 'comm-notices', 'comm-history', 'comm-broadcasts']
+    .includes(currentPage?.split('?')[0]);
+  const contentClassName = isInboxPage
+    ? 'app-layout-content app-layout-content--edge-to-edge'
+    : user?.role === 'ACCOUNTANT' && currentPage === 'finance-dashboard'
     ? 'min-h-full'
     : 'app-layout-content';
 

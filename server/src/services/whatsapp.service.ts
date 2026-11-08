@@ -375,7 +375,7 @@ class WhatsAppService {
       await new Promise(r => setTimeout(r, 1000));
       const res = await this.sendMessage({ to: msg.phone, message: msg.message, mediaBuffer: msg.mediaBuffer, mediaType: msg.mediaType, mediaFileName: msg.mediaFileName });
       if (res.success) sent++; else failed++;
-      results.push({ success: res.success, phone: msg.phone, error: res.error });
+      results.push({ success: res.success, phone: msg.phone, messageId: res.messageId, error: res.error });
     }
     return { sent, failed, results };
   }

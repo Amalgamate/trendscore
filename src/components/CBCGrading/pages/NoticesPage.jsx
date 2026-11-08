@@ -61,6 +61,7 @@ const NoticesPage = ({ initialTab }) => {
   const currentUser = getStoredUser();
   const currentUserId = currentUser?.id || currentUser?.userId;
   const isSystemAdmin = currentUser?.role === 'SUPER_ADMIN';
+  const isSchoolAdmin = ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'].includes(currentUser?.role);
 
   // Birthday features states
   const [schoolId, setSchoolId] = useState(null);
@@ -670,7 +671,7 @@ const NoticesPage = ({ initialTab }) => {
                 {notices.map(notice => (
                   (() => {
                     const isOwner = notice.createdById && currentUserId && notice.createdById === currentUserId;
-                    const canArchive = !!isOwner;
+                    const canArchive = !!isOwner || isSchoolAdmin;
                     const canDelete = !!isOwner && isSystemAdmin;
 
                     return (

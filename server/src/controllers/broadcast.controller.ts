@@ -292,6 +292,16 @@ export const sendBulkBroadcast = async (req: AuthRequest, res: Response) => {
     sendResults = bulkResult.results;
   }
 
+  const recipientResults = recipients.map((recipient: any, index: number) => {
+    const result = sendResults.find((entry: any) => entry.phone === recipient.phone) || sendResults[index];
+    return {
+      phone: recipient.phone,
+      success: Boolean(result?.success),
+      messageId: result?.messageId || undefined,
+      error: result?.error || undefined,
+    };
+  });
+
   const campaign = await broadcastPrisma.broadcastCampaign.create({
     data: {
       senderId,
@@ -303,16 +313,17 @@ export const sendBulkBroadcast = async (req: AuthRequest, res: Response) => {
       recipientSource: recipientSource || 'BULK_API',
       messageChannel: channel.toUpperCase(),
       sentAt: new Date(),
-      status: failedCount === 0 ? 'DELIVERED' : 'PARTIAL',
+      // Provider acceptance is not the same as a confirmed delivery receipt.
+      // Only mark the campaign SENT/FAILED until a provider DLR callback updates it.
+      status: sentCount > 0 ? 'SENT' : 'FAILED',
       recipients: {
         createMany: {
           data: recipients.map((r: any, idx: number) => {
-            const sendResult =
-              sendResults.find((sr: any) => sr.phone === r.phone) || sendResults[idx];
+            const sendResult = recipientResults[idx];
             return {
               recipientPhone: r.phone,
               recipientName: r.name || 'Recipient',
-              status: sendResult?.success ? 'DELIVERED' : 'FAILED',
+              status: sendResult?.success ? 'SENT' : 'FAILED',
               messageId: sendResult?.messageId || null,
               sentAt: new Date(),
               failureReason: sendResult?.error || null,
@@ -355,5 +366,6 @@ export const sendBulkBroadcast = async (req: AuthRequest, res: Response) => {
     campaignId: campaign.id,
     sentCount,
     failedCount,
+    results: recipientResults,
   });
 };

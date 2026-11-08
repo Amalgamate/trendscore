@@ -3,6 +3,7 @@ import { fetchWithAuth } from './core';
 export const chatAPI = {
   // Inbox
   getInbox: (includeArchived = false) => fetchWithAuth(`/chat/inbox${includeArchived ? '?includeArchived=true' : ''}`),
+  getOutbox: (limit = 100) => fetchWithAuth(`/chat/outbox?limit=${encodeURIComponent(limit)}`),
   getTotalUnread: () => fetchWithAuth('/chat/unread-count'),
 
   // Start conversations

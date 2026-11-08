@@ -18,6 +18,7 @@ import { Prisma, UserRole } from '@prisma/client';
 import logger from '../utils/logger';
 import { getCanonicalRoles } from '../utils/roleNormalizer';
 import { parentAccessService } from './parent-access.service';
+import { resolveStudentUserIdsForLearners } from './student-account-link.service';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -64,8 +65,10 @@ const userSelect = {
   profilePicture: true,
 };
 
+// Office roles that parents and students are allowed to contact. They must also
+// be able to read and answer those conversations (see directRecipientPolicy).
 const SCHOOL_CONTACT_ROLES = new Set([
-  'ADMIN', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'RECEPTIONIST',
+  'ADMIN', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'RECEPTIONIST', 'ACCOUNTANT',
 ]);
 const STAFF_ROLES = new Set([
   'SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER', 'HEAD_OF_CURRICULUM',
@@ -88,15 +91,37 @@ const isAllowedRecipient = (policy: any, recipient: { id: string; role?: unknown
   );
 };
 
+/**
+ * Reply-only recipients: people a user may answer when they write first, but
+ * may not start a conversation with (e.g. a student writing to a teacher).
+ * Without this a student's message to a teacher is stored but never visible to
+ * the teacher.
+ */
+const isReplyOnlyRecipient = (policy: any, recipient: { id: string; role?: unknown; roles?: unknown[] }) => {
+  if (!policy || !recipient) return false;
+  const recipientRoles = roleSet(recipient);
+  if (recipientRoles.has('SUPER_ADMIN')) return false;
+  return Boolean(policy.replyOnlyIds?.has(recipient.id)) || Boolean(
+    policy.replyOnlyRoles && hasOneOf(recipientRoles, policy.replyOnlyRoles),
+  );
+};
+
 const isAccessibleWithPolicy = (conversation: any, userId: string, policy: any) => {
   if (!conversation?.participants?.some((participant: any) => participant.userId === userId)) return false;
   if (conversation.participants.some((participant: any) => participant.user?.status !== 'ACTIVE' || participant.user?.archived)) return false;
   if (conversation.type === 'GROUP') {
     return conversation.participants.every((participant: any) => hasOneOf(roleSet(participant.user), STAFF_ROLES));
   }
+  if (conversation.type === 'RECORD_THREAD') {
+    // Record chatter is a staff tool: parents and students never get access.
+    const self = conversation.participants.find((participant: any) => participant.userId === userId);
+    return Boolean(self && hasOneOf(roleSet(self.user), STAFF_ROLES));
+  }
   if (conversation.type !== 'DIRECT') return true;
   const other = conversation.participants.find((participant: any) => participant.userId !== userId);
-  return Boolean(other && isAllowedRecipient(policy, { id: other.userId, ...other.user }));
+  if (!other) return false;
+  const otherUser = { id: other.userId, ...other.user };
+  return isAllowedRecipient(policy, otherUser) || isReplyOnlyRecipient(policy, otherUser);
 };
 
 const getSocketIO = () => {
@@ -167,6 +192,12 @@ export class ChatService {
         },
         select: { userId: true },
       }) : [];
+      // Students who write to this teacher can be answered, but a teacher
+      // cannot start a private conversation with a student.
+      const studentUserIds = await resolveStudentUserIdsForLearners(learners.map((learner) => learner.id));
+      // A teacher who also holds an office role (e.g. head of curriculum) can be
+      // contacted by any parent, not only parents of their own classes.
+      const isSchoolContact = hasOneOf(roles, SCHOOL_CONTACT_ROLES);
       return {
         unrestricted: false,
         allowedIds: new Set([
@@ -174,7 +205,9 @@ export class ChatService {
           ...learners.map((learner) => learner.parentId).filter(Boolean) as string[],
           ...familyMembers.map((member) => member.userId).filter(Boolean) as string[],
         ]),
-        allowedRoles: null as Set<string> | null,
+        allowedRoles: isSchoolContact ? new Set(['PARENT']) : null as Set<string> | null,
+        replyOnlyIds: new Set(studentUserIds),
+        replyOnlyRoles: isSchoolContact ? new Set(['STUDENT']) : null as Set<string> | null,
         denyRoles: new Set(['STUDENT', 'SUPER_ADMIN']),
       };
     }
@@ -244,7 +277,17 @@ export class ChatService {
     }
 
     if (hasOneOf(roles, STAFF_ROLES)) {
-      return { unrestricted: false, allowedIds: null as Set<string> | null, allowedRoles: STAFF_ROLES, denyRoles: new Set(['STUDENT', 'PARENT', 'SUPER_ADMIN']) };
+      // Office roles that parents/students can contact (receptionist, head of
+      // curriculum, accountant, ...) must be able to see and answer those
+      // conversations. They may start one with a parent, but only reply to students.
+      const isSchoolContact = hasOneOf(roles, SCHOOL_CONTACT_ROLES);
+      return {
+        unrestricted: false,
+        allowedIds: null as Set<string> | null,
+        allowedRoles: isSchoolContact ? new Set([...STAFF_ROLES, 'PARENT']) : STAFF_ROLES,
+        replyOnlyRoles: isSchoolContact ? new Set(['STUDENT']) : null as Set<string> | null,
+        denyRoles: new Set(isSchoolContact ? ['SUPER_ADMIN'] : ['STUDENT', 'PARENT', 'SUPER_ADMIN']),
+      };
     }
     return { unrestricted: false, allowedIds: new Set<string>(), allowedRoles: new Set<string>(), denyRoles: new Set<string>() };
   }
@@ -265,6 +308,16 @@ export class ChatService {
     ]);
     if (!policy || !recipient) return false;
     return isAllowedRecipient(policy, recipient);
+  }
+
+  /** Record threads (chatter on school records) are a staff-only tool. */
+  static async canUseRecordThreads(requesterId: string): Promise<boolean> {
+    if (!requesterId) return false;
+    const requester = await prisma.user.findFirst({
+      where: { id: requesterId, archived: false, status: 'ACTIVE' },
+      select: { role: true, roles: true },
+    });
+    return Boolean(requester && hasOneOf(roleSet(requester), STAFF_ROLES));
   }
 
   static async canCreateGroup(requesterId: string, participantIds: string[]): Promise<boolean> {
@@ -519,6 +572,29 @@ export class ChatService {
     }));
   }
 
+  /** Return a user's sent chat messages from conversations they can access. */
+  static async getOutbox(userId: string, limit = 100) {
+    const accessibleConversations = await ChatService.getInbox(userId, true);
+    const conversationIds = accessibleConversations.map((conversation: any) => conversation.id);
+    if (!conversationIds.length) return [];
+
+    return prisma.chatMessage.findMany({
+      where: { senderId: userId, deletedAt: null, conversationId: { in: conversationIds } },
+      orderBy: { createdAt: 'desc' },
+      take: Math.min(Math.max(limit, 1), 200),
+      include: {
+        conversation: {
+          include: {
+            participants: {
+              where: { leftAt: null },
+              include: { user: { select: userSelect } },
+            },
+          },
+        },
+      },
+    });
+  }
+
   static async updateInboxPreferences(
     conversationId: string,
     userId: string,
@@ -703,7 +779,9 @@ export class ChatService {
 
     const updated = await prisma.chatMessage.update({
       where: { id: messageId },
-      data: { deletedAt: new Date(), body: '' },
+      // Soft delete: the message disappears from every thread (queries filter on
+      // deletedAt) but its text is kept so school staff can resolve disputes.
+      data: { deletedAt: new Date() },
     });
 
     try {

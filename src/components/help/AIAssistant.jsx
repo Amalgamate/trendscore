@@ -166,7 +166,7 @@ export function AIAssistantPanel({ currentPage, user, onNavigate, isActive }) {
         <div className="flex items-center gap-2">
           <span className="rounded-lg bg-violet-700 p-1.5 text-white"><Bot size={15} /></span>
           <div className="min-w-0">
-            <p className="text-xs font-black text-slate-900">TrendSCORE AI</p>
+            <p className="text-xs font-black text-slate-900">Wendy</p>
             <p className="max-w-48 truncate text-[10px] text-slate-500">
               Context: {cardContext?.title || currentPage || 'dashboard'}
             </p>
@@ -210,7 +210,7 @@ export function AIAssistantPanel({ currentPage, user, onNavigate, isActive }) {
         )}
         {!historyLoading && messages.length === 0 && (
           <div className="rounded-xl border border-violet-100 bg-violet-50 p-3 text-xs leading-relaxed text-slate-600">
-            Ask about the current page, any data card, or anything in the system. I have secure access to fees, attendance, assessments, learners, messages, library, staff, reports, and AI Pathways — all in one conversation.
+            Hi, I’m Wendy! I can help you understand this page, find a school task, or work out where to go next. What can I help you with?
           </div>
         )}
         {messages.map((message) => (
@@ -300,14 +300,14 @@ export function AIAssistantPanel({ currentPage, user, onNavigate, isActive }) {
             }
           }}
           rows={2}
-          placeholder={cardContext ? `Ask about ${cardContext.title}…` : 'Ask about this page…'}
+          placeholder={cardContext ? `Ask Wendy about ${cardContext.title}…` : 'Ask Wendy about this page…'}
           className="min-h-[44px] flex-1 resize-none rounded-xl border border-slate-200 px-3 py-2 text-xs focus:border-violet-400 focus:outline-none"
         />
         <button
           type="submit"
           disabled={loading || !input.trim()}
           className="self-end rounded-xl bg-violet-700 p-3 text-white disabled:opacity-40 hover:bg-violet-800 transition-colors"
-          aria-label="Send to TrendSCORE AI"
+          aria-label="Send to Wendy"
         >
           <Send size={16} />
         </button>
@@ -341,11 +341,11 @@ export default function AIAssistant({ currentPage, user, onNavigate, showLaunche
         className="fixed right-3 z-[120] flex h-[min(72dvh,620px)] w-[min(410px,calc(100vw-24px))] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl sm:right-6"
         style={{ bottom: panelBottom }}
         role="dialog"
-        aria-label="TrendSCORE Assistant"
+        aria-label="Wendy assistant"
       >
         <header className="flex items-center gap-3 border-b border-slate-200 px-4 py-3">
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-800 text-white"><Bot size={19} /></span>
-          <div className="min-w-0 flex-1"><h2 className="text-sm font-extrabold text-slate-950">TrendSCORE Assistant</h2><p className="text-[11px] text-slate-600">Ask a question or find a school task</p></div>
+          <div className="min-w-0 flex-1"><h2 className="text-sm font-extrabold text-slate-950">Wendy</h2><p className="text-[11px] text-slate-600">Your friendly school helper</p></div>
           <button type="button" onClick={() => setOpen(false)} aria-label="Close assistant" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><X size={18} /></button>
         </header>
         <div className="min-h-0 flex-1 overflow-hidden">
@@ -356,9 +356,9 @@ export default function AIAssistant({ currentPage, user, onNavigate, showLaunche
       {showLauncher && <button
         type="button"
         onClick={() => setOpen(value => !value)}
-        aria-label={open ? 'Close TrendSCORE Assistant' : 'Ask TrendSCORE Assistant'}
+        aria-label={open ? 'Close Wendy' : 'Ask Wendy'}
         aria-expanded={open}
-        title="Ask TrendSCORE Assistant"
+        title="Ask Wendy"
         className="fixed right-3 z-[110] flex h-12 w-12 items-center justify-center rounded-full bg-blue-800 text-white shadow-lg transition hover:bg-blue-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-700 focus-visible:ring-offset-2 sm:right-6 sm:h-14 sm:w-14"
         style={{ bottom: panelBottom }}
       >
