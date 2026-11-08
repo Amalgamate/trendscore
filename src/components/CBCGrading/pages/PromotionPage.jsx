@@ -1,340 +1,316 @@
-/**
- * Promotion Page
- * Promote learners to next grade level
- */
-
-import React, { useState, useEffect } from 'react';
-import { CheckCircle, ArrowRight, Users } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, ArrowRight, CalendarDays, CheckCircle, GraduationCap, RefreshCw, Users } from 'lucide-react';
 import EmptyState from '../shared/EmptyState';
-import { useAuth } from '../../../hooks/useAuth';
-import { getSelectedInstitutionType } from '../../../services/schoolContext';
 import api, { configAPI } from '../../../services/api';
 
-const PromotionPage = ({ onPromote, showNotification }) => {
-  const { user } = useAuth();
-  const selectedInstitutionType = String(getSelectedInstitutionType() || user?.institutionType || '').toUpperCase();
-  const isSecondaryPortal = selectedInstitutionType === 'SECONDARY' || selectedInstitutionType === 'HIGH_SCHOOL';
-  const isSecondaryGrade = (gradeValue) => {
-    const g = String(gradeValue || '').trim().toUpperCase().replace(/\s+/g, '_');
-    return g.startsWith('FORM') || ['GRADE_10', 'GRADE_11', 'GRADE_12', 'GRADE10', 'GRADE11', 'GRADE12'].includes(g);
-  };
+const formatGrade = (grade) => {
+  if (grade === 'GRADUATED') return 'Graduate / leave school';
+  return String(grade || '').replace(/^GRADE_/, 'Grade ').replace(/_/g, ' ');
+};
+
+const nextGradeFor = (grade, grades) => {
+  const index = grades.findIndex((item) => String(item).toUpperCase() === String(grade).toUpperCase());
+  if (index >= 0) return grades[index + 1] || 'GRADUATED';
+  const legacy = { CRECHE: 'RECEPTION', RECEPTION: 'TRANSITION', TRANSITION: 'PLAYGROUP' };
+  if (legacy[grade]) return legacy[grade];
+  const match = /^GRADE_(\d+)$/i.exec(grade || '');
+  if (match) {
+    const number = Number(match[1]);
+    return grades.includes(`GRADE_${number + 1}`) ? `GRADE_${number + 1}` : 'GRADUATED';
+  }
+  return grade;
+};
+
+const PromotionPage = ({ onPromote, showNotification, showError }) => {
   const [sourceGrade, setSourceGrade] = useState('');
   const [sourceStream, setSourceStream] = useState('all');
-  const [selectedLearners, setSelectedLearners] = useState([]);
+  const [targetGrade, setTargetGrade] = useState('');
+  const [targetAcademicYear, setTargetAcademicYear] = useState(new Date().getFullYear() + 1);
+  const [targetTerm, setTargetTerm] = useState('TERM_1');
   const [availableStreams, setAvailableStreams] = useState([]);
   const [availableGrades, setAvailableGrades] = useState([]);
+  const [learners, setLearners] = useState([]);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [preview, setPreview] = useState(null);
+  const [rosterVersion, setRosterVersion] = useState(0);
+  const [loadingConfig, setLoadingConfig] = useState(true);
+  const [loadingLearners, setLoadingLearners] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
+  const [promoting, setPromoting] = useState(false);
 
-  // Format help
-  const formatGrade = (grade) => {
-    if (!grade) return '';
-    return grade.replace(/_/g, ' ')
-      .replace('GRADE', 'Grade')
-      .replace('PP', 'PP') // Keep PP1/PP2 as is
-      .replace(/\w\S*/g, (txt) => txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase()) // Title Case
-      .replace('Pp', 'PP') // Fix Map PP back if needed or just handle specific cases
-      .replace('Grade', 'Grade '); // Ensure space if missing (though replace _ gave it)
-  };
-
-  // Custom formatter to be safer
-  const getGradeLabel = (g) => {
-    if (!g) return '';
-    if (g.startsWith('GRADE_')) return g.replace('GRADE_', 'Grade ');
-    if (g === 'PP1') return 'PP1';
-    if (g === 'PP2') return 'PP2';
-    return g.charAt(0).toUpperCase() + g.slice(1).toLowerCase().replace('_', ' ');
-  };
-
-  // Local learners state since we shouldn't rely on the global paginated list
-  const [classLearners, setClassLearners] = useState([]);
-  const [loading, setLoading] = useState(false);
-
-  // Fetch configs (streams and grades) - single-tenant: no schoolId needed
   useEffect(() => {
-    const fetchConfigs = async () => {
+    let cancelled = false;
+    const load = async () => {
+      setLoadingConfig(true);
       try {
-        const streamResp = await configAPI.getStreamConfigs();
-        setAvailableStreams(streamResp?.data?.filter(s => s.active !== false) || []);
-
-        const gradesResp = await configAPI.getGrades();
-        if (gradesResp?.data) {
-          setAvailableGrades(gradesResp.data);
-          // Set default grade if available
-          if (gradesResp.data.length > 0 && !sourceGrade) {
-            // Default to something reasonable if possible, or just first
-            // Maybe Grade 1 or similar if exists
-            const defaultG = gradesResp.data.find(g => g === 'GRADE_1') || gradesResp.data[0];
-            setSourceGrade(defaultG);
-          }
-        }
+        const [streamResponse, gradeResponse] = await Promise.all([
+          configAPI.getStreamConfigs({ fresh: true }),
+          configAPI.getGrades(),
+        ]);
+        if (cancelled) return;
+        const streams = streamResponse?.data?.filter((stream) => stream.active !== false) || [];
+        const grades = gradeResponse?.data || [];
+        setAvailableStreams(streams);
+        setAvailableGrades(grades);
+        const preferred = grades.find((grade) => grade === 'GRADE_1') || grades[0] || '';
+        setSourceGrade(preferred);
+        setTargetGrade(nextGradeFor(preferred, grades));
       } catch (error) {
-        console.error('Failed to fetch configs:', error);
-      }
-    };
-    fetchConfigs();
-  }, []);
-
-  // Fetch learners when filters change
-  useEffect(() => {
-    const fetchClassLearners = async () => {
-      if (!sourceGrade) return;
-
-      try {
-        setLoading(true);
-        console.log(`Fetching learners for Grade: ${sourceGrade}, Stream: ${sourceStream}`);
-        // Fetch all learners for this grade/stream without pagination (or large limit)
-        // Adjust limit as needed, assuming 100 is enough for a class, or handle pagination if needed.
-        // For promotion, usually we want to see the whole class.
-        const params = {
-          grade: sourceGrade,
-          stream: sourceStream === 'all' ? undefined : sourceStream,
-          status: 'ACTIVE',
-          limit: 200 // Fetch up to 200 students per class
-        };
-
-        const response = await api.learners.getAll(params);
-        if (response.success) {
-          // Check if response.data is an array (handle paginated structure if API returns object)
-          const data = Array.isArray(response.data) ? response.data :
-            (response.data && Array.isArray(response.data.data)) ? response.data.data : [];
-
-          // Transform data if needed to match UI expectations (consistent with useLearners hook)
-          const transformed = data
-            .filter((l) => {
-              const learnerIsSecondary = isSecondaryGrade(l?.grade);
-              return isSecondaryPortal ? learnerIsSecondary : !learnerIsSecondary;
-            })
-            .map(l => ({
-            id: l.id,
-            firstName: l.firstName,
-            lastName: l.lastName,
-            admNo: l.admissionNumber,
-            grade: l.grade,
-            stream: l.stream,
-            avatar: l.photoUrl || l.avatar
-          }));
-          setClassLearners(transformed);
-        } else {
-          console.error('Fetch failed:', response);
-          setClassLearners([]);
-        }
-      } catch (error) {
-        console.error('Failed to fetch learners:', error);
-        setClassLearners([]);
+        (showError || showNotification)?.(error.message || 'Could not load grade and stream options.');
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoadingConfig(false);
       }
     };
+    load();
+    return () => { cancelled = true; };
+  }, [showNotification, showError]);
 
-    fetchClassLearners();
-  }, [sourceGrade, sourceStream, isSecondaryPortal]);
-
-  // Toggle learner selection
-  const toggleLearner = (learnerId) => {
-    setSelectedLearners(prev =>
-      prev.includes(learnerId)
-        ? prev.filter(id => id !== learnerId)
-        : [...prev, learnerId]
-    );
-  };
-
-  // Select all learners
-  const selectAll = () => {
-    if (selectedLearners.length === classLearners.length) {
-      setSelectedLearners([]); // Deselect all if all are selected
-    } else {
-      setSelectedLearners(classLearners.map(l => l.id));
-    }
-  };
-
-  // Clear selection
-  const clearSelection = () => {
-    setSelectedLearners([]);
-  };
-
-  // Get next grade logic
-  const getNextGrade = (currentGrade) => {
-    const mapping = {
-      'CRECHE': 'RECEPTION',
-      'RECEPTION': 'TRANSITION',
-      'TRANSITION': 'PLAYGROUP', // Assuming order
-      // Actually check schema order: Creche, Reception, Transition, Playgroup, PP1...
-      // Wait, schema order: CRECHE, RECEPTION, TRANSITION, PLAYGROUP, PP1, PP2, GRADE_1...
-      'PLAYGROUP': 'PP1',
-      'PP1': 'PP2',
-      'PP2': 'GRADE_1'
+  useEffect(() => {
+    if (!sourceGrade) return undefined;
+    let cancelled = false;
+    const loadAllLearners = async () => {
+      setLoadingLearners(true);
+      setLearners([]);
+      setSelectedIds([]);
+      setPreview(null);
+      try {
+        const roster = [];
+        let page = 1;
+        let pages = 1;
+        do {
+          const params = {
+            grade: sourceGrade,
+            status: 'ACTIVE',
+            limit: 200,
+            page,
+          };
+          if (sourceStream !== 'all') params.stream = sourceStream;
+          const response = await api.learners.getAll(params);
+          const rows = Array.isArray(response?.data)
+            ? response.data
+            : Array.isArray(response?.data?.data) ? response.data.data : [];
+          roster.push(...rows);
+          pages = Math.max(1, Number(response?.pagination?.pages || 1));
+          page += 1;
+        } while (page <= pages && !cancelled);
+        if (!cancelled) setLearners(roster.map((learner) => ({
+          id: learner.id,
+          firstName: learner.firstName,
+          lastName: learner.lastName,
+          admissionNumber: learner.admissionNumber,
+          grade: learner.grade,
+          stream: learner.stream,
+          photoUrl: learner.photoUrl,
+        })));
+      } catch (error) {
+        if (!cancelled) {
+          setLearners([]);
+          (showError || showNotification)?.(error.message || 'Could not load this grade roster.');
+        }
+      } finally {
+        if (!cancelled) setLoadingLearners(false);
+      }
     };
+    loadAllLearners();
+    return () => { cancelled = true; };
+  }, [sourceGrade, sourceStream, rosterVersion, showNotification, showError]);
 
-    if (mapping[currentGrade]) return mapping[currentGrade];
+  const gradesForSchool = useMemo(() => [...availableGrades, 'GRADUATED'], [availableGrades]);
+  const readyPlacements = preview?.placements?.filter((placement) => placement.ready) || [];
+  const blockedPlacements = preview?.blockers || [];
+  const allSelected = learners.length > 0 && selectedIds.length === learners.length;
 
-    if (currentGrade.startsWith('GRADE_')) {
-      const num = parseInt(currentGrade.split('_')[1]);
-      if (num >= 12) return 'GRADUATED';
-      return `GRADE_${num + 1}`;
-    }
-
-    return currentGrade;
+  const changeSourceGrade = (grade) => {
+    setSourceGrade(grade);
+    setTargetGrade(nextGradeFor(grade, availableGrades));
+    setSelectedIds([]);
+    setPreview(null);
   };
 
-  // Handle promotion
-  const handlePromote = () => {
-    if (selectedLearners.length === 0) {
-      showNotification('Please select learners to promote', 'warning');
+  const toggleLearner = (id) => {
+    setSelectedIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+    setPreview(null);
+  };
+
+  const handlePreview = useCallback(async () => {
+    if (!selectedIds.length) {
+      (showError || showNotification)?.('Select learners to review their next-year placement.');
       return;
     }
+    setReviewing(true);
+    setPreview(null);
+    try {
+      const response = await api.learners.previewBulkPromote({
+        learnerIds: selectedIds,
+        sourceGrade,
+        sourceStream,
+        targetGrade,
+        targetAcademicYear: Number(targetAcademicYear),
+        targetTerm,
+      });
+      setPreview(response?.data || null);
+    } catch (error) {
+      (showError || showNotification)?.(error.message || 'Could not review learner placements.');
+    } finally {
+      setReviewing(false);
+    }
+  }, [selectedIds, sourceGrade, sourceStream, targetGrade, targetAcademicYear, targetTerm, showNotification, showError]);
 
-    const nextGrade = getNextGrade(sourceGrade);
-    onPromote(selectedLearners, nextGrade);
-    setSelectedLearners([]);
-    // showNotification success is handled by parent or after promise resolves
+  const handlePromote = async () => {
+    if (!preview || readyPlacements.length === 0) return;
+    const data = {
+      learnerIds: readyPlacements.map((placement) => placement.id),
+      sourceGrade,
+      sourceStream,
+      targetGrade,
+      targetAcademicYear: Number(targetAcademicYear),
+      targetTerm,
+    };
+    setPromoting(true);
+    try {
+      const result = await onPromote(data);
+      if (!result?.success) {
+        setPreview((current) => current ? { ...current, blockers: result?.blockers || current.blockers } : current);
+        (showError || showNotification)?.(result?.error || 'Promotion was not applied. Review the placement issues.');
+        return;
+      }
+      showNotification?.(result.message || 'Learner placements updated.', 'success');
+      setSelectedIds([]);
+      setPreview(null);
+      setRosterVersion((version) => version + 1);
+    } catch (error) {
+      (showError || showNotification)?.(error.message || 'Promotion failed. No changes were confirmed.');
+    } finally {
+      setPromoting(false);
+    }
   };
 
+  if (loadingConfig) return <div className="p-6 text-sm text-slate-600">Loading promotion options…</div>;
+
   return (
-    <div className="space-y-6">
-
-      {/* Step 1: Select Source Class */}
-      <div className="bg-white rounded-xl shadow-md p-6">
-        <h3 className="text-base font-semibold mb-4 text-brand-purple uppercase tracking-[0.12em]">Step 1: Select Source Class</h3>
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-end">
-          <div className="md:col-span-4">
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Grade Level</label>
-            <div className="relative">
-              <select
-                value={sourceGrade}
-                onChange={(e) => {
-                  setSourceGrade(e.target.value);
-                  setSelectedLearners([]);
-                }}
-                className="w-full px-3.5 py-2.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-purple focus:border-transparent transition bg-white appearance-none"
-              >
-                {!availableGrades.length && <option value="">Loading grades...</option>}
-                {availableGrades.map(g => (
-                  <option key={g} value={g}>{getGradeLabel(g)}</option>
-                ))}
-              </select>
-              <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-gray-500">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
-              </div>
-            </div>
-          </div>
-
-          <div className="md:col-span-4">
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Stream / Class</label>
-            <div className="relative">
-              <select
-                value={sourceStream}
-                onChange={(e) => {
-                  setSourceStream(e.target.value);
-                  setSelectedLearners([]);
-                }}
-                className="w-full px-3.5 py-2.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-brand-purple focus:border-transparent transition bg-white appearance-none"
-              >
-                <option value="all">All Streams</option>
-                {availableStreams.map(stream => (
-                  <option key={stream.id} value={stream.name}>
-                    {stream.name}
-                  </option>
-                ))}
-              </select>
-              <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-gray-500">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
-              </div>
-            </div>
-          </div>
-
-          <div className="md:col-span-4 flex gap-3">
-            <button
-              onClick={selectAll}
-              disabled={classLearners.length === 0}
-              className={`flex-1 px-4 py-2.5 rounded-lg transition shadow-md font-medium text-sm ${classLearners.length === 0 ? 'bg-gray-200 text-gray-400 cursor-not-allowed' :
-                selectedLearners.length === classLearners.length ? 'bg-gray-600 text-white' : 'bg-brand-teal text-white hover:bg-brand-teal/90'
-                }`}
-            >
-              {selectedLearners.length === classLearners.length && classLearners.length > 0 ? 'Deselect All' : 'Select All'}
-            </button>
-            <button
-              onClick={clearSelection}
-              disabled={selectedLearners.length === 0}
-              className="px-6 py-2.5 text-sm bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition font-medium shadow-sm disabled:opacity-50"
-            >
-              Clear
-            </button>
+    <div className="space-y-4 pb-24 md:pb-0">
+      <section className="rounded-lg border border-slate-200 bg-white p-4 md:p-5">
+        <div className="mb-4 flex items-start gap-3">
+          <span className="rounded-md bg-blue-700 p-2 text-white"><GraduationCap size={20} /></span>
+          <div>
+            <h2 className="text-lg font-bold text-slate-900">Prepare next-year placements</h2>
+            <p className="mt-0.5 text-sm text-slate-600">Choose the current group and destination. Learner records and results stay linked to each learner.</p>
           </div>
         </div>
-      </div>
 
-      {/* Step 2: Select Learners */}
-      <div className="bg-white rounded-xl shadow-md p-6">
-        <h3 className="text-base font-semibold mb-4 text-brand-purple uppercase tracking-[0.12em] flex justify-between items-center">
-          <span>Step 2: Select Learners to Promote</span>
-          <span className="text-xs bg-brand-purple/10 text-brand-purple px-2.5 py-0.5 rounded-full">
-            {selectedLearners.length} / {classLearners.length} Selected
-          </span>
-        </h3>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          <label className="text-sm font-semibold text-slate-700">
+            Current grade
+            <select value={sourceGrade} onChange={(event) => changeSourceGrade(event.target.value)} className="mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-100">
+              {availableGrades.map((grade) => <option key={grade} value={grade}>{formatGrade(grade)}</option>)}
+            </select>
+          </label>
+          <label className="text-sm font-semibold text-slate-700">
+            Current stream
+            <select value={sourceStream} onChange={(event) => { setSourceStream(event.target.value); setSelectedIds([]); setPreview(null); }} className="mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-100">
+              <option value="all">All streams</option>
+              {availableStreams.map((stream) => <option key={stream.id} value={stream.name}>{stream.name}</option>)}
+            </select>
+          </label>
+          <label className="text-sm font-semibold text-slate-700">
+            Destination grade
+            <select value={targetGrade} onChange={(event) => { setTargetGrade(event.target.value); setPreview(null); }} className="mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-100">
+              {gradesForSchool.map((grade) => <option key={grade} value={grade}>{formatGrade(grade)}</option>)}
+            </select>
+          </label>
+          <label className="text-sm font-semibold text-slate-700">
+            Academic year
+            <input type="number" min="2000" max="2150" value={targetAcademicYear} onChange={(event) => { setTargetAcademicYear(event.target.value); setPreview(null); }} className="mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-100" />
+          </label>
+          <label className="text-sm font-semibold text-slate-700">
+            Starting term
+            <select value={targetTerm} onChange={(event) => { setTargetTerm(event.target.value); setPreview(null); }} className="mt-1.5 w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-100">
+              <option value="TERM_1">Term 1</option><option value="TERM_2">Term 2</option><option value="TERM_3">Term 3</option>
+            </select>
+          </label>
+        </div>
+        <p className="mt-3 flex items-center gap-2 text-xs text-slate-500"><CalendarDays size={14} /> Set up destination-year classes and streams before reviewing placements.</p>
+        {targetGrade === 'GRADUATED' && <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">Graduating learners keeps their final grade and records, marks their status as Graduated, and closes active class enrollments.</p>}
+      </section>
 
-        {loading ? (
-          <div className="flex justify-center p-12">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-purple"></div>
+      <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+          <div className="flex items-center gap-2">
+            <Users size={18} className="text-blue-700" />
+            <h3 className="font-bold text-slate-900">Choose learners</h3>
+            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">{learners.length} in group</span>
           </div>
-        ) : classLearners.length === 0 ? (
-          <EmptyState
-            icon={Users}
-            title="No Learners Found"
-            message="No eligible learners found for promotion in this class"
-          />
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {classLearners.map((learner) => {
-              const nextGrade = getNextGrade(learner.grade);
-              const isSelected = selectedLearners.includes(learner.id);
-
-              return (
-                <div
-                  key={learner.id}
-                  onClick={() => toggleLearner(learner.id)}
-                  className={`relative p-4 rounded-xl cursor-pointer transition-all duration-200 group ${isSelected
-                    ? 'bg-brand-teal/5 ring-2 ring-brand-teal shadow-md'
-                    : 'bg-white border border-gray-100 hover:border-brand-teal/50 hover:shadow-md'
-                    }`}
-                >
-                  <div className="flex items-center gap-4 mb-3">
-                    {/* Checkbox UI for clarity */}
-                    <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${isSelected ? 'bg-brand-teal border-brand-teal' : 'border-gray-300 bg-white'}`}>
-                      {isSelected && <CheckCircle size={14} className="text-white" />}
-                    </div>
-
-                    <div className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-lg font-medium transition-colors ${isSelected ? 'bg-brand-teal text-white' : 'bg-gray-100 text-gray-500 group-hover:bg-brand-teal/10 group-hover:text-brand-teal'
-                      }`}>
-                      {learner.avatar || learner.firstName.charAt(0)}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-800 truncate">{learner.firstName} {learner.lastName}</p>
-                      <p className="text-xs text-gray-500 font-medium tracking-wide">{learner.admNo}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between text-xs bg-gray-50 rounded-lg px-3 py-2 mt-2">
-                    <span className="font-semibold text-gray-500">{learner.grade}</span>
-                    <ArrowRight size={14} className="text-gray-400" />
-                    <span className="font-medium text-brand-teal">{nextGrade}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Promote Button */}
-      {selectedLearners.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] z-10 md:static md:bg-transparent md:border-t-0 md:shadow-none md:p-0 flex justify-end">
-          <button
-            onClick={handlePromote}
-            className="w-full md:w-auto flex items-center justify-center gap-2 px-7 py-2.5 bg-brand-teal text-white rounded-xl hover:bg-brand-teal/90 transition shadow-lg hover:shadow-xl font-medium text-sm transform active:scale-95 duration-150"
-          >
-            <CheckCircle size={18} />
-            <span>Promote {selectedLearners.length} Learner{selectedLearners.length !== 1 ? 's' : ''}</span>
+          <button type="button" onClick={() => { setSelectedIds(allSelected ? [] : learners.map((learner) => learner.id)); setPreview(null); }} disabled={loadingLearners || learners.length === 0} className="text-sm font-semibold text-blue-700 hover:text-blue-900 disabled:cursor-not-allowed disabled:text-slate-400">
+            {allSelected ? 'Clear selection' : 'Select all'}
           </button>
         </div>
+
+        {loadingLearners ? (
+          <div className="flex items-center gap-2 px-4 py-6 text-sm text-slate-600"><RefreshCw size={16} className="animate-spin" /> Loading the full roster…</div>
+        ) : learners.length === 0 ? (
+          <EmptyState icon={Users} title="No active learners found" message="Choose another grade or stream." />
+        ) : (
+          <div className="max-h-[420px] divide-y divide-slate-100 overflow-y-auto">
+            {learners.map((learner) => (
+              <label key={learner.id} className="flex cursor-pointer items-center gap-3 px-4 py-3 hover:bg-slate-50">
+                <input type="checkbox" checked={selectedIds.includes(learner.id)} onChange={() => toggleLearner(learner.id)} className="h-4 w-4 rounded border-slate-300 text-blue-700 focus:ring-blue-600" />
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-blue-50 text-sm font-bold text-blue-800 ring-2 ring-white">
+                  {learner.photoUrl ? <img src={learner.photoUrl} alt="" className="h-full w-full object-cover" /> : `${learner.firstName?.[0] || ''}${learner.lastName?.[0] || ''}`.toUpperCase()}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold text-slate-900">{learner.firstName} {learner.lastName}</span>
+                  <span className="block text-xs text-slate-500">{learner.admissionNumber} · {learner.stream || 'No stream'}</span>
+                </span>
+                <span className="hidden items-center gap-2 text-xs font-semibold text-slate-600 sm:flex">{formatGrade(learner.grade)} <ArrowRight size={14} /> {formatGrade(targetGrade)}</span>
+              </label>
+            ))}
+          </div>
+        )}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3">
+          <span className="text-sm text-slate-600">{selectedIds.length} selected · {learners.length} loaded</span>
+          <button type="button" onClick={handlePreview} disabled={reviewing || loadingLearners || selectedIds.length === 0} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-slate-300">
+            {reviewing ? <RefreshCw size={16} className="animate-spin" /> : <CheckCircle size={16} />}
+            {reviewing ? 'Checking classes…' : 'Review placements'}
+          </button>
+        </div>
+      </section>
+
+      {preview && (
+        <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+            <div>
+              <h3 className="font-bold text-slate-900">Placement review</h3>
+              <p className="text-sm text-slate-600">{formatGrade(preview.destination.grade)} · {preview.destination.academicYear} · {preview.destination.term.replace('_', ' ')}</p>
+            </div>
+            <div className="flex gap-2 text-xs font-semibold">
+              <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-emerald-800">{preview.readyCount} ready</span>
+              {preview.blockerCount > 0 && <span className="rounded-full bg-rose-50 px-3 py-1.5 text-rose-800">{preview.blockerCount} need attention</span>}
+            </div>
+          </div>
+          {preview.blockerCount > 0 && (
+            <div className="border-b border-rose-100 bg-rose-50 px-4 py-3">
+              <p className="flex items-center gap-2 text-sm font-semibold text-rose-900"><AlertTriangle size={16} /> Fix these issues before promoting the affected learners.</p>
+              <ul className="mt-2 space-y-1 text-sm text-rose-900">
+                {blockedPlacements.map((item, index) => <li key={`${item.id}-${index}`}><span className="font-semibold">{item.name}</span>{item.admissionNumber ? ` (${item.admissionNumber})` : ''}: {item.issue}</li>)}
+              </ul>
+            </div>
+          )}
+          <div className="max-h-64 divide-y divide-slate-100 overflow-y-auto">
+            {preview.placements.map((placement) => (
+              <div key={placement.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm">
+                <span className="min-w-0"><span className="font-semibold text-slate-900">{placement.name}</span><span className="ml-2 text-xs text-slate-500">{placement.admissionNumber}</span></span>
+                <span className={`text-xs font-semibold ${placement.ready ? 'text-emerald-800' : 'text-rose-800'}`}>{placement.ready ? placement.targetClassName : placement.issue}</span>
+              </div>
+            ))}
+          </div>
+          <div className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-slate-600">Only the ready learners will be changed. Their assessments, attendance, fees, and diary history remain linked to their records.</p>
+            <button type="button" onClick={handlePromote} disabled={promoting || readyPlacements.length === 0} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300">
+              {promoting ? <RefreshCw size={16} className="animate-spin" /> : <CheckCircle size={16} />}
+              {promoting ? 'Applying…' : targetGrade === 'GRADUATED' ? `Graduate ${readyPlacements.length}` : `Promote ${readyPlacements.length}`}
+            </button>
+          </div>
+        </section>
       )}
     </div>
   );

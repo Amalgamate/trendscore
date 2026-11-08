@@ -1,4 +1,4 @@
-import { API_BASE_URL, clearApiCache, fetchWithAuth } from './core';
+import { API_BASE_URL, clearApiCache, cacheDelPrefix, fetchWithAuth } from './core';
 
 import { authAPI } from './auth.api';
 import { onboardingAPI } from './onboarding.api';
@@ -55,7 +55,7 @@ import { boardingAPI } from './boarding.api';
 import { tripsAPI } from './trips.api';
 import { analyticsAPI } from './analytics.api';
 
-export { API_BASE_URL, clearApiCache };
+export { API_BASE_URL, clearApiCache, cacheDelPrefix };
 
 export { authAPI };
 export { onboardingAPI };
