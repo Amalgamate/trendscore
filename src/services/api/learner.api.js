@@ -62,6 +62,8 @@ export const learnerAPI = {
     cacheDelPrefix('learners:');
     return fetchWithAuth('/learners/bulk-promote', { method: 'POST', body: JSON.stringify(promotionData) });
   },
+  previewBulkPromote: async (promotionData) =>
+    fetchWithAuth('/learners/bulk-promote/preview', { method: 'POST', body: JSON.stringify(promotionData) }),
   bulkMoveStream: async (moveData) => {
     cacheDelPrefix('learners:');
     return fetchWithAuth('/learners/bulk-move-stream', { method: 'POST', body: JSON.stringify(moveData) });

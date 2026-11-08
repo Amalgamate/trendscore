@@ -133,6 +133,12 @@ router.post('/bulk-promote',
   asyncHandler(learnerController.promoteLearners.bind(learnerController))
 );
 
+router.post('/bulk-promote/preview',
+  requirePermission('PROMOTE_LEARNER'),
+  rateLimit({ windowMs: 60_000, maxRequests: 30 }),
+  asyncHandler(learnerController.previewPromotions.bind(learnerController))
+);
+
 router.post('/bulk-move-stream',
   requirePermission('EDIT_LEARNER'),
   rateLimit({ windowMs: 60_000, maxRequests: 20 }),

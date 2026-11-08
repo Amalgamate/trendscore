@@ -100,7 +100,7 @@ const SupportHub = ({ initialQuery = '', initialSection = '' }) => {
         },
         {
           title: 'Promoting Learners to Next Grade',
-          content: 'At end of academic year: Go to Learner Management → Promotion → Select current grade → View list of learners eligible for promotion → Click "Promote All" or select specific learners → Confirm promotion. Learners move to next grade automatically.'
+          content: 'Set up next year’s academic year, Term 1 classes and streams first. Go to Learner Management → Promotion, choose the current grade and learners, then set the destination grade, year and term. Review the placement list; learners without an active matching class or an available place are flagged. Resolve those class issues and review again before promoting. Assessment, attendance, fee and diary history stays linked to each learner. Final-grade learners can be marked Graduated.'
         },
         {
           title: 'Transfers & Exits',

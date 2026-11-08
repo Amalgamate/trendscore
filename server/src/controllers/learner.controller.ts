@@ -833,11 +833,167 @@ export class LearnerController {
     res.json({ success: true, data: upcoming });
   }
 
+  private async buildPromotionPreview(db: any, req: AuthRequest, input: any) {
+    const learnerIds = Array.isArray(input.learnerIds) ? [...new Set(input.learnerIds.map(String))] : [];
+    const targetGrade = String(input.targetGrade || input.nextGrade || '').trim().toUpperCase();
+    const targetAcademicYear = Number(input.targetAcademicYear);
+    const targetTerm = String(input.targetTerm || 'TERM_1').toUpperCase();
+    const sourceGrade = String(input.sourceGrade || '').trim();
+    const sourceStream = input.sourceStream && input.sourceStream !== 'all' ? String(input.sourceStream).trim() : null;
+    const institutionType = getInstitutionType(req) as 'PRIMARY_CBC' | 'SECONDARY' | 'TERTIARY';
+
+    if (!learnerIds.length) throw new ApiError(400, 'Select at least one learner to review.');
+    if (learnerIds.length > 5000) throw new ApiError(400, 'Review learners in groups of 5,000 or fewer.');
+    if (!sourceGrade) throw new ApiError(400, 'Choose the learners’ current grade.');
+    if (!targetGrade) throw new ApiError(400, 'Choose a destination grade.');
+    if (!Number.isInteger(targetAcademicYear) || targetAcademicYear < 2000 || targetAcademicYear > 2150) {
+      throw new ApiError(400, 'Choose a valid destination academic year.');
+    }
+    if (!['TERM_1', 'TERM_2', 'TERM_3'].includes(targetTerm)) throw new ApiError(400, 'Choose a valid destination term.');
+
+    const allowedGrades = institutionType === 'SECONDARY'
+      ? ['GRADE_10', 'GRADE_11', 'GRADE_12', 'GRADUATED']
+      : ['PLAYGROUP', 'PP1', 'PP2', 'GRADE_1', 'GRADE_2', 'GRADE_3', 'GRADE_4', 'GRADE_5', 'GRADE_6', 'GRADE_7', 'GRADE_8', 'GRADE_9', 'GRADUATED'];
+    if (!allowedGrades.includes(targetGrade)) throw new ApiError(400, `Destination grade ${targetGrade} is not available for this school type.`);
+
+    const learners = await db.learner.findMany({
+      where: { id: { in: learnerIds }, archived: false, institutionType },
+      select: { id: true, firstName: true, lastName: true, admissionNumber: true, grade: true, stream: true, status: true },
+      orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+    });
+    const foundIds = new Set(learners.map((learner: any) => learner.id));
+    const missingIds = learnerIds.filter((id) => !foundIds.has(id));
+    const activeClasses = targetGrade === 'GRADUATED' ? [] : await db.class.findMany({
+      where: { grade: targetGrade, academicYear: targetAcademicYear, term: targetTerm, institutionType, active: true, archived: false },
+      select: { id: true, name: true, grade: true, stream: true, capacity: true, _count: { select: { enrollments: { where: { active: true, archived: false } } } } },
+    });
+    const existingTargetEnrollments = activeClasses.length
+      ? await db.classEnrollment.findMany({
+        where: { learnerId: { in: learners.map((learner: any) => learner.id) }, classId: { in: activeClasses.map((classItem: any) => classItem.id) }, active: true, archived: false },
+        select: { learnerId: true, classId: true },
+      })
+      : [];
+    const alreadyPlaced = new Set(existingTargetEnrollments.map((enrollment: any) => `${enrollment.learnerId}:${enrollment.classId}`));
+    const alreadyPlacedCounts = new Map<string, number>();
+    existingTargetEnrollments.forEach((enrollment: any) => alreadyPlacedCounts.set(enrollment.classId, (alreadyPlacedCounts.get(enrollment.classId) || 0) + 1));
+    const remainingSeats = new Map<string, number>(activeClasses.map((classItem: any) => [
+      classItem.id,
+      Math.max(0, Number(classItem.capacity || 0) - (Number(classItem._count?.enrollments || 0) - (alreadyPlacedCounts.get(classItem.id) || 0))),
+    ] as [string, number]));
+
+    const placements = learners.map((learner: any) => {
+      let issue: string | null = null;
+      let targetClass: any = null;
+      if (learner.status !== 'ACTIVE') issue = `Learner status is ${learner.status.toLowerCase()}.`;
+      else if (sourceGrade && learner.grade.toUpperCase() !== sourceGrade.toUpperCase()) issue = 'Learner is no longer in the selected source grade.';
+      else if (sourceStream && String(learner.stream || '').toLowerCase() !== sourceStream.toLowerCase()) issue = 'Learner is no longer in the selected stream.';
+      else if (targetGrade !== 'GRADUATED') {
+        targetClass = activeClasses.find((candidate: any) => String(candidate.stream || '').toLowerCase() === String(learner.stream || '').toLowerCase());
+        if (!targetClass) issue = `No active ${targetGrade} class for ${learner.stream || 'an unassigned stream'} in ${targetAcademicYear} ${targetTerm.replace('_', ' ')}.`;
+        else if (!alreadyPlaced.has(`${learner.id}:${targetClass.id}`)) {
+          const seats = remainingSeats.get(targetClass.id) || 0;
+          if (seats <= 0) issue = `${targetClass.name} has no remaining places (capacity ${targetClass.capacity}).`;
+          else remainingSeats.set(targetClass.id, seats - 1);
+        }
+      }
+      return {
+        id: learner.id,
+        name: `${learner.firstName} ${learner.lastName}`.trim(),
+        admissionNumber: learner.admissionNumber,
+        sourceGrade: learner.grade,
+        sourceStream: learner.stream,
+        targetGrade: targetGrade === 'GRADUATED' ? learner.grade : targetGrade,
+        targetStream: learner.stream,
+        targetClassId: targetClass?.id ?? null,
+        targetClassName: targetClass?.name ?? (targetGrade === 'GRADUATED' ? 'Graduate / leave school' : null),
+        ready: !issue,
+        issue,
+      };
+    });
+
+    const blockers = [
+      ...missingIds.map((id) => ({ id, name: id, issue: 'Learner record was not found in this school or is archived.' })),
+      ...placements.filter((item: any) => !item.ready),
+    ];
+    return {
+      destination: { grade: targetGrade, academicYear: targetAcademicYear, term: targetTerm },
+      requestedCount: learnerIds.length,
+      readyCount: placements.filter((item: any) => item.ready).length,
+      blockerCount: blockers.length,
+      graduationCount: targetGrade === 'GRADUATED' ? placements.filter((item: any) => item.ready).length : 0,
+      placements,
+      blockers,
+    };
+  }
+
+  async previewPromotions(req: AuthRequest, res: Response) {
+    const preview = await this.buildPromotionPreview(prisma, req, req.body);
+    res.json({ success: true, data: preview });
+  }
+
   async promoteLearners(req: AuthRequest, res: Response) {
-    const { learnerIds, nextGrade } = req.body;
-    const result = await prisma.$transaction(learnerIds.map((id: string) => prisma.learner.update({ where: { id }, data: { grade: String(nextGrade), updatedBy: req.user!.userId } })));
-    await Promise.all(result.map((learner) => ensureLearnerClassEnrollment(learner)));
-    res.json({ success: true, message: `Promoted ${result.length} learners` });
+    const result = await prisma.$transaction(async (tx) => {
+      const preview = await this.buildPromotionPreview(tx, req, req.body);
+      if (preview.blockerCount > 0) {
+        return { rejected: true as const, preview };
+      }
+
+      const userId = req.user!.userId;
+      const targetGrade = preview.destination.grade;
+      const learnerIds = preview.placements.map((placement: any) => placement.id);
+      if (targetGrade === 'GRADUATED') {
+        await tx.classEnrollment.updateMany({ where: { learnerId: { in: learnerIds }, active: true }, data: { active: false } });
+        await tx.learner.updateMany({
+          where: { id: { in: learnerIds } },
+          data: { status: 'GRADUATED', exitDate: new Date(), exitReason: 'Graduated', updatedBy: userId },
+        });
+      } else {
+        const placementsByClass = new Map<string, string[]>();
+        for (const placement of preview.placements as any[]) {
+          const learnersForClass = placementsByClass.get(placement.targetClassId) || [];
+          learnersForClass.push(placement.id);
+          placementsByClass.set(placement.targetClassId, learnersForClass);
+        }
+        for (const [classId, classLearnerIds] of placementsByClass) {
+          await tx.classEnrollment.updateMany({
+            where: { learnerId: { in: classLearnerIds }, active: true, classId: { not: classId } },
+            data: { active: false },
+          });
+          await tx.classEnrollment.updateMany({
+            where: { classId, learnerId: { in: classLearnerIds } },
+            data: { active: true, archived: false, archivedAt: null, archivedBy: null },
+          });
+          await tx.classEnrollment.createMany({
+            data: classLearnerIds.map((learnerId) => ({ classId, learnerId, active: true })),
+            skipDuplicates: true,
+          });
+        }
+        await tx.learner.updateMany({ where: { id: { in: learnerIds } }, data: { grade: targetGrade, updatedBy: userId } });
+      }
+      return { rejected: false as const, preview };
+    });
+
+    if (result.rejected) {
+      res.status(409).json({
+        success: false,
+        message: 'Promotion was not applied. Resolve the class placement issues shown, then review again.',
+        blockers: result.preview.blockers,
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      message: result.preview.destination.grade === 'GRADUATED'
+        ? `Graduated ${result.preview.readyCount} learners.`
+        : `Promoted ${result.preview.readyCount} learners to ${result.preview.destination.grade} for ${result.preview.destination.academicYear}.`,
+      data: {
+        destination: result.preview.destination,
+        promotedCount: result.preview.destination.grade === 'GRADUATED' ? 0 : result.preview.readyCount,
+        graduatedCount: result.preview.destination.grade === 'GRADUATED' ? result.preview.readyCount : 0,
+        placements: result.preview.placements,
+      },
+    });
   }
 
   /**
