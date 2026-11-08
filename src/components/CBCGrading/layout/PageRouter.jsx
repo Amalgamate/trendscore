@@ -49,7 +49,6 @@ const PerformanceScale = lazy(() => import('../pages/PerformanceScale'));
 const LearningAreasManagement = lazy(() => import('../pages/LearningAreasManagement'));
 const FacilityManager = lazy(() => import('../pages/FacilityManager'));
 const NoticesPage = lazy(() => import('../pages/NoticesPage'));
-const MessagesPage = lazy(() => import('../pages/MessagesPage'));
 const MessageHistoryPage = lazy(() => import('../pages/MessageHistoryPage'));
 const SupportHub = lazy(() => import('../pages/SupportHub'));
 const KnowledgeBase = lazy(() => import('../pages/KnowledgeBase'));
@@ -92,7 +91,6 @@ const ParentEventsPage = lazy(() => import('../pages/parent/ParentEventsPage'));
 const ParentDashboard  = lazy(() => import('../pages/dashboard/ParentDashboard'));
 const ParentPortalChildren = lazy(() => import('../pages/parent-portal/ParentPortalChildren'));
 const ParentPortalFees = lazy(() => import('../pages/parent-portal/ParentPortalFees'));
-const ParentPortalMessages = lazy(() => import('../pages/parent-portal/ParentPortalMessages'));
 const ParentPortalMore = lazy(() => import('../pages/parent-portal/ParentPortalMore'));
 const ParentPortalResults = lazy(() => import('../pages/parent-portal/ParentPortalResults'));
 const ParentPortalAttendance = lazy(() => import('../pages/parent-portal/ParentPortalAttendance'));
@@ -105,7 +103,7 @@ const ParentPortalPathway = lazy(() => import('../pages/parent-portal/ParentPort
 const ParentPortalSchools = lazy(() => import('../pages/parent-portal/ParentPortalSchools'));
 const ParentPortalBoarding = lazy(() => import('../pages/parent-portal/ParentPortalBoarding'));
 const ParentPortalAcademics = lazy(() => import('../pages/parent-portal/ParentPortalAcademics'));
-const ParentPortalCommunicationCenter = lazy(() => import('../pages/parent-portal/ParentPortalCommunicationCenter'));
+const UnifiedInboxPage = lazy(() => import('../pages/UnifiedInboxPage'));
 const ParentPortalSchoolToday = lazy(() => import('../pages/parent-portal/ParentPortalSchoolToday'));
 const ParentPortalSuggestion = lazy(() => import('../pages/parent-portal/ParentPortalSuggestion'));
 const UniformAllocationPage = lazy(() => import('../pages/UniformAllocationPage'));
@@ -308,7 +306,7 @@ const LoadingOverlay = () => (
 const PARENT_PORTAL_TITLES = {
   'parent-portal-children':       'My Children',
   'parent-portal-fees':           'School Fees',
-  'parent-portal-messages':       'Messages',
+  'parent-portal-messages':       'Inbox',
   'parent-portal-more':           'Settings',
   'parent-portal-results':        'Results',
   'parent-portal-attendance':     'Attendance',
@@ -321,7 +319,7 @@ const PARENT_PORTAL_TITLES = {
   'parent-portal-pathway':        'Pathway Planner',
   'parent-portal-schools':        'School Shortlist',
   'parent-portal-academics':      'Academics',
-  'parent-portal-communication':  'Communication Center',
+  'parent-portal-communication':  'Inbox',
   'parent-portal-school-today':   'School Today',
   'parent-portal-suggestion':     'Share Feedback',
   'fees-statements':              'Student Statements',
@@ -627,7 +625,7 @@ const PageRouter = ({
           case 'parent-portal-fees':
             return renderParentPortalShell(<ParentPortalFees user={user} onNavigate={handleNavigate} />);
           case 'parent-portal-messages':
-            return renderParentPortalShell(<ParentPortalMessages user={user} onNavigate={handleNavigate} />);
+            return renderParentPortalShell(<UnifiedInboxPage user={user} onNavigate={handleNavigate} />);
           case 'parent-portal-more':
             return renderParentPortalShell(<ParentPortalMore user={user} onNavigate={handleNavigate} onLogout={handlers?.onLogout} />);
           case 'parent-portal-results':
@@ -657,7 +655,7 @@ const PageRouter = ({
           case 'parent-portal-academics':
             return renderParentPortalShell(<ParentPortalAcademics onNavigate={handleNavigate} />, { hideBack: false });
           case 'parent-portal-communication':
-            return renderParentPortalShell(<ParentPortalCommunicationCenter user={user} onNavigate={handleNavigate} />, { hideBack: false });
+            return renderParentPortalShell(<UnifiedInboxPage user={user} onNavigate={handleNavigate} />, { hideBack: false });
           case 'parent-portal-school-today':
             return renderParentPortalShell(<ParentPortalSchoolToday onNavigate={handleNavigate} />, { hideBack: false });
           case 'parent-portal-suggestion':
@@ -882,12 +880,12 @@ const PageRouter = ({
 
           case 'comm-notices':
             return user?.role === 'PARENT'
-              ? <MessagesPage />
+              ? <UnifiedInboxPage user={user} onNavigate={handleNavigate} />
               : <NoticesPage initialTab={pageParams.activeTab} />;
-          case 'comm-messages': return <MessagesPage />;
+          case 'comm-messages': return <UnifiedInboxPage user={user} onNavigate={handleNavigate} />;
           case 'comm-history':
             return user?.role === 'PARENT'
-              ? <MessagesPage />
+              ? <UnifiedInboxPage user={user} onNavigate={handleNavigate} />
               : <MessageHistoryPage />;
 
           case 'inventory-items': return <InventoryItems />;

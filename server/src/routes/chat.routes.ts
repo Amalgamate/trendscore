@@ -15,11 +15,11 @@ const send = rateLimit({ windowMs: 10_000, maxRequests: 20 }); // 20 msgs / 10s
 // Inbox & discovery
 router.get('/inbox',            asyncHandler(chatController.getInbox.bind(chatController)));
 router.get('/unread-count',     asyncHandler(chatController.getTotalUnread.bind(chatController)));
-router.get('/users/search',     asyncHandler(chatController.searchUsers.bind(chatController)));
+router.get('/users/search',     rateLimit({ windowMs: 60_000, maxRequests: 60 }), asyncHandler(chatController.searchUsers.bind(chatController)));
 
 // Start conversations
-router.post('/direct',          asyncHandler(chatController.startDirect.bind(chatController)));
-router.post('/group',           asyncHandler(chatController.createGroup.bind(chatController)));
+router.post('/direct',          rateLimit({ windowMs: 60_000, maxRequests: 20 }), asyncHandler(chatController.startDirect.bind(chatController)));
+router.post('/group',           rateLimit({ windowMs: 60_000, maxRequests: 10 }), asyncHandler(chatController.createGroup.bind(chatController)));
 
 // Record thread (chatter)
 router.get('/record-thread',    asyncHandler(chatController.getRecordThread.bind(chatController)));
@@ -28,6 +28,7 @@ router.get('/record-thread',    asyncHandler(chatController.getRecordThread.bind
 router.get('/conversations/:id/messages',   asyncHandler(chatController.getMessages.bind(chatController)));
 router.post('/conversations/:id/messages',  send, asyncHandler(chatController.sendMessage.bind(chatController)));
 router.patch('/conversations/:id/read',     asyncHandler(chatController.markRead.bind(chatController)));
+router.patch('/conversations/:id/preferences', rateLimit({ windowMs: 60_000, maxRequests: 100 }), asyncHandler(chatController.updateInboxPreferences.bind(chatController)));
 
 // Message actions
 router.patch('/messages/:id',           asyncHandler(chatController.editMessage.bind(chatController)));

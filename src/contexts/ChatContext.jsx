@@ -27,7 +27,6 @@ export const ChatProvider = ({ children }) => {
   const [activeConversationId, setActiveConversationId] = useState(null);
   const [messagesByConv, setMessagesByConv]     = useState({});
   const [typingUsers, setTypingUsers]           = useState({});   // { [convId]: Set<userId> }
-  const [isChatOpen, setIsChatOpen]             = useState(false);
   const [unreadTotal, setUnreadTotal]           = useState(0);
 
   const socketRef        = useRef(null);
@@ -77,7 +76,6 @@ export const ChatProvider = ({ children }) => {
   // ── Open conversation ──────────────────────────────────────────────────────
   const openConversation = useCallback(async (conversationId) => {
     setActiveConversationId(conversationId);
-    setIsChatOpen(true);
     socketRef.current?.emit('chat:join', conversationId);
     if (!messagesByConv[conversationId]) {
       await loadMessages(conversationId);
@@ -373,12 +371,12 @@ export const ChatProvider = ({ children }) => {
 
   const value = useMemo(() => ({
     conversations, activeConversationId, messagesByConv, typingUsers,
-    isChatOpen, unreadTotal, setIsChatOpen, openConversation, startDirect, createGroup,
+    unreadTotal, openConversation, startDirect, createGroup,
     sendMessage, sendTyping, toggleReaction, deleteMessage, editMessage,
     fetchInbox, loadMessages,
   }), [
     conversations, activeConversationId, messagesByConv, typingUsers,
-    isChatOpen, unreadTotal, openConversation, startDirect, createGroup, sendMessage,
+    unreadTotal, openConversation, startDirect, createGroup, sendMessage,
     sendTyping, toggleReaction, deleteMessage, editMessage, fetchInbox, loadMessages,
   ]);
 

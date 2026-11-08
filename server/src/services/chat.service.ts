@@ -14,8 +14,9 @@
  */
 
 import prisma from '../config/database';
-import { getIO } from './socket.service';
 import logger from '../utils/logger';
+import { getCanonicalRoles } from '../utils/roleNormalizer';
+import { parentAccessService } from './parent-access.service';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -62,11 +63,234 @@ const userSelect = {
   profilePicture: true,
 };
 
+const SCHOOL_CONTACT_ROLES = new Set([
+  'ADMIN', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'RECEPTIONIST',
+]);
+const STAFF_ROLES = new Set([
+  'SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER', 'HEAD_OF_CURRICULUM',
+  'TEACHER', 'ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN', 'NURSE', 'SECURITY',
+  'DRIVER', 'COOK', 'CLEANER', 'GROUNDSKEEPER', 'IT_SUPPORT',
+]);
+
+const roleSet = (user: { role?: unknown; roles?: unknown[] }) =>
+  new Set<string>(getCanonicalRoles(user));
+
+const hasOneOf = (roles: Set<string>, candidates: Set<string>) =>
+  [...roles].some((role) => candidates.has(role));
+
+const isAllowedRecipient = (policy: any, recipient: { id: string; role?: unknown; roles?: unknown[] }) => {
+  if (!policy || !recipient || hasOneOf(roleSet(recipient), policy.denyRoles)) return false;
+  return policy.unrestricted || Boolean(policy.allowedIds?.has(recipient.id)) || Boolean(
+    policy.allowedRoles && hasOneOf(roleSet(recipient), policy.allowedRoles),
+  );
+};
+
+const isAccessibleWithPolicy = (conversation: any, userId: string, policy: any) => {
+  if (!conversation?.participants?.some((participant: any) => participant.userId === userId)) return false;
+  if (conversation.participants.some((participant: any) => participant.user?.status !== 'ACTIVE' || participant.user?.archived)) return false;
+  if (conversation.type === 'GROUP') {
+    return conversation.participants.every((participant: any) => hasOneOf(roleSet(participant.user), STAFF_ROLES));
+  }
+  if (conversation.type !== 'DIRECT') return true;
+  const other = conversation.participants.find((participant: any) => participant.userId !== userId);
+  return Boolean(other && isAllowedRecipient(policy, { id: other.userId, ...other.user }));
+};
+
+const getSocketIO = () => {
+  // Resolve lazily because the socket service uses this class for its access checks.
+  const { getIO } = require('./socket.service') as typeof import('./socket.service');
+  return getIO();
+};
+
 // ---------------------------------------------------------------------------
 // Service
 // ---------------------------------------------------------------------------
 
 export class ChatService {
+
+  private static async directRecipientPolicy(requesterId: string) {
+    const requester = await prisma.user.findUnique({
+      where: { id: requesterId },
+      select: { id: true, role: true, roles: true, studentLearner: { select: { id: true, parentId: true } } },
+    });
+    if (!requester) return null;
+
+    const roles = roleSet(requester);
+    if (hasOneOf(roles, new Set(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER']))) {
+      return { unrestricted: true, allowedIds: null as Set<string> | null, allowedRoles: null as Set<string> | null, denyRoles: new Set(['SUPER_ADMIN']) };
+    }
+
+    if (roles.has('TEACHER')) {
+      const [staff, learners] = await Promise.all([
+        prisma.user.findMany({
+          where: {
+            status: 'ACTIVE',
+            archived: false,
+            OR: [{ role: { in: [...STAFF_ROLES] } }, { roles: { hasSome: [...STAFF_ROLES] } }],
+          },
+          select: { id: true },
+        }),
+        prisma.learner.findMany({
+          where: {
+            archived: false,
+            enrollments: {
+              some: {
+                active: true,
+                archived: false,
+                class: {
+                  active: true,
+                  archived: false,
+                  OR: [
+                    { teacherId: requesterId },
+                    { teacherAssignments: { some: { teacherId: requesterId } } },
+                  ],
+                },
+              },
+            },
+          },
+          select: { id: true, parentId: true },
+        }),
+      ]);
+      const familyMembers = learners.length ? await prisma.familyMember.findMany({
+        where: {
+          userId: { not: null },
+          status: 'ACTIVE',
+          canLogin: true,
+          familyAccount: {
+            status: 'ACTIVE',
+            archived: false,
+            learners: { some: { learnerId: { in: learners.map((learner) => learner.id) } } },
+          },
+        },
+        select: { userId: true },
+      }) : [];
+      return {
+        unrestricted: false,
+        allowedIds: new Set([
+          ...staff.map((user) => user.id),
+          ...learners.map((learner) => learner.parentId).filter(Boolean) as string[],
+          ...familyMembers.map((member) => member.userId).filter(Boolean) as string[],
+        ]),
+        allowedRoles: null as Set<string> | null,
+        denyRoles: new Set(['STUDENT', 'SUPER_ADMIN']),
+      };
+    }
+
+    if (roles.has('PARENT')) {
+      const learnerIds = await parentAccessService.getAccessibleLearnerIds(requesterId);
+      const enrollments = learnerIds.length ? await prisma.classEnrollment.findMany({
+        where: {
+          learnerId: { in: learnerIds },
+          active: true,
+          archived: false,
+          class: { active: true, archived: false },
+        },
+        select: {
+          class: {
+            select: {
+              teacherId: true,
+              teacherAssignments: { select: { teacherId: true } },
+            },
+          },
+        },
+      }) : [];
+      const teacherIds = new Set<string>();
+      enrollments.forEach(({ class: classRecord }) => {
+        if (classRecord.teacherId) teacherIds.add(classRecord.teacherId);
+        classRecord.teacherAssignments.forEach((assignment) => teacherIds.add(assignment.teacherId));
+      });
+      return {
+        unrestricted: false,
+        allowedIds: teacherIds,
+        allowedRoles: SCHOOL_CONTACT_ROLES,
+        denyRoles: new Set(['STUDENT', 'SUPER_ADMIN']),
+      };
+    }
+
+    if (roles.has('STUDENT')) {
+      const teacherIds = new Set<string>();
+      if (requester.studentLearner) {
+        const enrollments = await prisma.classEnrollment.findMany({
+          where: {
+            learnerId: requester.studentLearner.id,
+            active: true,
+            archived: false,
+            class: { active: true, archived: false },
+          },
+          select: {
+            class: {
+              select: {
+                teacherId: true,
+                teacherAssignments: { select: { teacherId: true } },
+              },
+            },
+          },
+        });
+        enrollments.forEach(({ class: classRecord }) => {
+          if (classRecord.teacherId) teacherIds.add(classRecord.teacherId);
+          classRecord.teacherAssignments.forEach((assignment) => teacherIds.add(assignment.teacherId));
+        });
+      }
+      if (requester.studentLearner?.parentId) teacherIds.add(requester.studentLearner.parentId);
+      return {
+        unrestricted: false,
+        allowedIds: teacherIds,
+        allowedRoles: SCHOOL_CONTACT_ROLES,
+        denyRoles: new Set(['STUDENT', 'SUPER_ADMIN']),
+      };
+    }
+
+    if (hasOneOf(roles, STAFF_ROLES)) {
+      return { unrestricted: false, allowedIds: null as Set<string> | null, allowedRoles: STAFF_ROLES, denyRoles: new Set(['STUDENT', 'PARENT', 'SUPER_ADMIN']) };
+    }
+    return { unrestricted: false, allowedIds: new Set<string>(), allowedRoles: new Set<string>(), denyRoles: new Set<string>() };
+  }
+
+  /**
+   * Enforce school-safe direct-message recipients using the same relationship
+   * data used elsewhere for parent and teacher access. The UI search is only a
+   * convenience; this check also runs when a caller submits a crafted user ID.
+   */
+  static async canStartDirect(requesterId: string, otherUserId: string): Promise<boolean> {
+    if (!requesterId || !otherUserId || requesterId === otherUserId) return false;
+    const [policy, recipient] = await Promise.all([
+      ChatService.directRecipientPolicy(requesterId),
+      prisma.user.findFirst({
+        where: { id: otherUserId, archived: false, status: 'ACTIVE' },
+        select: { id: true, role: true, roles: true },
+      }),
+    ]);
+    if (!policy || !recipient) return false;
+    return isAllowedRecipient(policy, recipient);
+  }
+
+  static async canCreateGroup(requesterId: string, participantIds: string[]): Promise<boolean> {
+    const uniqueIds = [...new Set(participantIds)].filter((id) => id !== requesterId);
+    if (!uniqueIds.length) return false;
+    const users = await prisma.user.findMany({
+      where: { id: { in: [requesterId, ...uniqueIds] }, archived: false, status: 'ACTIVE' },
+      select: { id: true, role: true, roles: true },
+    });
+    if (users.length !== uniqueIds.length + 1) return false;
+    return users.every((user) => hasOneOf(roleSet(user), STAFF_ROLES));
+  }
+
+  static async canAccessConversation(conversationId: string, userId: string): Promise<boolean> {
+    const [conversation, policy] = await Promise.all([
+      prisma.conversation.findUnique({
+        where: { id: conversationId },
+        select: {
+          type: true,
+          participants: {
+            where: { leftAt: null },
+            select: { userId: true, user: { select: { role: true, roles: true, status: true, archived: true } } },
+          },
+        },
+      }),
+      ChatService.directRecipientPolicy(userId),
+    ]);
+    return isAccessibleWithPolicy(conversation, userId, policy);
+  }
 
   // ── Conversations ──────────────────────────────────────────────────────────
 
@@ -100,6 +324,10 @@ export class ChatService {
       existing.participants.some((p) => p.userId === creatorId) &&
       existing.participants.some((p) => p.userId === otherUserId)
     ) {
+      await prisma.conversationParticipant.updateMany({
+        where: { conversationId: existing.id, userId: creatorId, archivedAt: { not: null } },
+        data: { archivedAt: null },
+      });
       return existing;
     }
 
@@ -216,15 +444,20 @@ export class ChatService {
    * Return all non-record-thread conversations for a user,
    * ordered by most recent message, with unread counts.
    */
-  static async getInbox(userId: string) {
+  static async getInbox(userId: string, includeArchived = false) {
     const participations = await prisma.conversationParticipant.findMany({
-      where: { userId, leftAt: null },
+      where: {
+        userId,
+        leftAt: null,
+        ...(includeArchived ? {} : { archivedAt: null }),
+        conversation: { type: { not: 'RECORD_THREAD' } },
+      },
       include: {
         conversation: {
           include: {
             participants: {
               where: { leftAt: null },
-              include: { user: { select: userSelect } },
+              include: { user: { select: { ...userSelect, roles: true, status: true, archived: true } } },
             },
             messages: {
               where: { deletedAt: null },
@@ -238,47 +471,123 @@ export class ChatService {
       orderBy: { conversation: { lastMessageAt: 'desc' } },
     });
 
-    return participations
+    const inbox = participations
       .filter((p: any) => p.conversation.type !== 'RECORD_THREAD')
       .map((p: any) => {
         const lastReadAt = p.lastReadAt;
-        const unreadCount = lastReadAt
-          ? // We don't have a raw count here — will be computed from message list
-            0
-          : 0; // Will be enriched separately if needed
         return {
           ...p.conversation,
           myParticipantId: p.id,
           lastReadAt,
-          unreadCount,
+          archivedAt: p.archivedAt,
+          pinnedAt: p.pinnedAt,
+          mutedUntil: p.mutedUntil,
+          unreadCount: 0,
           lastMessage: p.conversation.messages[0] ?? null,
         };
       });
+    const policy = await ChatService.directRecipientPolicy(userId);
+    const accessibleInbox = inbox
+      .filter((conversation: any) => isAccessibleWithPolicy(conversation, userId, policy))
+      .sort((a: any, b: any) => {
+        const pinOrder = Number(Boolean(b.pinnedAt)) - Number(Boolean(a.pinnedAt));
+        return pinOrder || new Date(b.lastMessageAt || b.updatedAt).getTime() - new Date(a.lastMessageAt || a.updatedAt).getTime();
+      });
+    const unreadRows = accessibleInbox.length ? await prisma.chatMessage.groupBy({
+      by: ['conversationId'],
+      where: {
+        deletedAt: null,
+        senderId: { not: userId },
+        OR: accessibleInbox.map((conversation: any) => ({
+          conversationId: conversation.id,
+          ...(conversation.lastReadAt ? { createdAt: { gt: conversation.lastReadAt } } : {}),
+        })),
+      },
+      _count: { _all: true },
+    }) : [];
+    const unreadByConversation = new Map(unreadRows.map((row: any) => [row.conversationId, row._count._all]));
+    return accessibleInbox.map((conversation: any) => ({
+      ...conversation,
+      unreadCount: unreadByConversation.get(conversation.id) ?? 0,
+      participants: conversation.participants.map((participant: any) => ({
+        ...participant,
+        user: (({ roles: _roles, status: _status, archived: _archived, ...user }: any) => user)(participant.user),
+      })),
+    }));
+  }
+
+  static async updateInboxPreferences(
+    conversationId: string,
+    userId: string,
+    preferences: { archived?: boolean; pinned?: boolean; mutedUntil?: string | null; markUnread?: boolean },
+  ) {
+    if (!(await ChatService.canAccessConversation(conversationId, userId))) {
+      throw new Error('Conversation not found or access denied');
+    }
+    const participant = await prisma.conversationParticipant.findUnique({
+      where: { conversationId_userId: { conversationId, userId } },
+      select: { id: true },
+    });
+    if (!participant) throw new Error('Conversation not found or access denied');
+
+    return prisma.conversationParticipant.update({
+      where: { id: participant.id },
+      data: {
+        ...(typeof preferences.archived === 'boolean' ? { archivedAt: preferences.archived ? new Date() : null } : {}),
+        ...(typeof preferences.pinned === 'boolean' ? { pinnedAt: preferences.pinned ? new Date() : null } : {}),
+        ...(preferences.mutedUntil !== undefined ? { mutedUntil: preferences.mutedUntil ? new Date(preferences.mutedUntil) : null } : {}),
+        ...(preferences.markUnread ? { lastReadAt: null } : {}),
+      },
+    });
   }
 
   /**
    * Get unread counts for all conversations a user is in.
    */
-  static async getUnreadCounts(userId: string): Promise<Record<string, number>> {
+  static async getUnreadCounts(userId: string, includeArchived = false): Promise<Record<string, number>> {
     const participations = await prisma.conversationParticipant.findMany({
-      where: { userId, leftAt: null },
-      select: { conversationId: true, lastReadAt: true },
+      where: {
+        userId,
+        leftAt: null,
+        ...(includeArchived ? {} : { archivedAt: null }),
+        conversation: { type: { not: 'RECORD_THREAD' } },
+      },
+      select: {
+        conversationId: true,
+        lastReadAt: true,
+        conversation: {
+          select: {
+            type: true,
+            participants: {
+              where: { leftAt: null },
+              select: { userId: true, user: { select: { role: true, roles: true, status: true, archived: true } } },
+            },
+          },
+        },
+      },
     });
 
     const counts: Record<string, number> = {};
-    await Promise.all(
-      participations.map(async (p: any) => {
-        const count = await prisma.chatMessage.count({
-          where: {
-            conversationId: p.conversationId,
-            deletedAt: null,
-            senderId: { not: userId },
-            createdAt: p.lastReadAt ? { gt: p.lastReadAt } : undefined,
-          },
-        });
-        counts[p.conversationId] = count;
-      })
+    const policy = await ChatService.directRecipientPolicy(userId);
+    const visibleParticipations = participations.filter((participation: any) =>
+      isAccessibleWithPolicy(participation.conversation, userId, policy)
     );
+    visibleParticipations.forEach((participant: any) => { counts[participant.conversationId] = 0; });
+    if (visibleParticipations.length) {
+      const unreadRows = await prisma.chatMessage.groupBy({
+        by: ['conversationId'],
+        where: {
+          deletedAt: null,
+          senderId: { not: userId },
+          OR: visibleParticipations.map((participant: any) => ({
+            conversationId: participant.conversationId,
+            ...(participant.lastReadAt ? { createdAt: { gt: participant.lastReadAt } } : {}),
+          })),
+        },
+        _count: { _all: true },
+      });
+      unreadRows.forEach((row: any) => { counts[row.conversationId] = row._count._all; });
+    }
     return counts;
   }
 
@@ -292,7 +601,7 @@ export class ChatService {
     const participant = await prisma.conversationParticipant.findUnique({
       where: { conversationId_userId: { conversationId, userId } },
     });
-    if (!participant || participant.leftAt) {
+    if (!participant || participant.leftAt || !(await ChatService.canAccessConversation(conversationId, userId))) {
       throw new Error('Not a participant in this conversation');
     }
 
@@ -330,7 +639,7 @@ export class ChatService {
     const participant = await prisma.conversationParticipant.findUnique({
       where: { conversationId_userId: { conversationId: input.conversationId, userId: input.senderId } },
     });
-    if (!participant || participant.leftAt) {
+    if (!participant || participant.leftAt || !(await ChatService.canAccessConversation(input.conversationId, input.senderId))) {
       throw new Error('Not a participant in this conversation');
     }
 
@@ -361,13 +670,17 @@ export class ChatService {
         where: { id: input.conversationId },
         data: { lastMessageAt: new Date() },
       }),
+      prisma.conversationParticipant.updateMany({
+        where: { conversationId: input.conversationId, leftAt: null },
+        data: { archivedAt: null },
+      }),
     ]);
 
     // Emit to all conversation participants EXCEPT the sender.
     // The sender already has the message via the optimistic bubble + HTTP response,
     // so broadcasting back to them causes the duplicate the user sees.
     try {
-      const io = getIO();
+      const io = getSocketIO();
       io.to(`conv:${input.conversationId}`).except(input.senderId).emit('chat:message', message);
     } catch (err: any) {
       logger.warn({ err: err.message }, '[Chat] Socket emit failed');
@@ -383,6 +696,7 @@ export class ChatService {
     const msg = await prisma.chatMessage.findUnique({ where: { id: messageId } });
     if (!msg) throw new Error('Message not found');
     if (msg.senderId !== userId) throw new Error('Not your message');
+    if (!(await ChatService.canAccessConversation(msg.conversationId, userId))) throw new Error('Conversation access denied');
 
     const updated = await prisma.chatMessage.update({
       where: { id: messageId },
@@ -390,7 +704,7 @@ export class ChatService {
     });
 
     try {
-      const io = getIO();
+      const io = getSocketIO();
       io.to(`conv:${msg.conversationId}`).emit('chat:deleted', { messageId, conversationId: msg.conversationId });
     } catch (_) { /* non-critical */ }
 
@@ -404,6 +718,7 @@ export class ChatService {
     const msg = await prisma.chatMessage.findUnique({ where: { id: messageId } });
     if (!msg || msg.deletedAt) throw new Error('Message not found');
     if (msg.senderId !== userId) throw new Error('Not your message');
+    if (!(await ChatService.canAccessConversation(msg.conversationId, userId))) throw new Error('Conversation access denied');
 
     const updated = await prisma.chatMessage.update({
       where: { id: messageId },
@@ -412,7 +727,7 @@ export class ChatService {
     });
 
     try {
-      const io = getIO();
+      const io = getSocketIO();
       io.to(`conv:${msg.conversationId}`).emit('chat:edited', updated);
     } catch (_) { /* non-critical */ }
 
@@ -425,14 +740,15 @@ export class ChatService {
    * Mark all messages in a conversation as read up to now.
    */
   static async markRead(conversationId: string, userId: string) {
+    if (!(await ChatService.canAccessConversation(conversationId, userId))) throw new Error('Conversation access denied');
     const now = new Date();
-    await prisma.conversationParticipant.update({
-      where: { conversationId_userId: { conversationId, userId } },
+    await prisma.conversationParticipant.updateMany({
+      where: { conversationId, userId, leftAt: null },
       data: { lastReadAt: now },
     });
 
     try {
-      const io = getIO();
+      const io = getSocketIO();
       io.to(`conv:${conversationId}`).emit('chat:read', { conversationId, userId, readAt: now });
     } catch (_) { /* non-critical */ }
   }
@@ -443,6 +759,10 @@ export class ChatService {
    * Toggle an emoji reaction on a message.
    */
   static async toggleReaction(messageId: string, userId: string, emoji: string) {
+    const message = await prisma.chatMessage.findUnique({ where: { id: messageId }, select: { conversationId: true } });
+    if (!message || !(await ChatService.canAccessConversation(message.conversationId, userId))) {
+      throw new Error('Conversation access denied');
+    }
     const existing = await prisma.chatMessageReaction.findUnique({
       where: { messageId_userId_emoji: { messageId, userId, emoji } },
     });
@@ -461,7 +781,7 @@ export class ChatService {
     const msg = await prisma.chatMessage.findUnique({ where: { id: messageId } });
     if (msg) {
       try {
-        const io = getIO();
+        const io = getSocketIO();
         io.to(`conv:${msg.conversationId}`).emit('chat:reaction', {
           messageId,
           emoji,
@@ -484,20 +804,46 @@ export class ChatService {
     const terms = query.trim().split(/\s+/).filter(Boolean);
     if (terms.length === 0) return [];
 
-    return prisma.user.findMany({
+    const policy = await ChatService.directRecipientPolicy(requesterId);
+    if (!policy) return [];
+
+    const recipientScopes: any[] = [];
+    if (policy.allowedIds?.size) recipientScopes.push({ id: { in: [...policy.allowedIds] } });
+    if (policy.allowedRoles?.size) {
+      const allowedRoles = [...policy.allowedRoles];
+      recipientScopes.push({ OR: [{ role: { in: allowedRoles } }, { roles: { hasSome: allowedRoles } }] });
+    }
+    if (!policy.unrestricted && !recipientScopes.length) return [];
+
+    const candidates = await prisma.user.findMany({
       where: {
-        id: { not: requesterId },
+        id: {
+          not: requesterId,
+        },
         archived: false,
         status: 'ACTIVE',
-        OR: [
-          { firstName: { contains: query, mode: 'insensitive' } },
-          { lastName: { contains: query, mode: 'insensitive' } },
-          { email: { contains: query, mode: 'insensitive' } },
+        AND: [
+          ...terms.map((term) => ({ OR: [
+            { firstName: { contains: term, mode: 'insensitive' } },
+            { lastName: { contains: term, mode: 'insensitive' } },
+            { email: { contains: term, mode: 'insensitive' } },
+          ] })),
+          ...(policy.unrestricted ? [] : [{ OR: recipientScopes }]),
+          ...(policy.denyRoles.size ? [{ NOT: { OR: [
+            { role: { in: [...policy.denyRoles] } },
+            { roles: { hasSome: [...policy.denyRoles] } },
+          ] } }] : []),
         ],
       },
-      select: { ...userSelect, email: true, phone: true },
-      take: limit,
+      select: { ...userSelect, roles: true, email: true },
+      take: Math.min(limit * 4, 80),
     });
+    const approved = candidates.filter((candidate) => {
+      const candidateRoles = roleSet(candidate);
+      if (hasOneOf(candidateRoles, policy.denyRoles)) return false;
+      return policy.unrestricted || Boolean(policy.allowedIds?.has(candidate.id)) || Boolean(policy.allowedRoles && hasOneOf(candidateRoles, policy.allowedRoles));
+    }).slice(0, limit);
+    return approved.map(({ roles: _roles, email: _email, ...candidate }) => candidate);
   }
 
   // ── Record thread helpers ──────────────────────────────────────────────────

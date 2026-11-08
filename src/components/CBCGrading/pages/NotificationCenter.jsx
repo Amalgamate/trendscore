@@ -322,13 +322,12 @@ function NotificationRow({ notification, onMarkRead, onNavigate }) {
 
 // ─── Chat Unread Row ──────────────────────────────────────────────────────────
 
-function ChatUnreadSection({ count, onNavigate, setIsChatOpen }) {
+function ChatUnreadSection({ count, onNavigate }) {
   if (count === 0) return null;
   return (
     <button
       type="button"
       onClick={() => {
-        setIsChatOpen?.(true);
         onNavigate?.('comm-messages');
       }}
       className="w-full flex items-start gap-3 px-4 py-3.5 text-left bg-white hover:bg-indigo-50/40 transition-colors border-b border-gray-50 group"
@@ -341,10 +340,10 @@ function ChatUnreadSection({ count, onNavigate, setIsChatOpen }) {
           {count} unread message{count > 1 ? 's' : ''}
         </p>
         <p className="mt-0.5 text-xs text-gray-700 leading-relaxed">
-          Open the Messages tab in the chat panel to reply.
+          Open your inbox to read and reply.
         </p>
         <span className="mt-1 inline-flex items-center gap-1 text-[10px] font-semibold text-indigo-600 group-hover:text-indigo-800">
-          Open Chat <ArrowRight size={9} />
+          Open inbox <ArrowRight size={9} />
         </span>
       </div>
       <div className="mt-1.5 shrink-0 w-2 h-2 rounded-full bg-indigo-600" />
@@ -381,7 +380,7 @@ export default function NotificationCenter({ user, onNavigate }) {
     fetchNotifications,
   } = useUserNotifications();
 
-  const { unreadTotal: chatUnread, setIsChatOpen } = useChat();
+  const { unreadTotal: chatUnread } = useChat();
 
   // Paged items fetched directly (separate from the context which holds last-30)
   const [pagedItems, setPagedItems]   = useState([]);
@@ -541,7 +540,6 @@ export default function NotificationCenter({ user, onNavigate }) {
             <ChatUnreadSection
               count={chatUnread}
               onNavigate={onNavigate}
-              setIsChatOpen={setIsChatOpen}
             />
           )}
 

@@ -56,7 +56,7 @@ const PAGE_APP_REQUIREMENTS = {
   'academic-top-bottom-performers': 'exams',
 
   'comm-notices': 'announcements',
-  'comm-messages': 'sms-notifications',
+  'comm-messages': null,
   'comm-history': 'sms-notifications',
 
   'learning-hub-materials': 'lms',
@@ -184,6 +184,7 @@ const ROLE_PAGE_ALLOWLIST = {
     'student-attendance',
     'student-timetable',
     'student-pathway-planner',
+    'comm-messages',
     'student-career-explorer',
     'pathway-guide',
     'learning-leaderboard',
@@ -195,6 +196,7 @@ const ROLE_PAGE_ALLOWLIST = {
     'parent-portal-children',
     'parent-portal-fees',
     'parent-portal-messages',
+    'comm-messages',
     'parent-portal-more',
     'parent-portal-results',
     'parent-portal-attendance',

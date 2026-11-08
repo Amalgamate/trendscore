@@ -153,10 +153,9 @@ export const allNavSections = [
         id: 'communications',
         label: 'Inbox',
         icon: Mail,
-        app: 'sms-notifications',
         permission: null,
         items: [
-            { id: 'comm-messages', label: 'Inbox', path: 'comm-messages', permission: 'VIEW_INBOX', app: 'sms-notifications' },
+            { id: 'comm-messages', label: 'Inbox', path: 'comm-messages', permission: 'VIEW_INBOX' },
             { id: 'comm-notices', label: 'Notices & Announcements', path: 'comm-notices', permission: null, app: 'announcements' },
             { id: 'comm-history', label: 'Message History', path: 'comm-history', permission: null, app: 'sms-notifications' }
         ]

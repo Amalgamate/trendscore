@@ -718,8 +718,17 @@ export const getInboxMessages = async (req: AuthRequest, res: Response) => {
     const userId = req.user?.userId;
     if (!userId) throw new ApiError(401, 'Authentication required');
 
-    const messages = await messageService.getInboxMessages(userId);
+    const messages = await messageService.getInboxMessages(userId, req.query.includeArchived === 'true');
     res.status(200).json({ success: true, data: messages });
+};
+
+export const archiveInboxMessage = async (req: AuthRequest, res: Response) => {
+    const userId = req.user?.userId;
+    const { id } = req.params;
+    if (!userId) throw new ApiError(401, 'Authentication required');
+    const archived = req.body?.archived !== false;
+    const receipt = await messageService.archiveReceipt(id, userId, archived);
+    res.status(200).json({ success: true, data: receipt });
 };
 
 /**

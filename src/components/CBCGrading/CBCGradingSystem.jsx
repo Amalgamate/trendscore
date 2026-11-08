@@ -13,7 +13,7 @@ import GitNotificationDialog from './layout/GitNotificationDialog';
 import ModuleHelpAssistant from '../help/ModuleHelpAssistant';
 import { findModuleGuide } from '../help/moduleGuides';
 import AIAssistant from '../help/AIAssistant';
-import ParentHelpChat from './pages/parent-portal/ParentHelpChat';
+import ParentCommunicationActions from './pages/parent-portal/ParentCommunicationActions';
 import RoleOnboarding from '../help/RoleOnboarding';
 import { findRoleOnboarding, getRoleOnboarding } from '../help/roleOnboardingJourneys';
 import { useSetupProgress } from '../help/useSetupProgress';
@@ -683,18 +683,14 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
 
   // ── Layout ────────────────────────────────────────────────────────────────
   if (isMobile) {
-    // Parents get their own shell — white-background portal pages with a
-    // shared MobileBottomNav rendered once here so every current and future
-    // parent-portal page automatically gets it without per-page wiring.
+    // Parent pages use the dedicated full-width Inbox and Assistant action row.
     if (parentPortal) {
-      const isParentLanding = currentPage === 'parent-portal-home';
       return (
         <>
           <div className="h-[100dvh] w-full flex flex-col overflow-hidden bg-[var(--app-page-bg)]">
-            {/* Landing page uses the full viewport; child pages reserve room for the footer nav. */}
             <div
               className="min-h-0 flex-1 overflow-y-auto"
-              style={{ paddingBottom: isParentLanding ? 'calc(4.25rem + env(safe-area-inset-bottom, 0px))' : 'calc(8.25rem + env(safe-area-inset-bottom, 0px))' }}
+              style={{ paddingBottom: 'calc(4.25rem + env(safe-area-inset-bottom, 0px))' }}
             >
               <ErrorBoundary>
                 <PageRouter
@@ -715,14 +711,9 @@ export default function CBCGradingSystem({ user, onLogout, brandingSettings, set
                 />
               </ErrorBoundary>
             </div>
-            {!isParentLanding && <MobileBottomNav
-              role={accessUser?.role}
-              currentPath={currentPage}
-              onNavigate={handleNavigate}
-            />}
-            <ParentHelpChat onNavigate={handleNavigate} hasBottomNav={!isParentLanding} />
+            <ParentCommunicationActions onNavigate={handleNavigate} />
             <ModuleHelpAssistant currentPage={currentPage} user={accessUser} onNavigate={handleNavigate} open={helpOpen} onOpenChange={setHelpOpen} />
-            <AIAssistant currentPage={currentPage} user={accessUser} onNavigate={handleNavigate} />
+            <AIAssistant currentPage={currentPage} user={accessUser} onNavigate={handleNavigate} showLauncher={false} panelBottom="calc(4.5rem + env(safe-area-inset-bottom, 0px))" />
             <RoleOnboarding currentPage={currentPage} user={accessUser} onNavigate={handleNavigate} open={onboardingOpen} onOpenChange={setOnboardingOpen} progress={setupProgress} />
           </div>
           <GlobalModals

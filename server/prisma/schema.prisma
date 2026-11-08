@@ -1752,6 +1752,7 @@ model MessageReceipt {
   status         MessageStatus @default(SENT)
   deliveredAt    DateTime?
   readAt         DateTime?
+  archivedAt     DateTime?
   failureReason  String?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
@@ -1759,6 +1760,7 @@ model MessageReceipt {
 
   @@index([messageId])
   @@index([recipientId])
+  @@index([recipientId, archivedAt])
   @@index([status])
   @@map("message_receipts")
 }
@@ -5208,6 +5210,8 @@ model ConversationParticipant {
   joinedAt       DateTime  @default(now())
   lastReadAt     DateTime? // Tracks per-user read cursor
   mutedUntil     DateTime? // Optional mute
+  archivedAt     DateTime? // User-level hide from the active inbox
+  pinnedAt       DateTime? // User-level priority ordering
   leftAt         DateTime? // Soft-remove for groups
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -5215,6 +5219,7 @@ model ConversationParticipant {
 
   @@unique([conversationId, userId])
   @@index([userId])
+  @@index([userId, archivedAt])
   @@index([conversationId])
   @@map("conversation_participants")
 }
