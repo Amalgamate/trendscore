@@ -14,6 +14,7 @@
  */
 
 import prisma from '../config/database';
+import { Prisma, UserRole } from '@prisma/client';
 import logger from '../utils/logger';
 import { getCanonicalRoles } from '../utils/roleNormalizer';
 import { parentAccessService } from './parent-access.service';
@@ -78,6 +79,8 @@ const roleSet = (user: { role?: unknown; roles?: unknown[] }) =>
 const hasOneOf = (roles: Set<string>, candidates: Set<string>) =>
   [...roles].some((role) => candidates.has(role));
 
+const asUserRoles = (roles: Set<string>): UserRole[] => [...roles] as UserRole[];
+
 const isAllowedRecipient = (policy: any, recipient: { id: string; role?: unknown; roles?: unknown[] }) => {
   if (!policy || !recipient || hasOneOf(roleSet(recipient), policy.denyRoles)) return false;
   return policy.unrestricted || Boolean(policy.allowedIds?.has(recipient.id)) || Boolean(
@@ -126,7 +129,7 @@ export class ChatService {
           where: {
             status: 'ACTIVE',
             archived: false,
-            OR: [{ role: { in: [...STAFF_ROLES] } }, { roles: { hasSome: [...STAFF_ROLES] } }],
+            OR: [{ role: { in: asUserRoles(STAFF_ROLES) } }, { roles: { hasSome: asUserRoles(STAFF_ROLES) } }],
           },
           select: { id: true },
         }),
@@ -807,13 +810,27 @@ export class ChatService {
     const policy = await ChatService.directRecipientPolicy(requesterId);
     if (!policy) return [];
 
-    const recipientScopes: any[] = [];
+    const recipientScopes: Prisma.UserWhereInput[] = [];
     if (policy.allowedIds?.size) recipientScopes.push({ id: { in: [...policy.allowedIds] } });
     if (policy.allowedRoles?.size) {
-      const allowedRoles = [...policy.allowedRoles];
+      const allowedRoles = asUserRoles(policy.allowedRoles);
       recipientScopes.push({ OR: [{ role: { in: allowedRoles } }, { roles: { hasSome: allowedRoles } }] });
     }
     if (!policy.unrestricted && !recipientScopes.length) return [];
+
+    const searchConditions: Prisma.UserWhereInput[] = terms.map((term) => ({ OR: [
+      { firstName: { contains: term, mode: 'insensitive' } },
+      { lastName: { contains: term, mode: 'insensitive' } },
+      { email: { contains: term, mode: 'insensitive' } },
+    ] }));
+    if (!policy.unrestricted) searchConditions.push({ OR: recipientScopes });
+    if (policy.denyRoles.size) {
+      const deniedRoles = asUserRoles(policy.denyRoles);
+      searchConditions.push({ NOT: { OR: [
+        { role: { in: deniedRoles } },
+        { roles: { hasSome: deniedRoles } },
+      ] } });
+    }
 
     const candidates = await prisma.user.findMany({
       where: {
@@ -822,18 +839,7 @@ export class ChatService {
         },
         archived: false,
         status: 'ACTIVE',
-        AND: [
-          ...terms.map((term) => ({ OR: [
-            { firstName: { contains: term, mode: 'insensitive' } },
-            { lastName: { contains: term, mode: 'insensitive' } },
-            { email: { contains: term, mode: 'insensitive' } },
-          ] })),
-          ...(policy.unrestricted ? [] : [{ OR: recipientScopes }]),
-          ...(policy.denyRoles.size ? [{ NOT: { OR: [
-            { role: { in: [...policy.denyRoles] } },
-            { roles: { hasSome: [...policy.denyRoles] } },
-          ] } }] : []),
-        ],
+        AND: searchConditions,
       },
       select: { ...userSelect, roles: true, email: true },
       take: Math.min(limit * 4, 80),
