@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { noticeController } from '../controllers/notice.controller';
 import { authenticate } from '../middleware/auth.middleware';
 import { requireSchoolContext } from '../middleware/school.middleware';
-import { requirePermission, auditLog } from '../middleware/permissions.middleware';
+import { requirePermission, requireAnyPermission, auditLog } from '../middleware/permissions.middleware';
 import { validate } from '../middleware/validation.middleware';
 import { asyncHandler } from '../utils/async.util';
 import { rateLimit } from '../middleware/enhanced-rateLimit.middleware';
@@ -39,7 +39,7 @@ router.get(
 
 router.post(
   '/',
-  requirePermission('SEND_SCHOOL_NOTICES'),
+  requireAnyPermission(['SEND_SCHOOL_NOTICES', 'PUBLISH_CLASS_DIARY']),
   rateLimit({ windowMs: 60_000, maxRequests: 30 }),
   validate(noticeSchema),
   auditLog('CREATE_NOTICE'),

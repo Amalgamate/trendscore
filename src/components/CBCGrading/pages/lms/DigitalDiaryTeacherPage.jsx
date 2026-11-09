@@ -233,9 +233,9 @@ function DiaryEntryComposerPage({ kind, selectedClass, selectedDate, onBack, onP
       onPublished?.(subject.trim());
     } catch (err) {
       const msg = err?.message?.includes('403')
-        ? 'You don\u2019t have permission to publish notices. Contact your school admin.'
+        ? 'You don\u2019t have permission to publish diary entries. Contact your school admin.'
         : err?.message?.includes('429')
-        ? 'Too many notices published recently. Please wait a minute and try again.'
+        ? 'Too many entries published recently. Please wait a minute and try again.'
         : err?.message || 'Could not publish. Please try again.';
       onError?.(msg);
     } finally {
