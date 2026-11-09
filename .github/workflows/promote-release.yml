@@ -162,7 +162,8 @@ jobs:
           DEPLOY_TARGET: ${{ needs.validate.outputs.deploy_target }}
         run: |
           set -euo pipefail
-          ssh production "DEPLOY_TARGET=${DEPLOY_TARGET}" 'set -euo pipefail
+          export DEPLOY_TARGET
+          ssh production 'set -euo pipefail
             echo "Deployment host storage before cleanup:"
             df -h / /tmp /srv/zawadi /var/lib/docker 2>/dev/null || df -h
 
@@ -172,7 +173,7 @@ jobs:
             # Batch deployments pull new images, back up every school, and run
             # migrations that can generate large WAL/temp files. Reclaim safe
             # storage aggressively before starting so we do not hit ENOSPC again.
-            if [[ "${DEPLOY_TARGET}" == "all_schools" || "${DEPLOY_TARGET}" == "pilot" ]]; then
+            if [[ "${DEPLOY_TARGET:-}" == "all_schools" || "${DEPLOY_TARGET:-}" == "pilot" ]]; then
               echo "Batch deploy: pruning old backups and unused Docker artifacts before rollout"
               backup_root=/srv/zawadi/backups
               retained=2
