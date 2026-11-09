@@ -18,6 +18,7 @@ import { useModuleAccess } from '../../../../contexts/ModuleAccessContext';
 import { hasPageAccess } from '../../utils/appAccess';
 import ParentReportCards from './ParentReportCards';
 import { ParentChildDiaryWork } from '../parent-portal/ParentPortalHomework';
+import ChildBottomNav from '../../layout/ChildBottomNav';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -488,18 +489,37 @@ export default function ParentChildProfile({ child, siblings = [], onSelectChild
   return (
     <div className="min-h-screen bg-[var(--app-page-bg)] pb-24">
       <div className="mx-auto max-w-4xl px-3 pt-3 space-y-3">
+        {/* ── Clean header: back button + child identity + class teacher ── */}
         <div className="flex items-center gap-2">
-          <button onClick={onBack} aria-label="Back to family overview" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-800 hover:bg-slate-50"><ArrowLeft size={18} /></button>
+          <button onClick={onBack} aria-label="Back to family overview" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-800 hover:bg-slate-50">
+            <ArrowLeft size={18} />
+          </button>
           <div className="flex min-w-0 flex-1 items-center gap-2.5">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-sm font-extrabold text-indigo-900">{child.name?.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase() || '?'}</div>
-            <div className="min-w-0"><h1 className="truncate text-base font-extrabold text-slate-950">{child.name}</h1><p className="truncate text-xs font-medium text-slate-600">{child.grade} · {child.className || 'Class'}{isPresent ? ' · Present today' : ''}</p></div>
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-sm font-extrabold text-indigo-900">
+              {child.name?.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase() || '?'}
+            </div>
+            <div className="min-w-0">
+              <h1 className="truncate text-base font-extrabold text-slate-950">{child.name}</h1>
+              <p className="truncate text-xs font-medium text-slate-600">
+                {child.grade} · {child.className || 'Class'}
+                {isPresent ? ' · Present today' : ''}
+              </p>
+              {child.classTeacher && (
+                <p className="truncate text-[11px] font-medium text-indigo-700">
+                  Class Teacher: {child.classTeacher}
+                </p>
+              )}
+            </div>
           </div>
           {siblings.length > 1 && <label className="sr-only" htmlFor="parent-child-switcher">Choose child</label>}
-          {siblings.length > 1 && <select id="parent-child-switcher" value={child.id} onChange={e => onSelectChild?.(siblings.find(s => String(s.id) === e.target.value))} className="max-w-28 rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs font-bold text-slate-800"><option value={child.id}>{child.name?.split(' ')[0]}</option>{siblings.filter(s => String(s.id) !== String(child.id)).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select>}
+          {siblings.length > 1 && <select id="parent-child-switcher" value={child.id} onChange={e => onSelectChild?.(siblings.find(s => String(s.id) === e.target.value))} className="max-w-28 rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs font-bold text-slate-800">
+            <option value={child.id}>{child.name?.split(' ')[0]}</option>
+            {siblings.filter(s => String(s.id) !== String(child.id)).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>}
         </div>
 
-        {/* Compact horizontal tab pills — keeps nav minimal so content gets focus */}
-        <nav aria-label="Child activities" className="flex items-center gap-1.5 overflow-x-auto rounded-xl border border-slate-200 bg-white px-2 py-1.5">
+        {/* Desktop-only inline nav (mobile uses ChildBottomNav at the bottom) */}
+        <nav aria-label="Child activities" className="hidden md:flex items-center gap-1.5 overflow-x-auto rounded-xl border border-slate-200 bg-white px-2 py-1.5">
           {visibleTabs.map(({ id, label, icon: Icon, color }) => (
             <button
               key={id}
@@ -543,6 +563,9 @@ export default function ParentChildProfile({ child, siblings = [], onSelectChild
       </div>
 
       </div>
+
+      {/* Mobile bottom navigation for child sections */}
+      <ChildBottomNav activeTab={tab} onSelect={setTab} showFees={showFees} />
     </div>
   );
 }

@@ -2536,20 +2536,47 @@ export class DashboardController {
                 prisma.learner.findMany({
                     where: { id: { in: accessibleLearnerIds }, archived: false },
                     include: {
-                        feeInvoices: { 
-                            where: { archived: false }, 
+                        feeInvoices: {
+                            where: { archived: false },
                             select: { id: true, balance: true, totalAmount: true, invoiceNumber: true, createdAt: true, term: true, academicYear: true },
                             orderBy: { createdAt: 'desc' },
                             take: 10
                         },
                         formativeAssessments: { where: { archived: false }, orderBy: { createdAt: 'desc' }, take: 10 },
                         attendances: { where: { archived: false }, orderBy: { date: 'desc' }, take: 30 },
-                        summativeResults: { 
-                            where: { archived: false }, 
+                        summativeResults: {
+                            where: { archived: false },
                             include: { test: { select: { title: true, learningArea: true } } },
                             orderBy: { createdAt: 'desc' },
                             take: 20
-                        }
+                        },
+                        // Class teacher + subject teachers so the parent diary can
+                        // show who is teaching the child and attribute notes to them.
+                        enrollments: {
+                            where: { active: true, archived: false },
+                            take: 1,
+                            include: {
+                                class: {
+                                    select: {
+                                        id: true,
+                                        name: true,
+                                        grade: true,
+                                        stream: true,
+                                        teacher: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+                                        teacherAssignments: {
+                                            include: { teacher: { select: { id: true, firstName: true, lastName: true } } },
+                                        },
+                                        schedules: {
+                                            where: { active: true, archived: false },
+                                            select: {
+                                                subject: true,
+                                                teacher: { select: { id: true, firstName: true, lastName: true } },
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        },
                     },
                 }),
                 prisma.notice.count({
@@ -2617,13 +2644,77 @@ export class DashboardController {
                 const homeworkCount = 0;
                 const newMessages = 0;
 
+                // ── Teachers ──────────────────────────────────────────────────────
+                // The class (homeroom) teacher, plus every subject teacher on the
+                // timetable, so the parent diary can attribute notes to a person.
+                const enrollment = child.enrollments?.[0];
+                const classRecord = enrollment?.class;
+                const classTeacherUser = classRecord?.teacher || null;
+                const assignedTeachers = classRecord?.teacherAssignments || [];
+
+                const classTeacher = classTeacherUser
+                    ? {
+                        id: classTeacherUser.id,
+                        name: `${classTeacherUser.firstName || ''} ${classTeacherUser.lastName || ''}`.trim() || 'Class teacher',
+                        firstName: classTeacherUser.firstName || null,
+                        lastName: classTeacherUser.lastName || null,
+                        email: classTeacherUser.email || null,
+                        phone: classTeacherUser.phone || null,
+                        role: 'CLASS_TEACHER',
+                    }
+                    : null;
+
+                // Subject teachers come from the class timetable. De-duplicate by
+                // teacher id so a teacher with several slots appears only once.
+                const subjectTeacherMap = new Map<string, any>();
+                for (const schedule of classRecord?.schedules || []) {
+                    if (!schedule.teacher?.id) continue;
+                    if (classTeacherUser && schedule.teacher.id === classTeacherUser.id) continue;
+                    const existing = subjectTeacherMap.get(schedule.teacher.id);
+                    const subject = schedule.subject || 'Class';
+                    if (existing) {
+                        if (!existing.subjects.includes(subject)) existing.subjects.push(subject);
+                    } else {
+                        subjectTeacherMap.set(schedule.teacher.id, {
+                            id: schedule.teacher.id,
+                            name: `${schedule.teacher.firstName || ''} ${schedule.teacher.lastName || ''}`.trim() || 'Teacher',
+                            firstName: schedule.teacher.firstName || null,
+                            lastName: schedule.teacher.lastName || null,
+                            role: 'SUBJECT_TEACHER',
+                            subjects: [subject],
+                        });
+                    }
+                }
+                const subjectTeachers = Array.from(subjectTeacherMap.values());
+
+                // Other homeroom teachers assigned to the same class.
+                const otherClassTeachers = assignedTeachers
+                    .filter((assignment: any) => assignment.teacher && (!classTeacherUser || assignment.teacher.id !== classTeacherUser.id))
+                    .map((assignment: any) => ({
+                        id: assignment.teacher.id,
+                        name: `${assignment.teacher.firstName || ''} ${assignment.teacher.lastName || ''}`.trim() || 'Class teacher',
+                        firstName: assignment.teacher.firstName || null,
+                        lastName: assignment.teacher.lastName || null,
+                        role: 'CLASS_TEACHER',
+                        subjects: [],
+                    }));
+
+                const teachers = classTeacher
+                    ? [classTeacher, ...otherClassTeachers, ...subjectTeachers]
+                    : [...otherClassTeachers, ...subjectTeachers];
+
                 return {
-                    id: child.id, 
+                    id: child.id,
                     name: `${child.firstName} ${child.lastName}`,
                     photoUrl: child.photoUrl,
                     profilePicture: child.photoUrl,
-                    grade: child.grade.replace('_', ' '), 
+                    grade: child.grade.replace('_', ' '),
                     className: child.stream ? `Class ${child.stream}` : 'Class',
+                    classId: classRecord?.id || null,
+                    classTeacher: classTeacher?.name || otherClassTeachers[0]?.name || null,
+                    classTeacherId: classTeacher?.id || null,
+                    teachers,
+                    subjectTeachers,
                     admissionNumber: child.admissionNumber,
                     performanceLevel: getPerformanceLevel(avgPerformance), 
                     overallPerformance: avgPerformance > 0 ? `${Math.round(avgPerformance)}%` : 'No Data',
