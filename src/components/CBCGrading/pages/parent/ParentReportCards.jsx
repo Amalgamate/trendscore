@@ -1,13 +1,21 @@
 /**
- * ParentReportCards — Scoresheet table view
+ * ParentReportCards — Unified Results & Performance module
  *
- * Layout: cross-term scoresheet table (Option A)
- *   Rows    = subjects (union across all recorded terms)
- *   Columns = Term 1 · Term 2 · Term 3 · Year Avg
- *   Cell    = CBC grade badge + percentage
+ * Merges the former "Academic Scoresheet" (this file) and "Results &
+ * Performance" (ParentPortalResults.jsx) into a single, complete view.
  *
- * One "View Official Report Card" button per term opens the full
- * TermlyReportTemplate with Download PDF / Print. No other redundancy.
+ * Layout (top → bottom):
+ *   1. Header — title, year selector, Download Results button
+ *   2. Performance snapshot — gradient hero card (Overall / Trend / Terms)
+ *   3. Insights panel — decline alerts, improvement celebrations, trajectory
+ *   4. Growth chart — multi-subject line chart across terms
+ *   5. Subject highlights — best subject, needs attention, most improved
+ *   6. Academic scoresheet — subject × term table with averages
+ *   7. Report cards — downloadable report card links (when published)
+ *   8. Grade key — EE/ME/AE/BE legend
+ *
+ * Data: useLearnerResults(learnerId, year) — same hook both screens used.
+ *       useAcademicInsights(data, summary) — actionable insights engine.
  */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -23,6 +31,9 @@ import {
   termLabel,
   useLearnerResults,
 } from '../results/useLearnerResults';
+import { useAcademicInsights } from '../results/useAcademicInsights';
+import SubjectGrowthChart from '../results/SubjectGrowthChart';
+import InsightsPanel from '../results/InsightsPanel';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -338,11 +349,182 @@ function GradeLegend() {
   );
 }
 
+// ─── Performance Snapshot (merged from ParentPortalResults) ──────────────────
+
+function PerformanceSnapshot({ summary }) {
+  if (!summary?.hasData) return null;
+
+  const latest = summary.latest;
+  const avg = latest?.avg ?? null;
+  const trend = summary.trend;
+
+  return (
+    <div className="rounded-2xl bg-gradient-to-br from-[#3B1FA3] to-indigo-600 p-4 text-white">
+      <p className="text-[9px] font-bold uppercase tracking-wider text-white/60 mb-2">Performance snapshot</p>
+      <div className="grid grid-cols-3 gap-3 text-center">
+        <div>
+          <p className="text-[9px] text-white/60 uppercase tracking-wide">Overall</p>
+          <p className="text-2xl font-black mt-0.5">{avg != null ? `${avg}%` : '\u2014'}</p>
+          <p className="text-[9px] text-white/60">{latest ? termLabel(latest.term) : '\u2014'}</p>
+        </div>
+        <div>
+          <p className="text-[9px] text-white/60 uppercase tracking-wide">Trend</p>
+          <p className={`text-2xl font-black mt-0.5 ${trend != null ? (trend >= 0 ? 'text-emerald-300' : 'text-rose-300') : ''}`}>
+            {trend != null ? `${trend >= 0 ? '+' : ''}${trend}` : '\u2014'}
+          </p>
+          <p className="text-[9px] text-white/60">vs last term</p>
+        </div>
+        <div>
+          <p className="text-[9px] text-white/60 uppercase tracking-wide">Terms</p>
+          <p className="text-2xl font-black mt-0.5">{summary.terms.length}/3</p>
+          <p className="text-[9px] text-white/60">recorded</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Subject Highlights (computed from summary data) ─────────────────────────
+
+function SubjectHighlights({ summary }) {
+  const highlights = useMemo(() => {
+    if (!summary?.hasData || !summary.terms?.length) return null;
+
+    // Build per-subject year averages and term-over-term deltas
+    const subjectMap = {}; // { name: { scores: [], latestPct, prevPct } }
+    TERM_ORDER.forEach(t => {
+      const termData = summary.terms.find(td => td.term === t);
+      (termData?.subjects || []).forEach(s => {
+        if (!subjectMap[s.name]) subjectMap[s.name] = { scores: [], latestPct: null, prevPct: null };
+        subjectMap[s.name].scores.push(s.percentage);
+      });
+    });
+
+    const subjects = Object.entries(subjectMap).map(([name, data]) => {
+      const validScores = data.scores.filter(v => v != null);
+      const avg = validScores.length ? Math.round(validScores.reduce((s, v) => s + v, 0) / validScores.length) : null;
+      // Latest and previous term percentages
+      const sortedTerms = summary.terms.filter(td => TERM_ORDER.includes(td.term)).sort((a, b) => TERM_ORDER.indexOf(a.term) - TERM_ORDER.indexOf(b.term));
+      const latestTerm = sortedTerms[sortedTerms.length - 1];
+      const prevTerm = sortedTerms[sortedTerms.length - 2];
+      data.latestPct = latestTerm?.subjects?.find(s => s.name === name)?.percentage ?? null;
+      data.prevPct = prevTerm?.subjects?.find(s => s.name === name)?.percentage ?? null;
+      const delta = (data.latestPct != null && data.prevPct != null) ? data.latestPct - data.prevPct : null;
+      return { name, avg, delta };
+    }).filter(s => s.avg != null);
+
+    if (!subjects.length) return null;
+
+    const best = [...subjects].sort((a, b) => b.avg - a.avg)[0];
+    const needsAttention = [...subjects].sort((a, b) => a.avg - b.avg)[0];
+    const mostImproved = subjects
+      .filter(s => s.delta != null)
+      .sort((a, b) => b.delta - a.delta)[0];
+
+    // Only show mostImproved if there's an actual improvement
+    if (best.avg === needsAttention.avg) return null;
+
+    return { best, needsAttention, mostImproved };
+  }, [summary]);
+
+  if (!highlights) return null;
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="rounded-xl bg-white border border-gray-200 px-3 py-3 shadow-sm">
+        <p className="text-[9px] font-bold uppercase tracking-wider text-gray-400">Best subject</p>
+        <p className="text-sm font-bold text-emerald-600 mt-1 truncate">{highlights.best.name}</p>
+        <p className="text-xs font-black text-emerald-600 mt-0.5">{highlights.best.avg}%</p>
+      </div>
+      <div className="rounded-xl bg-white border border-gray-200 px-3 py-3 shadow-sm">
+        <p className="text-[9px] font-bold uppercase tracking-wider text-gray-400">Needs attention</p>
+        <p className="text-sm font-bold text-amber-600 mt-1 truncate">{highlights.needsAttention.name}</p>
+        <p className="text-xs font-black text-amber-600 mt-0.5">{highlights.needsAttention.avg}%</p>
+      </div>
+      {highlights.mostImproved && highlights.mostImproved.delta > 0 && (
+        <div className="rounded-xl bg-white border border-gray-200 px-3 py-3 shadow-sm">
+          <p className="text-[9px] font-bold uppercase tracking-wider text-gray-400">Most improved</p>
+          <p className="text-sm font-bold text-emerald-600 mt-1 truncate">{highlights.mostImproved.name}</p>
+          <p className="text-xs font-black text-emerald-600 mt-0.5">+{highlights.mostImproved.delta} pts</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Report Card Download (merged from ParentPortalResults) ──────────────────
+
+function ReportCardDownload({ learner, year }) {
+  const [loading, setLoading] = useState(false);
+  const [reports, setReports] = useState([]);
+
+  useEffect(() => {
+    if (!learner?.id) return;
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      try {
+        const res = await reportAPI.getLearnerReports?.(learner.id, { academicYear: year });
+        if (cancelled) return;
+        setReports(Array.isArray(res?.data) ? res.data : []);
+      } catch {
+        if (!cancelled) setReports([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [learner?.id, year]);
+
+  if (loading) return null; // don't show a skeleton — just wait quietly
+  if (!reports.length) return (
+    <div className="rounded-2xl bg-white border border-gray-200 p-4">
+      <div className="flex items-center gap-2 mb-1">
+        <FileText size={16} className="text-[#3B1FA3]" />
+        <p className="text-sm font-bold text-gray-900">Report cards</p>
+      </div>
+      <p className="text-xs text-gray-500">No report cards published for {year} yet.</p>
+    </div>
+  );
+
+  return (
+    <div className="rounded-2xl bg-white border border-gray-200 p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <FileText size={16} className="text-[#3B1FA3]" />
+        <p className="text-sm font-bold text-gray-900">Report cards</p>
+      </div>
+      <div className="space-y-2">
+        {reports.map((r, i) => (
+          <button
+            key={i}
+            type="button"
+            onClick={() => {
+              const url = r.url || r.fileUrl;
+              if (url) window.open(url, '_blank');
+            }}
+            className="w-full flex items-center gap-2 rounded-xl bg-gray-50 px-3 py-2.5 text-left hover:bg-gray-100 transition-colors"
+          >
+            <FileText size={14} className="text-gray-400 flex-shrink-0" />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold text-gray-700 truncate">
+                {r.title || r.term ? `${termLabel(r.term)} report` : `Report ${i + 1}`}
+              </p>
+              <p className="text-[10px] text-gray-400">{r.academicYear || year}</p>
+            </div>
+            <Download size={14} className="text-gray-300 flex-shrink-0" />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function ParentReportCards({ learner }) {
   const [year, setYear] = useState(String(new Date().getFullYear()));
-  const { loading, error, summary } = useLearnerResults(learner.id, year);
+  const { loading, error, data, summary } = useLearnerResults(learner.id, year);
+  const { insights, hasInsights } = useAcademicInsights(data, summary);
 
   const [termReport, setTermReport]         = useState(null);
   const [termReportLoading, setTermReportLoading] = useState(null); // term key or null
@@ -438,7 +620,7 @@ export default function ParentReportCards({ learner }) {
       {/* ── Header: title + year selector ─────────────────────────────── */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h3 className="text-base font-black text-gray-900">Academic Scoresheet</h3>
+          <h3 className="text-base font-black text-gray-900">Results & Performance</h3>
           <p className="text-xs text-gray-400 mt-0.5">{learner.name} · {learner.grade}</p>
         </div>
         <div className="flex items-center gap-2">
@@ -456,49 +638,22 @@ export default function ParentReportCards({ learner }) {
             className="inline-flex items-center gap-1.5 rounded-xl bg-[#3B1FA3] px-3 py-2 text-xs font-bold text-white shadow-sm hover:bg-[#2d1680] disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
           >
             {pdfStatus === 'downloading' ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
-            {pdfStatus === 'downloading' ? 'Generating…' : 'Download Results'}
+            {pdfStatus === 'downloading' ? 'Generating\u2026' : 'Download Results'}
           </button>
         </div>
       </div>
 
-      {/* ── Year summary strip ─────────────────────────────────────────── */}
-      {summary.hasData && (
-        <div className="grid grid-cols-3 gap-3">
-          {[
-            {
-              label: 'Year Average',
-              value: (() => {
-                const avgs = summary.terms.map(t => t.avg).filter(v => v != null);
-                return avgs.length ? `${Math.round(avgs.reduce((s, v) => s + v, 0) / avgs.length)}%` : '—';
-              })(),
-              sub: 'Across all terms',
-              color: 'text-[#3B1FA3]',
-            },
-            {
-              label: 'Latest Term',
-              value: summary.latest ? `${summary.latest.avg}%` : '—',
-              sub: summary.latest ? termLabel(summary.latest.term) : '—',
-              color: scoreColor(summary.latest?.avg),
-            },
-            {
-              label: 'Trend',
-              value: summary.trend != null ? (summary.trend >= 0 ? `+${summary.trend}` : `${summary.trend}`) : '—',
-              sub: 'vs previous term',
-              color: summary.trend == null ? 'text-gray-400' : summary.trend >= 0 ? 'text-emerald-600' : 'text-rose-500',
-              icon: summary.trend != null ? (summary.trend >= 0 ? TrendingUp : TrendingDown) : null,
-            },
-          ].map(({ label, value, sub, color, icon: Icon }) => (
-            <div key={label} className="rounded-xl bg-white border border-gray-200 px-3 py-3 text-center shadow-sm">
-              <p className="text-[9px] font-bold uppercase tracking-wider text-gray-400">{label}</p>
-              <div className="flex items-center justify-center gap-1 mt-1">
-                {Icon && <Icon size={14} className={color} />}
-                <p className={`text-xl font-black ${color}`}>{value}</p>
-              </div>
-              <p className="text-[9px] text-gray-400 mt-0.5">{sub}</p>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* ── Performance snapshot hero card ────────────────────────────── */}
+      <PerformanceSnapshot summary={summary} />
+
+      {/* ── Academic insights (declines, improvements, trajectory) ────── */}
+      {hasInsights && <InsightsPanel insights={insights} hasInsights={hasInsights} />}
+
+      {/* ── Growth-over-time chart ────────────────────────────────────── */}
+      {summary.hasData && <SubjectGrowthChart summary={summary} />}
+
+      {/* ── Subject highlights ────────────────────────────────────────── */}
+      <SubjectHighlights summary={summary} />
 
       {/* ── Scoresheet table or empty state ───────────────────────────── */}
       {summary.hasData ? (
@@ -513,6 +668,9 @@ export default function ParentReportCards({ learner }) {
           <p className="text-xs text-gray-400 mt-1">Results will appear here once the school publishes them.</p>
         </div>
       )}
+
+      {/* ── Report cards download section ─────────────────────────────── */}
+      <ReportCardDownload learner={learner} year={year} />
 
       {/* ── Grade key ─────────────────────────────────────────────────── */}
       {summary.hasData && <GradeLegend />}

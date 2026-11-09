@@ -5,7 +5,7 @@
  *
  * The global ParentBottomNav handles the landing-page level
  * (Home | Children | Fees | Inbox | More). This one handles the level
- * *inside* a single child: Diary | Attendance | Learning | Fees | More.
+ * *inside* a single child: Diary | Attendance | Results | Fees | More.
  *
  * Renders only on mobile (block md:hidden) — desktop shows the same
  * options as an inline row beneath the child header.
@@ -18,7 +18,7 @@ const ChildBottomNav = ({ activeTab, onSelect, showFees = true }) => {
   const tabs = [
     { id: 'diary',      label: 'Diary',      icon: BookOpen },
     { id: 'attendance', label: 'Attendance', icon: CalendarDays },
-    { id: 'results',    label: 'Learning',   icon: GraduationCap },
+    { id: 'results',    label: 'Results',   icon: GraduationCap },
     ...(showFees ? [{ id: 'fees', label: 'Fees', icon: Wallet }] : []),
     { id: 'more',       label: 'More',       icon: MoreHorizontal },
   ];
