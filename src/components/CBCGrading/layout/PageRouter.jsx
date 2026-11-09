@@ -51,6 +51,7 @@ const LearningAreasManagement = lazy(() => import('../pages/LearningAreasManagem
 const FacilityManager = lazy(() => import('../pages/FacilityManager'));
 const NoticesPage = lazy(() => import('../pages/NoticesPage'));
 const BroadcastMessagesPage = lazy(() => import('../pages/BroadcastMessagesPage'));
+const MessageHistoryPage = lazy(() => import('../pages/MessageHistoryPage'));
 const SupportHub = lazy(() => import('../pages/SupportHub'));
 const KnowledgeBase = lazy(() => import('../pages/KnowledgeBase'));
 const ReportsCenterPage = lazy(() => import('../pages/ReportsCenterPage'));
@@ -893,7 +894,9 @@ const PageRouter = ({
           case 'comm-messages': return <UnifiedInboxPage user={user} onNavigate={handleNavigate} />;
           case 'comm-broadcasts': return <BroadcastMessagesPage onNavigate={handleNavigate} />;
           case 'comm-history':
-            return <UnifiedInboxPage user={user} onNavigate={handleNavigate} />;
+            return user?.role === 'PARENT'
+              ? <UnifiedInboxPage user={user} onNavigate={handleNavigate} />
+              : <MessageHistoryPage />;
 
           case 'inventory-items': return <InventoryItems />;
           case 'inventory-categories': return <InventoryCategories />;

@@ -794,7 +794,6 @@ export const getParentDeliveryInbox = async (req: AuthRequest, res: Response) =>
 
     res.status(200).json({ success: true, data: deliveries });
 };
-
 export const archiveInboxMessage = async (req: AuthRequest, res: Response) => {
     const userId = req.user?.userId;
     const { id } = req.params;
