@@ -708,13 +708,13 @@ run_migrations() {
       stuck_migrations=$(node /tmp/recover_migrations.js 2>/dev/null || true)
       rm -f /tmp/recover_migrations.js
 
-      if [[ -n "${stuck_migrations}" ]]; then
+      if [ -n "${stuck_migrations}" ]; then
         echo "  [recovery] disk-full stuck migrations detected"
-        while IFS= read -r name; do
-          [[ -n "${name}" ]] || continue
+        echo "${stuck_migrations}" | while IFS= read -r name; do
+          [ -n "${name}" ] || continue
           echo "  [recovery] resolving ${name} as rolled back"
           npx prisma migrate resolve --rolled-back "${name}" >/tmp/recovery-${name}.log 2>&1 || true
-        done <<< "${stuck_migrations}"
+        done
       fi
 
       # 1. Baseline check
