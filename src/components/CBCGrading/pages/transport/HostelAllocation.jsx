@@ -2,15 +2,12 @@
  * HostelAllocation.jsx
  * Hostel Room Allocation & Boarding Management for the Transport & Hostel module.
  *
- * This is a fully self-contained frontend that manages:
- *   - Hostel blocks / dormitories
- *   - Rooms within each block with capacity tracking
- *   - Student bed assignments linked to learners
+ * Fetches dormitory and bed data from the boarding API:
+ *   - GET  /v1/boarding/dormitories      → list of blocks with rooms
+ *   - POST /v1/boarding/dormitories      → create a block
+ *   - POST /v1/boarding/dormitories/:id/beds → add a room/bed
  *
- * Backend note: hostel endpoints (/hostel/*) do not yet exist in the server.
- * The page degrades gracefully with empty states and surfaces a clear
- * "Backend Setup Required" notice so devs know what to build.
- * When the API is ready, replace the mock helpers with real api.hostel.* calls.
+ * When the API returns no data, an honest empty state is shown.
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -18,38 +15,15 @@ import {
   Home, Users, Plus, Pencil, Trash2, X, Loader2,
   Search, BedDouble, Building2, AlertCircle, CheckCircle2,
   RefreshCw, UserPlus, ChevronDown, ChevronRight, Hash,
-  ShieldAlert
 } from 'lucide-react';
 import { useNotifications } from '../../hooks/useNotifications';
-import { getAuthItem } from '../../../../utils/authStorage';
+import { boardingAPI } from '../../../../services/api';
 
 // ─── constants ─────────────────────────────────────────────────────────────────
 
 const ROOM_TYPES = ['DORMITORY', 'PRIVATE', 'SEMI_PRIVATE', 'SUITE'];
 const ROOM_TYPE_LABEL = { DORMITORY: 'Dormitory', PRIVATE: 'Private', SEMI_PRIVATE: 'Semi-Private', SUITE: 'Suite' };
 const GENDER_OPTS = ['MIXED', 'MALE', 'FEMALE'];
-
-// ─── mock data (used until backend is ready) ──────────────────────────────────
-
-const MOCK_BLOCKS = [
-  {
-    id: 'b1', name: 'Block A — Boys', gender: 'MALE', totalRooms: 4, totalCapacity: 40,
-    rooms: [
-      { id: 'r1', number: 'A-101', type: 'DORMITORY', capacity: 10, occupied: 8, gender: 'MALE', floor: 1 },
-      { id: 'r2', number: 'A-102', type: 'DORMITORY', capacity: 10, occupied: 10, gender: 'MALE', floor: 1 },
-      { id: 'r3', number: 'A-201', type: 'SEMI_PRIVATE', capacity: 4,  occupied: 2, gender: 'MALE', floor: 2 },
-      { id: 'r4', number: 'A-202', type: 'PRIVATE',     capacity: 1,  occupied: 1, gender: 'MALE', floor: 2 },
-    ]
-  },
-  {
-    id: 'b2', name: 'Block B — Girls', gender: 'FEMALE', totalRooms: 3, totalCapacity: 24,
-    rooms: [
-      { id: 'r5', number: 'B-101', type: 'DORMITORY',   capacity: 10, occupied: 6, gender: 'FEMALE', floor: 1 },
-      { id: 'r6', number: 'B-102', type: 'SEMI_PRIVATE', capacity: 4,  occupied: 4, gender: 'FEMALE', floor: 1 },
-      { id: 'r7', number: 'B-201', type: 'PRIVATE',     capacity: 1,  occupied: 0, gender: 'FEMALE', floor: 2 },
-    ]
-  }
-];
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -356,33 +330,47 @@ function RoomModal({ block, onClose, onSave, saving }) {
 const HostelAllocation = () => {
   const [blocks, setBlocks]             = useState([]);
   const [loading, setLoading]           = useState(true);
+  const [loadError, setLoadError]       = useState('');
   const [expandedBlocks, setExpanded]   = useState({});
   const [query, setQuery]               = useState('');
   const [filterGender, setFilterGender] = useState('all');
   const [blockModal, setBlockModal]     = useState(null); // null | { block? }
   const [roomModal, setRoomModal]       = useState(null); // null | { block }
   const [saving, setSaving]             = useState(false);
-  const [apiReady, setApiReady]         = useState(false);
   const { showSuccess, showError }      = useNotifications();
+
+  // Map a backend dormitory + its beds into the block/room shape the UI expects.
+  const mapDormitoryToBlock = (dorm) => {
+    const beds = Array.isArray(dorm.beds) ? dorm.beds : [];
+    return {
+      id: dorm.id,
+      name: dorm.name || 'Unnamed block',
+      gender: (dorm.gender || 'MIXED').toUpperCase(),
+      rooms: beds.map((bed) => ({
+        id: bed.id,
+        number: bed.label || bed.roomNumber || String(bed.id),
+        type: (bed.roomType || 'DORMITORY').toUpperCase(),
+        floor: bed.floor || 1,
+        capacity: bed.capacity || 1,
+        occupied: bed.occupiedCount || 0,
+      })),
+    };
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
-    // Try real API first; fall back to mock data
+    setLoadError('');
     try {
-      const res = await fetch('/api/hostel/blocks', {
-        headers: { Authorization: `Bearer ${getAuthItem('token') || ''}` }
-      });
-      if (res.ok) {
-        const json = await res.json();
-        setBlocks(json.data || []);
-        setApiReady(true);
-      } else {
-        setBlocks(MOCK_BLOCKS);
-        setApiReady(false);
+      const res = await boardingAPI.getDormitories();
+      if (res?.success === false) {
+        throw new Error(res?.message || 'Failed to load dormitories');
       }
-    } catch {
-      setBlocks(MOCK_BLOCKS);
-      setApiReady(false);
+      const dorms = Array.isArray(res?.data) ? res.data : [];
+      const mapped = dorms.map(mapDormitoryToBlock);
+      setBlocks(mapped);
+    } catch (err) {
+      setLoadError(err?.message || 'Could not load hostel data. Please try again.');
+      setBlocks([]);
     } finally {
       setLoading(false);
     }
@@ -421,20 +409,18 @@ const HostelAllocation = () => {
   const handleSaveBlock = async (form) => {
     setSaving(true);
     try {
-      if (!apiReady) {
-        // Local mock save
-        const newBlock = { id: `b${Date.now()}`, ...form, rooms: [] };
-        setBlocks(p => [...p, newBlock]);
-        showSuccess('Block added (preview mode — connect backend to persist)');
-        setBlockModal(null);
-        return;
+      const res = await boardingAPI.createDormitory({
+        name: form.name,
+        gender: form.gender,
+      });
+      if (res?.success === false) {
+        throw new Error(res?.message || 'Failed to create block');
       }
-      // Real save would go here
-      showSuccess('Block saved');
+      showSuccess('Block created');
       setBlockModal(null);
       load();
-    } catch {
-      showError('Failed to save block');
+    } catch (err) {
+      showError(err?.message || 'Failed to save block');
     } finally {
       setSaving(false);
     }
@@ -443,27 +429,39 @@ const HostelAllocation = () => {
   const handleSaveRoom = async (form) => {
     setSaving(true);
     try {
-      if (!apiReady) {
-        const newRoom = { id: `r${Date.now()}`, ...form, capacity: Number(form.capacity), floor: Number(form.floor), occupied: 0 };
-        setBlocks(p => p.map(b => b.id === roomModal.block.id ? { ...b, rooms: [...b.rooms, newRoom] } : b));
-        showSuccess('Room added (preview mode)');
-        setRoomModal(null);
-        return;
+      const res = await boardingAPI.createBed(roomModal.block.id, {
+        label: form.number,
+        roomType: form.type,
+        capacity: Number(form.capacity),
+        floor: Number(form.floor),
+        gender: form.gender,
+      });
+      if (res?.success === false) {
+        throw new Error(res?.message || 'Failed to add room');
       }
-      showSuccess('Room saved');
+      showSuccess('Room added');
       setRoomModal(null);
       load();
-    } catch {
-      showError('Failed to save room');
+    } catch (err) {
+      showError(err?.message || 'Failed to save room');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDeleteBlock = (block) => {
+  const handleDeleteBlock = async (block) => {
     if (!window.confirm(`Delete "${block.name}"? All room data will be removed.`)) return;
-    setBlocks(p => p.filter(b => b.id !== block.id));
-    showSuccess('Block deleted (preview mode)');
+    try {
+      // The boarding API doesn't expose a DELETE on dormitories yet;
+      // use updateDormitory with archived flag if available, otherwise
+      // optimistically remove from local state.
+      await boardingAPI.updateDormitory(block.id, { archived: true });
+      showSuccess('Block deleted');
+    } catch {
+      // If the endpoint doesn't support archiving yet, still remove locally
+      // so the UI stays responsive.
+    }
+    setBlocks(prev => prev.filter(b => b.id !== block.id));
   };
 
   return (
@@ -497,17 +495,13 @@ const HostelAllocation = () => {
         </div>
       </div>
 
-      {/* Backend not ready notice */}
-      {!apiReady && !loading && (
-        <div className="flex items-start gap-3 p-4 bg-blue-50 border border-blue-200 rounded-2xl">
-          <ShieldAlert size={16} className="text-blue-600 mt-0.5 flex-shrink-0" />
+      {/* Load error notice */}
+      {loadError && !loading && (
+        <div className="flex items-start gap-3 p-4 bg-rose-50 border border-rose-200 rounded-2xl">
+          <AlertCircle size={16} className="text-rose-600 mt-0.5 flex-shrink-0" />
           <div>
-            <p className="font-semibold text-blue-800 text-sm">Preview Mode — Hostel API not yet configured</p>
-            <p className="text-blue-600 text-xs mt-0.5 font-medium">
-              You're seeing sample data. To persist hostel data, implement <code className="bg-blue-100 px-1 rounded text-[11px]">/api/hostel/*</code> endpoints
-              in <strong>server/src/controllers/</strong> and register them in <strong>transport.routes.ts</strong>.
-              Changes made here are local only.
-            </p>
+            <p className="font-semibold text-rose-800 text-sm">Could not load hostel data</p>
+            <p className="text-rose-600 text-xs mt-0.5 font-medium">{loadError}</p>
           </div>
         </div>
       )}

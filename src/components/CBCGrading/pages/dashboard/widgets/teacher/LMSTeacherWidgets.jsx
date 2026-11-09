@@ -132,16 +132,19 @@ export function StudentProgressWidget() {
         const res = await lmsAPI.getAnalyticsOverview?.();
         const data = res?.data || {};
 
-        // Extract avg completion rate
+        // Extract real metrics from analytics data
         const avgComplete = Number(data.avgCompletionRate) || 0;
         setAvgProgress(avgComplete);
 
-        // Mock: show distribution of student progress levels
-        const distribution = [
-          { level: 'Advanced', pct: Math.floor(avgComplete * 0.4), color: 'bg-emerald-500' },
-          { level: 'Proficient', pct: Math.floor(avgComplete * 0.35), color: 'bg-blue-500' },
-          { level: 'Developing', pct: Math.floor(avgComplete * 0.25), color: 'bg-amber-500' },
-        ];
+        // Use real distribution data from the API if available;
+        // otherwise show a single summary line without fabricated breakdowns
+        const distribution = Array.isArray(data.progressDistribution)
+          ? data.progressDistribution.map(item => ({
+              level: item.level || item.label || '—',
+              pct: Math.round(Number(item.pct || item.percentage || 0)),
+              color: item.color || 'bg-blue-500',
+            }))
+          : [];
 
         setProgressData(distribution);
       } catch (err) {
@@ -193,7 +196,8 @@ export function StudentProgressWidget() {
               />
             </div>
 
-            {/* Distribution */}
+            {/* Distribution — only shown when real data is available */}
+            {progressData.length > 0 && (
             <div className="space-y-1">
               {progressData.map((item, i) => (
                 <div key={i} className="text-xs text-slate-600 flex items-center justify-between">
@@ -202,6 +206,7 @@ export function StudentProgressWidget() {
                 </div>
               ))}
             </div>
+            )}
           </>
         )}
       </div>
