@@ -158,14 +158,61 @@ jobs:
         run: bash scripts/ci/configure-deploy-ssh.sh
 
       - name: Preflight deployment host storage
+        env:
+          DEPLOY_TARGET: ${{ needs.validate.outputs.deploy_target }}
         run: |
           set -euo pipefail
-          ssh production 'set -euo pipefail
-            echo "Deployment host storage before asset upload:"
-            df -h /tmp /srv/zawadi
+          ssh production "DEPLOY_TARGET=${DEPLOY_TARGET}" 'set -euo pipefail
+            echo "Deployment host storage before cleanup:"
+            df -h / /tmp /srv/zawadi /var/lib/docker 2>/dev/null || df -h
+
+            # Clean stale deploy tarballs
             find /tmp -maxdepth 1 -type f -name "trendscore-deploy-assets-*.tgz" -mtime +1 -print -delete
-            echo "Deployment host storage after stale staging cleanup:"
-            df -h /tmp /srv/zawadi
+
+            # Batch deployments pull new images, back up every school, and run
+            # migrations that can generate large WAL/temp files. Reclaim safe
+            # storage aggressively before starting so we do not hit ENOSPC again.
+            if [[ "${DEPLOY_TARGET}" == "all_schools" || "${DEPLOY_TARGET}" == "pilot" ]]; then
+              echo "Batch deploy: pruning old backups and unused Docker artifacts before rollout"
+              backup_root=/srv/zawadi/backups
+              retained=2
+              if [[ -d "${backup_root}" ]]; then
+                while IFS= read -r -d "" school_dir; do
+                  mapfile -t snapshots < <(
+                    find "${school_dir}" -mindepth 1 -maxdepth 1 -type d -printf "%f\n" \
+                      | grep -E "^[0-9]{8}T[0-9]{6}Z$" | sort -r || true
+                  )
+                  for snapshot in "${snapshots[@]:${retained}}"; do
+                    target="${school_dir}/${snapshot}"
+                    echo "Removing old backup: ${target}"
+                    rm -rf -- "${target}"
+                  done
+                done < <(find "${backup_root}" -mindepth 1 -maxdepth 1 -type d -print0)
+              fi
+              sudo docker container prune -f
+              sudo docker image prune -a -f
+              sudo docker network prune -f
+              sudo docker builder prune -af --filter "until=168h"
+            fi
+
+            echo "Deployment host storage after cleanup:"
+            df -h / /tmp /srv/zawadi /var/lib/docker 2>/dev/null || df -h
+
+            # Fail early if there is not enough headroom for migrations and backups.
+            check_space() {
+              local path="$1"
+              local required_gb="$2"
+              local avail_kb
+              avail_kb=$(df -k "${path}" | awk "NR==2 {print \$4}")
+              local avail_gb=$((avail_kb / 1024 / 1024))
+              if [[ "${avail_gb}" -lt "${required_gb}" ]]; then
+                echo "::error::Insufficient disk space on ${path}: ${avail_gb}G available, ${required_gb}G required"
+                exit 1
+              fi
+              echo "Disk space OK on ${path}: ${avail_gb}G available (required ${required_gb}G)"
+            }
+            check_space / 5
+            check_space /srv/zawadi 5
           '
 
       - name: Login to GitHub Container Registry
