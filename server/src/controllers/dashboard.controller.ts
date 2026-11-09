@@ -2584,9 +2584,10 @@ export class DashboardController {
 
             const processedChildren = children.map(child => {
                 const totalBalance   = child.feeInvoices.reduce((sum, inv) => sum + (Number(inv.balance) || 0), 0);
-                const attendanceRate = child.attendances.length > 0
+                const hasAttendance = child.attendances.length > 0;
+                const attendanceRate = hasAttendance
                     ? (child.attendances.filter(a => a.status === 'PRESENT').length / child.attendances.length) * 100
-                    : 100;
+                    : null;
                 const presentDays = child.attendances.filter(a => a.status === 'PRESENT').length;
                 const absentDays = child.attendances.filter(a => a.status === 'ABSENT').length;
                 const todayKey = new Date().toISOString().slice(0, 10);
@@ -2612,13 +2613,8 @@ export class DashboardController {
                     grade: r.grade,
                     title: r.test.title
                 }));
-                // homeworkCount: real count of LearningAssignment records is fetched
-                // by the dedicated GET /api/lms/children/:learnerId/assignments endpoint
-                // (Batch 4). Dashboard payload carries 0 here until that endpoint is
-                // consumed by the frontend — no fabricated fallback.
+                // No homework or message count is inferred from unrelated legacy records.
                 const homeworkCount = 0;
-                // newMessages: real messaging is not yet wired to this dashboard.
-                // Return 0 rather than a fabricated heuristic.
                 const newMessages = 0;
 
                 return {
@@ -2631,7 +2627,7 @@ export class DashboardController {
                     admissionNumber: child.admissionNumber,
                     performanceLevel: getPerformanceLevel(avgPerformance), 
                     overallPerformance: avgPerformance > 0 ? `${Math.round(avgPerformance)}%` : 'No Data',
-                    attendanceRate: Math.round(attendanceRate), 
+                    attendanceRate: attendanceRate !== null ? Math.round(attendanceRate) : null,
                     todayStatus,
                     attendanceSummary: {
                         presentDays,
@@ -2676,9 +2672,11 @@ export class DashboardController {
                 })),
                 stats: {
                     totalBalance: processedChildren.reduce((sum, c) => sum + c.feeBalance, 0),
-                    avgAttendance: processedChildren.length > 0
-                        ? Math.round(processedChildren.reduce((sum, c) => sum + c.attendanceRate, 0) / processedChildren.length)
-                        : 100,
+                    avgAttendance: (() => {
+                        const childrenWithAttendance = processedChildren.filter(c => c.attendanceRate !== null && c.attendanceRate !== undefined);
+                        if (childrenWithAttendance.length === 0) return null;
+                        return Math.round(childrenWithAttendance.reduce((sum, c) => sum + (c.attendanceRate as number), 0) / childrenWithAttendance.length);
+                    })(),
                     bulletins: noticesCount,
                 },
             };

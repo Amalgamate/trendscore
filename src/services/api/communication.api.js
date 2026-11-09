@@ -19,6 +19,7 @@ export const communicationAPI = {
   sendBirthdayWishes: async (data) =>
     fetchWithAuth('/communication/birthdays/send', { method: 'POST', body: JSON.stringify(data) }),
   getInboxMessages: async (includeArchived = false) => fetchWithAuth(`/communication/messages/inbox${includeArchived ? '?includeArchived=true' : ''}`),
+  getParentDeliveryInbox: async () => fetchWithAuth('/communication/messages/deliveries'),
   markMessageRead: async (receiptId) =>
     fetchWithAuth(`/communication/messages/receipts/${receiptId}/read`, { method: 'PATCH' }),
   archiveMessage: async (receiptId, archived = true) =>

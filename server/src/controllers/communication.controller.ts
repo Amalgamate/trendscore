@@ -7,6 +7,7 @@ import messageService from '../services/message.service';
 import { AuthRequest } from '../middleware/permissions.middleware';
 import { whatsappService } from '../services/whatsapp.service';
 import { ApiError } from '../utils/error.util';
+import { hasAnyRole } from '../utils/roleNormalizer';
 import { COMMUNICATION_CONFIG, ERROR_MESSAGES, SMS_MESSAGES } from '../config/communication.messages';
 import { aiBridgeService } from '../services/ai-bridge.service';
 import {
@@ -22,6 +23,17 @@ import {
 
 import logger from '../utils/logger';
 import { isMpesaOnboardingComplete } from '../config/mpesa-onboarding';
+import { parentAccessService } from '../services/parent-access.service';
+
+/**
+ * Contact groups hold parents' phone numbers. School leadership can use every
+ * group; other staff (e.g. teachers) can only see and change groups they made.
+ */
+const canManageAllContactGroups = (user: AuthRequest['user']) =>
+    hasAnyRole(user, ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER', 'HEAD_OF_CURRICULUM']);
+
+const contactGroupScope = (user: AuthRequest['user']) =>
+    canManageAllContactGroups(user) ? {} : { createdById: user?.userId ?? '__none__' };
 
 const sanitizeGeneratedEmailHtml = (html: string) =>
     html
@@ -646,6 +658,7 @@ export const sendBirthdayWishes = async (req: AuthRequest, res: Response) => {
         date.toLocaleDateString('en-US', { day: 'numeric', month: 'long' });
 
     const results = [];
+    const auditRows: any[] = [];
 
     for (const learner of learners) {
         const phoneNumber = learner.guardianPhone || learner.emergencyPhone;
@@ -661,6 +674,8 @@ export const sendBirthdayWishes = async (req: AuthRequest, res: Response) => {
         const firstName = formatTitleCase(learner.firstName);
         const lastName = formatTitleCase(learner.lastName);
         const fullName = `${firstName} ${lastName}`;
+        let messageContent = '';
+        const sentAt = new Date();
 
         try {
             let result;
@@ -677,6 +692,7 @@ export const sendBirthdayWishes = async (req: AuthRequest, res: Response) => {
                         .replace(/{ageOrdinal}/g, ageOrdinal)
                         .replace(/{birthdayDate}/g, bdayDate);
 
+                messageContent = finalMessage;
                 result = await whatsappService.sendMessage({ to: phoneNumber, message: finalMessage } as any);
             } else {
                 const smsMessage = template
@@ -691,12 +707,39 @@ export const sendBirthdayWishes = async (req: AuthRequest, res: Response) => {
                         .replace(/{birthdayDate}/g, bdayDate)
                     : SMS_MESSAGES.birthdayStandard(firstName, schoolName, gradeName);
 
+                messageContent = smsMessage;
                 result = await SmsService.sendSms(phoneNumber, smsMessage);
             }
 
             results.push({ learnerId: learner.id, success: result.success, messageId: result.messageId, error: result.error });
         } catch (err: any) {
             results.push({ learnerId: learner.id, success: false, error: err.message });
+        }
+
+        const delivery = results[results.length - 1];
+        auditRows.push({
+            learnerId: learner.id,
+            parentId: learner.parentId || null,
+            parentPhone: phoneNumber,
+            parentName: learner.guardianName || null,
+            learnerName: fullName,
+            learnerGrade: learner.grade,
+            assessmentType: 'BIRTHDAY',
+            templateType: 'BIRTHDAY',
+            messageContent,
+            smsStatus: delivery?.success ? 'SENT' : 'FAILED',
+            failureReason: delivery?.success ? null : delivery?.error || 'Delivery failed',
+            sentByUserId: req.user?.userId || null,
+            channel: String(channel).toUpperCase() === 'WHATSAPP' ? 'WHATSAPP' : 'SMS',
+            sentAt,
+        });
+    }
+
+    if (auditRows.length) {
+        try {
+            await prisma.assessmentSmsAudit.createMany({ data: auditRows });
+        } catch (error) {
+            logger.error('[Birthday messages] Failed to save delivery history:', error);
         }
     }
 
@@ -722,6 +765,35 @@ export const getInboxMessages = async (req: AuthRequest, res: Response) => {
     res.status(200).json({ success: true, data: messages });
 };
 
+/** Parent-scoped SMS/WhatsApp delivery history for their linked children. */
+export const getParentDeliveryInbox = async (req: AuthRequest, res: Response) => {
+    const userId = req.user?.userId;
+    if (!userId || !hasAnyRole(req.user, ['PARENT'])) throw new ApiError(403, 'Parent access required');
+
+    const learnerIds = await parentAccessService.getAccessibleLearnerIds(userId);
+    if (!learnerIds.length) return res.status(200).json({ success: true, data: [] });
+
+    const deliveries = await prisma.assessmentSmsAudit.findMany({
+        where: { learnerId: { in: learnerIds }, channel: { in: ['SMS', 'WHATSAPP'] } },
+        select: {
+            id: true,
+            learnerId: true,
+            learnerName: true,
+            learnerGrade: true,
+            assessmentType: true,
+            templateType: true,
+            messageContent: true,
+            smsStatus: true,
+            sentAt: true,
+            deliveredAt: true,
+            channel: true,
+        },
+        orderBy: { sentAt: 'desc' },
+        take: 200,
+    });
+
+    res.status(200).json({ success: true, data: deliveries });
+};
 export const archiveInboxMessage = async (req: AuthRequest, res: Response) => {
     const userId = req.user?.userId;
     const { id } = req.params;
@@ -863,7 +935,7 @@ export const createContactGroup = async (req: AuthRequest, res: Response) => {
  */
 export const getContactGroups = async (req: AuthRequest, res: Response) => {
     const groups = await prisma.contactGroup.findMany({
-        where: {},
+        where: contactGroupScope(req.user),
         include: { createdBy: { select: { id: true, firstName: true, lastName: true } } },
         orderBy: { createdAt: 'desc' }
     });
@@ -885,6 +957,11 @@ export const getContactGroupById = async (req: AuthRequest, res: Response) => {
 
     // Fallback for older frontend that might send a Grade string
     if (id.startsWith('GRADE_') || id.startsWith('PP') || id === 'PLAYGROUP') {
+        // Whole-grade parent lists are the same data as /recipients, which is
+        // limited to school leadership, so this shortcut must be too.
+        if (!canManageAllContactGroups(req.user)) {
+            throw new ApiError(403, 'Grade contact lists are available to school leadership only');
+        }
         let targetGrade = String(id);
         if (targetGrade.match(/^Grade \d+$/i)) {
             targetGrade = targetGrade.toUpperCase().replace(' ', '_');
@@ -917,7 +994,7 @@ export const getContactGroupById = async (req: AuthRequest, res: Response) => {
     }
 
     const group = await prisma.contactGroup.findFirst({
-        where: { id },
+        where: { id, ...contactGroupScope(req.user) },
         include: { createdBy: { select: { id: true, firstName: true, lastName: true } } }
     });
 
@@ -934,7 +1011,7 @@ export const updateContactGroup = async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
     const { name, description, recipients } = req.body;
 
-    const existing = await prisma.contactGroup.findFirst({ where: { id } });
+    const existing = await prisma.contactGroup.findFirst({ where: { id, ...contactGroupScope(req.user) } });
     if (!existing) throw new ApiError(404, 'Contact group not found');
 
     const updated = await prisma.contactGroup.update({
@@ -956,7 +1033,7 @@ export const updateContactGroup = async (req: AuthRequest, res: Response) => {
 export const deleteContactGroup = async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
 
-    const existing = await prisma.contactGroup.findFirst({ where: { id } });
+    const existing = await prisma.contactGroup.findFirst({ where: { id, ...contactGroupScope(req.user) } });
     if (!existing) throw new ApiError(404, 'Contact group not found');
 
     await prisma.contactGroup.delete({ where: { id } });

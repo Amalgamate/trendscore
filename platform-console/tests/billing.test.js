@@ -328,6 +328,8 @@ test('reset is refused once an invoice has been issued', async () => {
 test('Daraja matches the entered school name only when one customer and one open invoice are unambiguous', async () => {
   const flag = await api('PUT', '/api/feature-flags/MPESA_C2B_ENABLED', { enabled: true });
   assert.equal(flag.status, 200, JSON.stringify(flag.body));
+  let paymentDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Nairobi' }).format(new Date());
+  let transactionTime = `${paymentDate.replaceAll('-', '')}120000`;
   const customer = await newCustomer('Canonical School Name', 'canonical-school-name');
 
   async function createIssuedInvoice() {
@@ -345,8 +347,8 @@ test('Daraja matches the entered school name only when one customer and one open
   }
 
   const firstInvoice = await createIssuedInvoice();
-  const paymentDate = firstInvoice.invoiceSnapshot.issuedAt.slice(0, 10);
-  const transactionTime = `${paymentDate.replaceAll('-', '')}120000`;
+  paymentDate = firstInvoice.invoiceSnapshot.issuedAt.slice(0, 10);
+  transactionTime = `${paymentDate.replaceAll('-', '')}120000`;
   const autoAllocated = await api('POST', '/api/mpesa/c2b/billing-c2b-test-token/confirmation', {
     TransID: 'C2B-SCHOOL-NAME-001', TransAmount: '1000', BillRefNumber: '  CANONICAL   SCHOOL NAME  ',
     TransTime: transactionTime, MSISDN: '254700000001',

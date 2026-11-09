@@ -8,6 +8,7 @@ import { isTokenGloballyInvalidated } from '../services/auth-session.service';
 import { redisCacheService } from '../services/redis-cache.service';
 import { revokedImpersonationKey } from '../services/impersonation.service';
 import prisma from '../config/database';
+import logger from '../utils/logger';
 
 export type { AuthRequest };
 
@@ -46,7 +47,16 @@ export const authenticate = async (
         where: { id: userId },
         select: { id: true, email: true, role: true, roles: true, status: true, archived: true, institutionType: true, authVersion: true },
       }) : null;
-    } catch {
+    } catch (error) {
+      const lookupError = error instanceof Error ? error : new Error('Unknown database error');
+      const databaseErrorCode = (lookupError as Error & { code?: string }).code;
+      logger.error({
+        requestId: (req as any).requestId,
+        userId,
+        errorName: lookupError.name,
+        errorMessage: lookupError.message,
+        databaseErrorCode,
+      }, '[Auth] Could not load current user state');
       throw new ApiError(503, 'Authentication service is temporarily unavailable').withCode('AUTH_STATE_UNAVAILABLE');
     }
     if (!currentUser || currentUser.status !== 'ACTIVE' || currentUser.archived) {

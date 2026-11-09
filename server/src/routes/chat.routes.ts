@@ -14,6 +14,7 @@ const send = rateLimit({ windowMs: 10_000, maxRequests: 20 }); // 20 msgs / 10s
 
 // Inbox & discovery
 router.get('/inbox',            asyncHandler(chatController.getInbox.bind(chatController)));
+router.get('/outbox',           asyncHandler(chatController.getOutbox.bind(chatController)));
 router.get('/unread-count',     asyncHandler(chatController.getTotalUnread.bind(chatController)));
 router.get('/users/search',     rateLimit({ windowMs: 60_000, maxRequests: 60 }), asyncHandler(chatController.searchUsers.bind(chatController)));
 

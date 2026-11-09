@@ -4,6 +4,7 @@ import ErrorBoundary from '../shared/ErrorBoundary';
 import EmptyState from '../shared/EmptyState';
 import ComingSoon from '../shared/ComingSoon';
 import MobilePortalAppBar from './MobilePortalAppBar';
+import ParentBottomNav from './ParentBottomNav';
 import { hasPageAccess, isParentPortalPage, resolveDashboardPage, userHasParentPortalAccess } from '../utils/appAccess';
 import { PAGE_TITLES } from '../utils/constants';
 import { useRolePreview } from '../../../contexts/RolePreviewContext';
@@ -49,6 +50,7 @@ const PerformanceScale = lazy(() => import('../pages/PerformanceScale'));
 const LearningAreasManagement = lazy(() => import('../pages/LearningAreasManagement'));
 const FacilityManager = lazy(() => import('../pages/FacilityManager'));
 const NoticesPage = lazy(() => import('../pages/NoticesPage'));
+const BroadcastMessagesPage = lazy(() => import('../pages/BroadcastMessagesPage'));
 const MessageHistoryPage = lazy(() => import('../pages/MessageHistoryPage'));
 const SupportHub = lazy(() => import('../pages/SupportHub'));
 const KnowledgeBase = lazy(() => import('../pages/KnowledgeBase'));
@@ -391,7 +393,7 @@ const PageRouter = ({
   } = handlers;
 
   const renderParentPortalShell = (content, options = {}) => (
-    <div className="px-4 md:px-0">
+    <div className={options.edgeToEdge ? 'w-full' : 'px-4 md:px-0'}>
       <div className="block md:hidden -mx-4 -mt-4 mb-4">
         <MobilePortalAppBar
           user={user}
@@ -417,9 +419,13 @@ const PageRouter = ({
           </h1>
         </div>
       </div>}
-      <div className="min-w-0">
+      <div className="min-w-0 pb-20 md:pb-0">
         {content}
       </div>
+      <ParentBottomNav
+        currentPage={normalizedPage}
+        onNavigate={handleNavigate}
+      />
     </div>
   );
 
@@ -626,7 +632,7 @@ const PageRouter = ({
           case 'parent-portal-fees':
             return renderParentPortalShell(<ParentPortalFees user={user} onNavigate={handleNavigate} />);
           case 'parent-portal-messages':
-            return renderParentPortalShell(<UnifiedInboxPage user={user} onNavigate={handleNavigate} />);
+            return renderParentPortalShell(<UnifiedInboxPage user={user} onNavigate={handleNavigate} />, { edgeToEdge: true });
           case 'parent-portal-more':
             return renderParentPortalShell(<ParentPortalMore user={user} onNavigate={handleNavigate} onLogout={handlers?.onLogout} />);
           case 'parent-portal-results':
@@ -654,9 +660,11 @@ const PageRouter = ({
           case 'parent-portal-schools':
             return renderParentPortalShell(<ParentPortalSchools onNavigate={handleNavigate} />);
           case 'parent-portal-academics':
-            return renderParentPortalShell(<ParentPortalAcademics onNavigate={handleNavigate} />, { hideBack: false });
+            // Merged into parent-portal-results — redirect there
+            return renderParentPortalShell(<ParentPortalResults onNavigate={handleNavigate} />);
           case 'parent-portal-communication':
-            return renderParentPortalShell(<UnifiedInboxPage user={user} onNavigate={handleNavigate} />, { hideBack: false });
+            return renderParentPortalShell(<UnifiedInboxPage user={user} onNavigate={handleNavigate} />, { hideBack: false, edgeToEdge: true });
+
           case 'parent-portal-school-today':
             return renderParentPortalShell(<ParentPortalSchoolToday onNavigate={handleNavigate} />, { hideBack: false });
           case 'parent-portal-suggestion':
@@ -884,6 +892,7 @@ const PageRouter = ({
               ? <UnifiedInboxPage user={user} onNavigate={handleNavigate} />
               : <NoticesPage initialTab={pageParams.activeTab} />;
           case 'comm-messages': return <UnifiedInboxPage user={user} onNavigate={handleNavigate} />;
+          case 'comm-broadcasts': return <BroadcastMessagesPage onNavigate={handleNavigate} />;
           case 'comm-history':
             return user?.role === 'PARENT'
               ? <UnifiedInboxPage user={user} onNavigate={handleNavigate} />

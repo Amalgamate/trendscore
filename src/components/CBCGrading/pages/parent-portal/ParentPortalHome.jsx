@@ -69,8 +69,8 @@ function FamilyOverviewCard({ metrics, loading, onNavigate, showFees }) {
 
       <div className="grid grid-cols-2 gap-3 mb-5">
         {[
-          { label: 'Attendance (Avg)', value: loading ? null : fmtPct(stats.avgAttendance), delta: stats.attendanceDelta },
-          { label: 'Unread Messages',  value: loading ? null : String(unread || messages.length), delta: null },
+          { label: 'Attendance (Avg)', value: loading ? null : (stats.avgAttendance !== null && stats.avgAttendance !== undefined ? fmtPct(stats.avgAttendance) : 'No data'), delta: stats.attendanceDelta },
+          { label: 'Unread Messages',  value: loading ? null : String(stats.unreadMessages ?? unread ?? 0), delta: null },
         ].map((s) => (
           <div key={s.label}>
             {loading
@@ -143,8 +143,11 @@ function ChildrenSummary({ children, loading, onSelectChild, onEditChild, showFe
     <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-none">
       {children.map((child) => {
         const bal        = Number(child.feeBalance || 0);
-        const attendance = Math.round(Number(child.attendanceRate || 0));
-        const barColor   = attendance >= 90 ? 'bg-emerald-500' : attendance >= 75 ? 'bg-amber-400' : 'bg-rose-500';
+        const attendance = child.attendanceRate !== null && child.attendanceRate !== undefined
+          ? Math.round(Number(child.attendanceRate))
+          : null;
+        const hasAttendance = attendance !== null;
+        const barColor   = !hasAttendance ? 'bg-gray-300' : attendance >= 90 ? 'bg-emerald-500' : attendance >= 75 ? 'bg-amber-400' : 'bg-rose-500';
         const photoSrc   = getChildPhoto(child);
 
         return (
@@ -192,9 +195,9 @@ function ChildrenSummary({ children, loading, onSelectChild, onEditChild, showFe
             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Attendance</p>
             <div className="flex items-center gap-1.5">
               <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                <div className={`h-full ${barColor} rounded-full`} style={{ width: `${attendance}%` }} />
+                <div className={`h-full ${barColor} rounded-full`} style={{ width: hasAttendance ? `${attendance}%` : '100%' }} />
               </div>
-              <span className="text-[10px] font-bold text-gray-600">{attendance}%</span>
+              <span className="text-[10px] font-bold text-gray-600">{hasAttendance ? `${attendance}%` : '—'}</span>
             </div>
           </button>
         );

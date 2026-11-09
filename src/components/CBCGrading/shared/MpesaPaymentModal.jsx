@@ -52,6 +52,10 @@ const MpesaPaymentModal = ({ isOpen, onClose, invoice, parentPhone, onPaymentSuc
   const handleInitiate = async (e) => {
     e.preventDefault();
     if (!amount || amount <= 0) return toast.error('Please enter a valid amount');
+    const invoiceBalance = Number(invoice?.balance || 0);
+    if (invoice?.id !== 'advance' && invoiceBalance > 0 && Number(amount) > invoiceBalance) {
+      return toast.error(`Payment cannot exceed this invoice balance of KES ${invoiceBalance.toLocaleString()}`);
+    }
     if (!phone) return toast.error('Please enter an M-Pesa phone number');
 
     setLoading(true);
@@ -114,6 +118,7 @@ const MpesaPaymentModal = ({ isOpen, onClose, invoice, parentPhone, onPaymentSuc
                     type="number"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
+                    max={invoice?.id !== 'advance' ? Number(invoice?.balance || 0) || undefined : undefined}
                     className="w-full pl-14 pr-4 py-3.5 bg-slate-50 border-2 border-slate-100 rounded-2xl text-lg font-semibold text-slate-900 focus:bg-white focus:border-orange-500 focus:ring-0 transition-all outline-none"
                     placeholder="0.00"
                     required

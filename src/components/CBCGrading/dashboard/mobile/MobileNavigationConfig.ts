@@ -304,16 +304,16 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
         id: 'academics',
         label: 'Academics',
         icon: Award,
-        path: 'parent-portal-academics',
-        activePaths: ['parent-portal-academics', 'parent-portal-results', 'parent-portal-homework'],
+        path: 'parent-portal-results',
+        activePaths: ['parent-portal-results', 'parent-portal-academics', 'parent-portal-homework'],
         color: 'text-amber-600'
       },
       {
         id: 'communication',
         label: 'Messages',
         icon: MessageSquare,
-        path: 'parent-portal-communication',
-        activePaths: ['parent-portal-communication', 'parent-portal-messages'],
+        path: 'parent-portal-messages',
+        activePaths: ['parent-portal-messages', 'parent-portal-communication'],
         color: 'text-indigo-600'
       },
     ]

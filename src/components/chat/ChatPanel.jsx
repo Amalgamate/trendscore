@@ -1042,9 +1042,9 @@ function PanelHeader({ user, onClose, onNew, activeTab, onTabChange, chatUnreadC
           ) : <Avatar user={user} size="sm" online />}
           <div>
             <p className="text-sm font-bold text-gray-900 leading-tight">
-              {assistantOnly ? 'TrendSCORE Assistant' : user ? `${user.firstName} ${user.lastName}` : 'Messages'}
+              {assistantOnly ? 'Wendy' : user ? `${user.firstName} ${user.lastName}` : 'Messages'}
             </p>
-            <p className="text-[9px] text-gray-500 font-semibold">{assistantOnly ? 'Ask a question or find a school task' : '● Online'}</p>
+            <p className="text-[9px] text-gray-500 font-semibold">{assistantOnly ? 'Your friendly school helper' : '● Online'}</p>
           </div>
         </div>
 

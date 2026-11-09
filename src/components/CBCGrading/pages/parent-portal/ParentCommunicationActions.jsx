@@ -15,7 +15,7 @@ export default function ParentCommunicationActions({ onNavigate }) {
     >
       <button
         type="button"
-        onClick={() => onNavigate?.('parent-portal-communication')}
+        onClick={() => onNavigate?.('parent-portal-messages')}
         className="relative inline-flex h-full w-full items-center justify-center gap-2 border-r border-white/20 bg-blue-700 px-4 text-sm font-extrabold text-white hover:bg-blue-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-200"
       >
         <Inbox size={20} /> Inbox

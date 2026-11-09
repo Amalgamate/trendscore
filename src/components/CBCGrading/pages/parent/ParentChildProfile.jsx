@@ -210,6 +210,84 @@ function FeesTab({ learnerId }) {
   );
 }
 
+// ─── Class Diary Panel ───────────────────────────────────────────────────────
+
+function ClassDiaryPanel({ diaryDate }) {
+  const [notices, setNotices]   = useState([]);
+  const [loading, setLoading]   = useState(false);
+  const [error, setError]       = useState(null);
+
+  const dateKey = diaryDate.toISOString().slice(0, 10);
+
+  const load = useCallback(async () => {
+    setLoading(true); setError(null);
+    try {
+      const res = await api.notices?.getAll?.();
+      const all = res?.data || res || [];
+      // Filter notices published on the selected diary date (or within ±1 day
+      // for weekend carry-over). Only published, parent-visible notices.
+      const dayStart = new Date(diaryDate);
+      dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(diaryDate);
+      dayEnd.setHours(23, 59, 59, 999);
+
+      const dayNotices = all.filter((n) => {
+        if (!n.publishedAt) return false;
+        const published = new Date(n.publishedAt);
+        return published >= dayStart && published <= dayEnd;
+      });
+
+      setNotices(dayNotices);
+    } catch (e) {
+      setError(e?.message || 'Could not load diary');
+    } finally {
+      setLoading(false);
+    }
+  }, [dateKey]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (loading) {
+    return (
+      <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2.5 text-xs text-slate-400 flex items-center gap-2">
+        <Loader2 size={12} className="animate-spin" /> Loading class diary…
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="mt-3 rounded-lg bg-rose-50 border border-rose-100 px-3 py-2.5 text-xs text-rose-600">
+        {error}
+      </div>
+    );
+  }
+
+  if (notices.length === 0) {
+    return (
+      <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2.5 text-xs text-slate-500">
+        No class notes shared for this date. Try browsing a different day.
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-3 space-y-2">
+      {notices.map((notice) => (
+        <div key={notice.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+          <p className="text-xs font-bold text-slate-800">{notice.title}</p>
+          <p className="text-[11px] text-slate-600 mt-1 line-clamp-3">{notice.content}</p>
+          {notice.publishedAt && (
+            <p className="text-[10px] text-slate-400 mt-1.5">
+              {new Date(notice.publishedAt).toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit', hour12: true })}
+            </p>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 const TABS = [
@@ -229,7 +307,7 @@ function resolveInitialTab(initialTab, showFees) {
 
 const MORE_LINKS = [
   { id: 'parent-portal-school-today', label: 'Check today’s schedule', detail: 'School day and attendance updates', icon: CalendarDays, color: 'bg-blue-700' },
-  { id: 'parent-portal-communication', label: 'Message the school', detail: 'Open your school inbox', icon: MessageCircle, color: 'bg-violet-700' },
+  { id: 'parent-portal-messages', label: 'Message the school', detail: 'Open your school inbox', icon: MessageCircle, color: 'bg-violet-700' },
   { id: 'parent-portal-transport', label: 'Check transport', detail: 'View available transport information', icon: Bus, color: 'bg-orange-600' },
   { id: 'parent-portal-documents', label: 'Open school documents', detail: 'View documents shared with your family', icon: FileText, color: 'bg-teal-700' },
   { id: 'parent-portal-support', label: 'Get help', detail: 'Contact school support', icon: Headphones, color: 'bg-slate-700' },
@@ -307,7 +385,7 @@ export default function ParentChildProfile({ child, siblings = [], onSelectChild
           </div>
           <section className="rounded-xl border border-slate-200 bg-white p-3">
             <div className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-700 text-white"><BookOpen size={17} /></span><div><h2 className="text-sm font-extrabold text-slate-950">Class diary</h2><p className="text-xs text-slate-600">Notes shared by the teacher will appear here.</p></div></div>
-            <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2.5 text-xs text-slate-700">Class notes shared with your family for this date will appear here.</div>
+            <ClassDiaryPanel diaryDate={diaryDate} />
           </section>
           <section className="space-y-2"><div className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-700 text-white"><ClipboardList size={17} /></span><div><h2 className="text-sm font-extrabold text-slate-950">Homework</h2><p className="text-xs text-slate-600">Check work, due dates and teacher feedback.</p></div></div><ParentChildDiaryWork child={child} /></section>
         </div>}

@@ -27,7 +27,7 @@ describe('AskAIButton', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Ask AI about Attendance Overview' }));
 
-    expect(screen.getByRole('dialog', { name: 'TrendSCORE AI assistant' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Wendy assistant' })).toBeInTheDocument();
     expect(screen.getByText(/Asking about:/)).toHaveTextContent('Attendance Overview');
     expect(screen.getByDisplayValue('What should I know about Attendance Overview?')).toBeInTheDocument();
     await waitFor(() => expect(screen.queryByText('Loading history…')).not.toBeInTheDocument());

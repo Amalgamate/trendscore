@@ -21,7 +21,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   ChevronDown, ChevronUp,
   Star, AlertCircle as AlertIcon, BarChart2, FileText,
-  Users, MessageSquare,
+  Users, MessageSquare, BookOpen, Loader2, TrendingUp,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, Tooltip,
@@ -30,11 +30,13 @@ import {
 import { dashboardAPI, reportAPI } from '../../../../services/api';
 import ParentChildProfile from '../parent/ParentChildProfile';
 import { Skeleton } from '../../../ui';
+import ChildSelector from './shared/ChildSelector';
 import {
   summarizeAnalytics,
   scoreColor,
   barFill,
   termLabel,
+  useLearnerResults,
 } from '../results/useLearnerResults';
 import {
   ResultsLoadingState,
@@ -303,6 +305,144 @@ function InsightCard({ children, analytics }) {
   );
 }
 
+// ─── Performance Snapshot (from Academics, now merged here) ──────────────────
+function PerformanceSnapshot({ childId, year }) {
+  const { loading, error, summary } = useLearnerResults(childId, year);
+
+  if (loading) return <Skeleton className="h-24 rounded-2xl" />;
+  if (error)   return <ResultsErrorState message={error} />;
+  if (!summary.hasData) return null;
+
+  const latest = summary.latest;
+  const avg = latest?.avg ?? null;
+  const trend = summary.trend;
+
+  return (
+    <div className="rounded-2xl bg-gradient-to-br from-[#3B1FA3] to-indigo-600 p-4 text-white">
+      <p className="text-[9px] font-bold uppercase tracking-wider text-white/60 mb-2">Performance snapshot</p>
+      <div className="grid grid-cols-3 gap-3 text-center">
+        <div>
+          <p className="text-[9px] text-white/60 uppercase tracking-wide">Overall</p>
+          <p className="text-2xl font-black mt-0.5">{avg != null ? `${avg}%` : '—'}</p>
+          <p className="text-[9px] text-white/60">{latest ? termLabel(latest.term) : '—'}</p>
+        </div>
+        <div>
+          <p className="text-[9px] text-white/60 uppercase tracking-wide">Trend</p>
+          <p className={`text-2xl font-black mt-0.5 ${trend != null ? (trend >= 0 ? 'text-emerald-300' : 'text-rose-300') : ''}`}>
+            {trend != null ? `${trend >= 0 ? '+' : ''}${trend}` : '—'}
+          </p>
+          <p className="text-[9px] text-white/60">vs last term</p>
+        </div>
+        <div>
+          <p className="text-[9px] text-white/60 uppercase tracking-wide">Terms</p>
+          <p className="text-2xl font-black mt-0.5">{summary.terms.length}/3</p>
+          <p className="text-[9px] text-white/60">recorded</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Subject Grid (from Academics, now merged here) ───────────────────────────
+function SubjectGrid({ childId, year }) {
+  const { loading, summary } = useLearnerResults(childId, year);
+  const subjects = summary.latest?.subjects || [];
+
+  if (loading) return <Skeleton className="h-32 rounded-2xl" />;
+  if (!subjects.length) return null;
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 p-4">
+      <p className="text-sm font-bold text-gray-900 mb-3">Subjects</p>
+      <div className="grid grid-cols-2 gap-2">
+        {subjects.map((s, i) => {
+          const pct = s.percentage != null ? Math.round(Number(s.percentage)) : null;
+          return (
+            <div key={i} className="flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2.5">
+              <p className="text-xs font-semibold text-gray-700 truncate mr-2">{s.name || `Subject ${i + 1}`}</p>
+              <p className={`text-sm font-black flex-shrink-0 ${pct != null ? scoreColor(pct) : 'text-gray-400'}`}>
+                {pct != null ? `${pct}%` : s.grade || '—'}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Report Card Download ────────────────────────────────────────────────────
+function ReportCardDownload({ child, year }) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [reports, setReports] = useState([]);
+
+  useEffect(() => {
+    if (!child?.id) return;
+    let cancelled = false;
+    (async () => {
+      setLoading(true); setError(null);
+      try {
+        const res = await reportAPI.getLearnerReports?.(child.id, { academicYear: year });
+        if (cancelled) return;
+        setReports(Array.isArray(res?.data) ? res.data : []);
+      } catch (e) {
+        if (!cancelled) setError(e?.message || 'Could not load report cards');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [child?.id, year]);
+
+  if (loading) return <Skeleton className="h-20 rounded-2xl" />;
+  if (error) return (
+    <div className="bg-rose-50 border border-rose-200 rounded-xl p-3">
+      <p className="text-xs text-rose-700">{error}</p>
+    </div>
+  );
+  if (!reports.length) return (
+    <div className="bg-white rounded-2xl border border-gray-200 p-4">
+      <div className="flex items-center gap-2 mb-1">
+        <FileText size={16} className="text-[#3B1FA3]" />
+        <p className="text-sm font-bold text-gray-900">Report Cards</p>
+      </div>
+      <p className="text-xs text-gray-500">No report cards published for {year} yet.</p>
+    </div>
+  );
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-200 p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <FileText size={16} className="text-[#3B1FA3]" />
+        <p className="text-sm font-bold text-gray-900">Report Cards</p>
+      </div>
+      <div className="space-y-2">
+        {reports.map((r, i) => (
+          <button
+            key={i}
+            type="button"
+            onClick={() => {
+              if (r.url) window.open(r.url, '_blank');
+              else if (r.fileUrl) window.open(r.fileUrl, '_blank');
+            }}
+            className="w-full flex items-center gap-2 rounded-xl bg-gray-50 px-3 py-2.5 text-left hover:bg-gray-100 transition-colors"
+          >
+            <FileText size={14} className="text-gray-400 flex-shrink-0" />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold text-gray-700 truncate">
+                {r.title || r.term ? `${termLabel(r.term)} Report` : `Report ${i + 1}`}
+              </p>
+              <p className="text-[10px] text-gray-400">{r.academicYear || year}</p>
+            </div>
+            <ChevronDown size={14} className="text-gray-300 -rotate-90 flex-shrink-0" />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 const ParentPortalResults = ({ onNavigate }) => {
@@ -311,13 +451,17 @@ const ParentPortalResults = ({ onNavigate }) => {
   const [error, setError]                 = useState(null);
   const [year, setYear]                   = useState(String(new Date().getFullYear()));
   const [selectedChild, setSelectedChild] = useState(null);
+  const [selectedChildId, setSelectedChildId] = useState(null);
   const [analytics, setAnalytics]         = useState({}); // { [childId]: { loading, error, data } }
 
   const loadChildren = useCallback(async () => {
     setLoadingChildren(true); setError(null);
     try {
       const res = await dashboardAPI.getParentMetrics();
-      if (res?.success) setChildren(res.data?.children || []);
+      if (res?.success) {
+        setChildren(res.data?.children || []);
+        if (res.data?.children?.length) setSelectedChildId(res.data.children[0].id);
+      }
       else setError(res?.message || 'Failed to load');
     } catch (e) { setError(e?.message || 'Failed to load'); }
     finally { setLoadingChildren(false); }
@@ -367,15 +511,41 @@ const ParentPortalResults = ({ onNavigate }) => {
           </div>
         )}
 
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-sm font-bold text-gray-900">Academic Year</p>
-          <YearSelector value={year} onChange={setYear} />
+        {/* Header */}
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-[#3B1FA3]">Academics</p>
+          <h1 className="text-xl font-black text-gray-900 mt-0.5">Results & Performance</h1>
         </div>
 
+        {/* Child selector + year */}
+        {!loadingChildren && children.length > 0 && (
+          <div className="flex items-start gap-2 flex-wrap">
+            <div className="flex-1 min-w-0">
+              <ChildSelector
+                children={children}
+                selectedId={selectedChildId}
+                onSelect={setSelectedChildId}
+                variant="dropdown"
+              />
+            </div>
+            <YearSelector value={year} onChange={setYear} />
+          </div>
+        )}
+
+        {/* Per-child snapshot, subjects, and report cards */}
+        {!loadingChildren && selectedChildId && (
+          <>
+            <PerformanceSnapshot childId={selectedChildId} year={year} />
+            <SubjectGrid childId={selectedChildId} year={year} />
+            <ReportCardDownload child={children.find(c => c.id === selectedChildId)} year={year} />
+          </>
+        )}
+
+        {/* Family-wide performance rows */}
         {!loadingChildren && children.length > 0 && (
           <>
-            <div>
-              <p className="text-sm font-bold text-gray-900 mb-3">Children Performance</p>
+            <div className="pt-2">
+              <p className="text-sm font-bold text-gray-900 mb-3">All Children</p>
               <div className="space-y-2.5">
                 {children.map(child => (
                   <ChildPerformanceRow

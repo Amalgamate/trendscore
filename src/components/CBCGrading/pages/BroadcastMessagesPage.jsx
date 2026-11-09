@@ -1,28 +1,47 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Send, Upload, Users, Phone, MessageSquare, CheckCircle, AlertCircle,
-  Loader2, RefreshCw, FileUp, X, Eye, Trash2, Plus, ChevronRight, ChevronLeft, Download, Copy
+  Send, Users, Phone, MessageSquare, CheckCircle, AlertCircle,
+  Loader2, RefreshCw, FileUp, Eye, Plus, ChevronRight, ChevronLeft, Download
 } from 'lucide-react';
 import {
   Card, CardHeader, CardContent, CardTitle, CardDescription, Button, Input, Label,
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription, Badge, Tabs, TabsList, TabsTrigger, TabsContent
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription, Badge
 } from '../../../components/ui';
 import { useNotifications } from '../hooks/useNotifications';
 import api from '../../../services/api';
 import { getStoredUser } from '../../../services/schoolContext';
-import { formatPhoneNumber, isValidPhoneNumber, getDisplayPhoneNumber } from '../../../utils/phoneFormatter';
+import { formatPhoneNumber, getDisplayPhoneNumber } from '../../../utils/phoneFormatter';
 import { useSchoolData } from '../../../contexts/SchoolDataContext';
 
-const BroadcastMessagesPage = () => {
+const BROADCAST_TEMPLATES = [
+  { id: 'update', label: 'School update', message: 'Hello {name}, {schoolName} has an update for {grade}. Please check the parent portal for details.' },
+  { id: 'event', label: 'Event reminder', message: 'Hello {name}, this is a reminder from {schoolName} about an upcoming school activity for {grade}. Please check the parent portal for details.' },
+  { id: 'urgent', label: 'Important notice', message: '{schoolName}: Please check the parent portal for an important update about {grade}. Contact the school if you need help.' },
+  { id: 'fees', label: 'Fee reminder', message: 'Hello {name}, please review the fee statement for {grade} in the {schoolName} parent portal. Contact the school if you need help.' },
+  { id: 'attendance', label: 'Attendance follow-up', message: 'Hello {name}, please check the attendance update for {grade} in the {schoolName} parent portal. Contact the school if you have questions.' },
+];
+
+const getSmsSegments = (message) => {
+  if (!message) return 0;
+  const gsmBasic = "@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !\"#¤%&'()*+,-./0123456789:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà";
+  const gsmExtension = '^{}\\[~]|€';
+  const usesGsm = [...message].every(char => gsmBasic.includes(char) || gsmExtension.includes(char));
+  if (!usesGsm) return message.length <= 70 ? 1 : Math.ceil(message.length / 67);
+  const units = [...message].reduce((total, char) => total + (gsmExtension.includes(char) ? 2 : 1), 0);
+  return units <= 160 ? 1 : Math.ceil(units / 153);
+};
+
+const BroadcastMessagesPage = ({ onNavigate }) => {
   const { showSuccess, showError } = useNotifications();
 
-  // Workflow Steps: 'recipients' -> 'compose' -> 'review' -> 'send'
-  const [step, setStep] = useState('recipients');
+  // Channel first, then audience, message, review, and delivery report.
+  const [step, setStep] = useState('channel');
 
   // Recipients State
   const [recipientSource, setRecipientSource] = useState(''); // 'manual', 'csv', 'group', 'all'
   const [manualNumbers, setManualNumbers] = useState('');
   const [csvFile, setCsvFile] = useState(null);
+  const [recipientImportNote, setRecipientImportNote] = useState('');
   const [selectedGroups, setSelectedGroups] = useState([]);
   const [groups, setGroups] = useState([]);
   const [recipients, setRecipients] = useState([]);
@@ -30,6 +49,8 @@ const BroadcastMessagesPage = () => {
 
   // Message State
   const [messageTemplate, setMessageTemplate] = useState('');
+  const [templateSelection, setTemplateSelection] = useState('');
+  const [channel, setChannel] = useState('sms');
   const [previewData, setPreviewData] = useState({ name: 'John', grade: 'Grade 1', schoolName: '' });
 
   // Test State
@@ -40,8 +61,9 @@ const BroadcastMessagesPage = () => {
 
   // Send State
   const [sending, setSending] = useState(false);
-  const [progress, setProgress] = useState(0);
   const [deliveryReport, setDeliveryReport] = useState([]);
+  const [campaignId, setCampaignId] = useState(null);
+  const [sendError, setSendError] = useState('');
 
   // Message History & Tracking State
   const [messageHistory, setMessageHistory] = useState([]);
@@ -55,8 +77,7 @@ const BroadcastMessagesPage = () => {
       ...prev,
       schoolName: user?.school?.name || 'School'
     }));
-    loadMessageHistory();
-    loadHistoryFromDatabase(); // Load from DB too
+    loadHistoryFromDatabase();
   }, []);
 
   const { grades: fetchedGrades } = useSchoolData();
@@ -67,70 +88,72 @@ const BroadcastMessagesPage = () => {
     }
   }, [fetchedGrades]);
 
-  // Load message history from localStorage
-  const loadMessageHistory = () => {
-    try {
-      const saved = localStorage.getItem('broadcastMessageHistory');
-      if (saved) setMessageHistory(JSON.parse(saved));
-    } catch (err) {
-      console.error('Failed to load history:', err);
+  const parseDelimitedText = (text) => {
+    const rows = [];
+    let row = [];
+    let field = '';
+    let quoted = false;
+    for (let i = 0; i < text.length; i += 1) {
+      const char = text[i];
+      if (char === '"' && quoted && text[i + 1] === '"') { field += '"'; i += 1; }
+      else if (char === '"') quoted = !quoted;
+      else if ((char === ',' || char === '\t') && !quoted) { row.push(field.trim()); field = ''; }
+      else if ((char === '\n' || char === '\r') && !quoted) {
+        if (char === '\r' && text[i + 1] === '\n') i += 1;
+        row.push(field.trim());
+        if (row.some(cell => cell !== '')) rows.push(row);
+        row = []; field = '';
+      } else field += char;
     }
+    row.push(field.trim());
+    if (row.some(cell => cell !== '')) rows.push(row);
+    return rows;
   };
 
-  // Save to message history - read from localStorage to ensure we have latest data
-  const saveToHistory = (item) => {
-    try {
-      // Always read from localStorage to get the current state (not relying on state which might be stale)
-      let current = [];
-      const saved = localStorage.getItem('broadcastMessageHistory');
-      if (saved) {
-        current = JSON.parse(saved);
-      }
-
-      // Add new item to the beginning and keep only 50
-      const updated = [item, ...current].slice(0, 50);
-
-      // Save to localStorage
-      localStorage.setItem('broadcastMessageHistory', JSON.stringify(updated));
-
-      // Update state for real-time UI update
-      setMessageHistory(updated);
-
-      console.log('✅ Message saved to history. Total items:', updated.length);
-    } catch (err) {
-      console.error('Failed to save to history:', err);
-    }
-  };
-
-  // Removed manual fetchGroups using learners API
-
-  const parseCSV = (file) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const text = e.target.result;
-          const lines = text.split('\n');
-          const numbers = [];
-
-          lines.forEach((line, idx) => {
-            if (idx === 0 && (line.toLowerCase().includes('phone') || line.toLowerCase().includes('number'))) return;
-            const matches = line.match(/[\d+\-\s()]+/g);
-            if (matches) {
-              const phone = matches[0].replace(/[\s\-()]/g, '');
-              if (/^\d+$/.test(phone) && phone.length >= 9) {
-                numbers.push(phone);
-              }
-            }
-          });
-
-          resolve([...new Set(numbers)]);
-        } catch (err) {
-          reject(err);
-        }
-      };
-      reader.readAsText(file);
+  const normalizeRecipientRows = (rows) => {
+    const normalizedHeader = (value) => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    const isPhoneColumn = (value) => /(phone|mobile|telephone|contactnumber)/.test(normalizedHeader(value));
+    const headerIndex = rows.findIndex(row => row.some(isPhoneColumn));
+    if (headerIndex < 0) throw new Error('Add a column named Phone, Mobile, Parent Phone, or Guardian Phone.');
+    const headers = rows[headerIndex].map(normalizedHeader);
+    const phoneIndex = headers.findIndex(isPhoneColumn);
+    const nameIndex = headers.findIndex(value => /^(name|parentname|guardianname|contactname)$/.test(value));
+    const gradeIndex = headers.findIndex(value => /^(grade|class|learnergrade)$/.test(value));
+    const unique = new Map();
+    let skippedInvalid = 0;
+    let skippedDuplicates = 0;
+    rows.slice(headerIndex + 1).forEach(row => {
+      const rawPhone = String(row[phoneIndex] ?? '').trim();
+      if (!rawPhone) return;
+      const phone = formatPhoneNumber(rawPhone);
+      if (!phone) { skippedInvalid += 1; return; }
+      if (unique.has(phone)) { skippedDuplicates += 1; return; }
+      unique.set(phone, {
+        id: phone,
+        phone,
+        displayPhone: getDisplayPhoneNumber(phone),
+        name: String(row[nameIndex] || `Contact ${phone.slice(-4)}`).trim(),
+        grade: String(row[gradeIndex] || '').trim(),
+        source: 'file'
+      });
     });
+    return { recipients: [...unique.values()], skippedInvalid, skippedDuplicates };
+  };
+
+  const parseRecipientFile = async (file) => {
+    const lowerName = file.name.toLowerCase();
+    if (lowerName.endsWith('.csv') || lowerName.endsWith('.tsv')) {
+      return normalizeRecipientRows(parseDelimitedText(await file.text()));
+    }
+    if (!lowerName.endsWith('.xlsx')) throw new Error('Use a CSV or .xlsx workbook. Older .xls files are not supported.');
+    const ExcelJS = (await import('exceljs')).default;
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(await file.arrayBuffer());
+    const sheet = workbook.worksheets[0];
+    if (!sheet) throw new Error('The workbook has no worksheet.');
+    const rows = [];
+    sheet.eachRow({ includeEmpty: false }, row => rows.push(row.values.slice(1).map(value => value?.text ?? value?.result ?? value ?? '')));
+    return normalizeRecipientRows(rows);
   };
 
   const handleLoadRecipients = async () => {
@@ -176,7 +199,7 @@ const BroadcastMessagesPage = () => {
           }
         }
 
-        loadedRecipients = validNumbers.map((phone, idx) => ({
+        loadedRecipients = [...new Set(validNumbers)].map((phone) => ({
           id: phone,
           phone: phone,
           displayPhone: getDisplayPhoneNumber(phone),
@@ -184,14 +207,12 @@ const BroadcastMessagesPage = () => {
           source: 'manual'
         }));
       } else if (recipientSource === 'csv' && csvFile) {
-        const numbers = await parseCSV(csvFile);
-        loadedRecipients = numbers.map(phone => ({
-          id: phone,
-          phone: formatPhoneNumber(phone),
-          displayPhone: getDisplayPhoneNumber(phone),
-          name: `Contact ${phone.slice(-4)}`,
-          source: 'csv'
-        }));
+        const imported = await parseRecipientFile(csvFile);
+        loadedRecipients = imported.recipients;
+        const notes = [];
+        if (imported.skippedInvalid) notes.push(`${imported.skippedInvalid} invalid phone row${imported.skippedInvalid === 1 ? '' : 's'} skipped`);
+        if (imported.skippedDuplicates) notes.push(`${imported.skippedDuplicates} duplicate contact${imported.skippedDuplicates === 1 ? '' : 's'} skipped`);
+        setRecipientImportNote(notes.join(' · '));
       } else if (recipientSource === 'group' && selectedGroups.length > 0) {
         // Load recipients from each selected group (Grade)
         let allGroupRecipients = [];
@@ -255,6 +276,11 @@ const BroadcastMessagesPage = () => {
       if (loadedRecipients.length === 0) {
         showError('No valid recipients found');
       } else {
+        setPreviewData(prev => ({
+          ...prev,
+          name: loadedRecipients[0].name || 'Parent',
+          grade: loadedRecipients[0].grade || 'Learner'
+        }));
         showSuccess(`Loaded ${loadedRecipients.length} recipients`);
         setStep('compose');
       }
@@ -275,6 +301,7 @@ const BroadcastMessagesPage = () => {
     setIsSendingTest(true);
     try {
       const formattedPhone = formatPhoneNumber(testPhone);
+      if (!formattedPhone) throw new Error('Enter a valid Kenyan phone number.');
       const messageToSend = messageTemplate
         .replace(/{name}/gi, previewData.name)
         .replace(/{grade}/gi, previewData.grade)
@@ -284,6 +311,7 @@ const BroadcastMessagesPage = () => {
         phoneNumber: formattedPhone,
         message: messageToSend
       });
+      if (response?.success === false) throw new Error(response.message || 'The SMS provider did not accept the test.');
 
       setTestResult({
         success: true,
@@ -308,22 +336,19 @@ const BroadcastMessagesPage = () => {
       return;
     }
 
-    const confirmed = window.confirm(
-      `Send to ${recipients.length} recipients via SMS?\n\nMessage preview:\n"${messageTemplate.substring(0, 60)}..."`
-    );
-    if (!confirmed) return;
-
     setSending(true);
     setDeliveryReport([]);
     setFailedRecipients([]);
-    setProgress(0);
+    setCampaignId(null);
+    setSendError('');
 
     try {
       // Use the new bulk API
       const response = await api.broadcasts.sendBulk({
-        channel: 'sms', // Defaulting to SMS for now as requested
+        channel,
         messageTemplate: messageTemplate,
         messagePreview: messageTemplate.substring(0, 150),
+        recipientSource,
         recipients: recipients.map(r => ({
           id: r.id,
           phone: r.phone,
@@ -338,7 +363,8 @@ const BroadcastMessagesPage = () => {
       });
 
       if (response.success) {
-        showSuccess(`Broadcast sent! ✓ ${response.sentCount} successful, ${response.failedCount} failed`);
+        setCampaignId(response.campaignId || null);
+        showSuccess(`Broadcast processed: ${response.sentCount} accepted, ${response.failedCount} failed`);
 
         // Update local results for display
         const report = response.results || [];
@@ -347,7 +373,7 @@ const BroadcastMessagesPage = () => {
           const res = report.find(res => res.phone === r.phone) || report[idx];
           return {
             ...r,
-            status: res.success ? 'Sent' : 'Failed',
+            status: res?.success ? 'Accepted by provider' : 'Failed',
             error: res.error,
             messageId: res.messageId,
             sentAt: new Date().toLocaleTimeString()
@@ -356,7 +382,7 @@ const BroadcastMessagesPage = () => {
 
         setDeliveryReport(displayReport);
         setFailedRecipients(displayReport.filter(r => r.status === 'Failed'));
-        setProgress(100);
+        setStep('send');
 
         // Refresh history from DB
         await loadHistoryFromDatabase();
@@ -365,10 +391,10 @@ const BroadcastMessagesPage = () => {
       }
     } catch (err) {
       console.error('Broadcast error:', err);
+      setSendError(`${err.message}. Check Broadcast History before trying again, in case the provider accepted some messages.`);
       showError('Failed to send broadcast: ' + err.message);
     } finally {
       setSending(false);
-      setStep('send');
     }
   };
 
@@ -386,7 +412,7 @@ const BroadcastMessagesPage = () => {
 
     for (let i = 0; i < failedRecipients.length; i++) {
       const recipient = failedRecipients[i];
-      let status = 'Sent';
+      let status = 'Accepted by provider';
       let error = null;
       let messageId = null;
 
@@ -396,12 +422,23 @@ const BroadcastMessagesPage = () => {
           .replace(/{grade}/gi, recipient.grade || '')
           .replace(/{schoolName}/gi, previewData.schoolName);
 
-        const response = await api.communication.sendTestSMS({
-          phoneNumber: recipient.phone,
-          message: messageToSend
+        const response = await api.broadcasts.sendBulk({
+          channel,
+          recipientSource: 'RETRY',
+          messageTemplate,
+          messagePreview: messageTemplate.substring(0, 150),
+          recipients: [{
+            id: recipient.id,
+            phone: recipient.phone,
+            name: recipient.name,
+            message: messageToSend,
+            studentName: recipient.studentName,
+            grade: recipient.grade,
+          }],
         });
-
-        messageId = response?.messageId || response?.id || `MSG-RETRY-${Date.now()}-${i}`;
+        const sendResult = response?.results?.[0];
+        if (!response?.success || !sendResult?.success) throw new Error(sendResult?.error || response?.message || 'Retry failed');
+        messageId = sendResult.messageId || null;
         successCount++;
       } catch (err) {
         status = 'Failed';
@@ -416,7 +453,7 @@ const BroadcastMessagesPage = () => {
     setFailedRecipients(newfailed);
 
     if (successCount > 0) {
-      showSuccess(`Retry complete! ✓ ${successCount} additional messages sent`);
+      showSuccess(`Retry complete: ${successCount} messages accepted`);
       setDeliveryReport(prev => [...prev, ...report]);
     }
 
@@ -425,64 +462,30 @@ const BroadcastMessagesPage = () => {
     }
   };
 
-  // Save broadcast to database for audit trail
-  const saveBroadcastToDatabase = async (historyItem, totalRecipients) => {
-    try {
-      // Build delivery report from report state  
-      const deliveryData = deliveryReport.map(item => ({
-        recipientPhone: item.phone || item.displayPhone || item.phoneNumber,
-        recipientName: item.name || item.displayName || '',
-        status: item.status === 'Sent' ? 'SENT' : item.status === 'Failed' ? 'FAILED' : 'PENDING',
-        messageId: item.messageId,
-        failureReason: item.error || null,
-        sentAt: new Date().toISOString()
-      }));
-
-      const campaignData = {
-        messagePreview: messageTemplate.substring(0, 150),
-        messageTemplate: messageTemplate,
-        totalRecipients: totalRecipients,
-        successCount: deliveryReport.filter(r => r.status === 'Sent').length,
-        failedCount: failedRecipients.length,
-        recipientSource: recipientSource,
-        status: failedRecipients.length === 0 ? 'COMPLETED' : 'PARTIAL',
-        recipients: deliveryData
-      };
-
-      const response = await api.broadcasts.saveCampaign(campaignData);
-      console.log('✅ Campaign saved to database:', response.id);
-    } catch (err) {
-      console.error('❌ Failed to save campaign to database:', err);
-      // Continue - localStorage already has the data as fallback
-      // Don't show error to user - broadcast already sent
-    }
-  };
-
-  // Load history from database and merge with localStorage
+  // The campaign API is the source of truth for send history.
   const loadHistoryFromDatabase = async () => {
     try {
       const response = await api.broadcasts.getHistory(100, 0); // Get last 100
-      if (response?.campaigns) {
-        // Convert database format to display format and merge with localStorage
-        const dbItems = response.campaigns.map(campaign => ({
+      const campaigns = response?.data || response?.campaigns || [];
+      if (Array.isArray(campaigns)) {
+        const dbItems = campaigns.map(campaign => ({
           id: campaign.id,
           timestamp: new Date(campaign.sentAt).toLocaleString(),
           totalRecipients: campaign.totalRecipients,
           successCount: campaign.successCount,
           failedCount: campaign.failedCount,
           messagePreview: campaign.messagePreview,
+          channel: campaign.messageChannel,
+          status: campaign.status,
           source: 'database',
           databaseId: campaign.id
         }));
-
-        // Merge database items with localStorage items (database first, then localStorage)
-        const merged = [...dbItems, ...messageHistory.filter(h => h.source !== 'database')];
-        setMessageHistory(merged);
+        setMessageHistory(dbItems);
         console.log('✅ Loaded', dbItems.length, 'campaigns from database');
       }
     } catch (err) {
       console.error('Failed to load from database:', err);
-      // Gracefully fall back to localStorage
+      showError('Could not load broadcast history. Try again later.');
     }
   };
 
@@ -491,6 +494,10 @@ const BroadcastMessagesPage = () => {
     setShowDeliveryLog(true);
     await loadHistoryFromDatabase();
   };
+
+  const workflowSteps = ['channel', 'recipients', 'compose', 'review'];
+  const activeStep = step === 'send' ? 'review' : step;
+  const activeStepIndex = workflowSteps.indexOf(activeStep);
 
   return (
     <div className="h-full flex flex-col bg-white border border-slate-200 overflow-hidden">
@@ -506,96 +513,112 @@ const BroadcastMessagesPage = () => {
               <p className="text-sm text-slate-600">Send messages to multiple recipients</p>
             </div>
           </div>
-          {messageHistory.length > 0 && (
-            <Button
-              onClick={handleOpenHistory}
-              className="bg-brand-teal hover:bg-brand-teal/90 text-white font-medium gap-2"
-            >
-              <Download size={16} />
-              History ({messageHistory.length})
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => onNavigate?.('comm-messages')} className="gap-2">
+              <ChevronLeft size={16} />Back to Inbox
             </Button>
-          )}
+            {messageHistory.length > 0 && (
+              <Button
+                onClick={handleOpenHistory}
+                className="bg-brand-teal hover:bg-brand-teal/90 text-white font-medium gap-2"
+              >
+                <Download size={16} />
+                History ({messageHistory.length})
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Progress Steps */}
       <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
-        <div className="flex items-center justify-between max-w-2xl">
-          {['recipients', 'compose', 'review', 'send'].map((s, idx) => (
-            <React.Fragment key={s}>
-              <div
-                className={`flex items-center justify-center w-8 h-8 rounded-full cursor-pointer transition-all ${step === s ? 'bg-brand-purple text-white' : 'bg-gray-300 text-gray-600'
-                  }`}
-                onClick={() => idx < ['recipients', 'compose', 'review', 'send'].indexOf(step) + 1 && setStep(s)}
-              >
-                {idx + 1}
-              </div>
-              {idx < 3 && <div className={`flex-1 h-1 mx-2 ${step !== s ? 'bg-gray-300' : 'bg-brand-purple'}`} />}
-            </React.Fragment>
-          ))}
-        </div>
-        <div className="flex justify-between text-xs font-medium text-gray-600 mt-3 max-w-2xl">
-          <span>Recipients</span>
-          <span>Compose</span>
-          <span>Review</span>
-          <span>Send</span>
+        <div className="mx-auto w-full max-w-3xl">
+          <div className="flex items-center justify-between">
+            {workflowSteps.map((s, idx) => (
+              <React.Fragment key={s}>
+                <button
+                  type="button"
+                  aria-current={idx === activeStepIndex ? 'step' : undefined}
+                  disabled={step === 'send' || idx >= activeStepIndex}
+                  className={`flex h-8 w-8 items-center justify-center rounded-full transition-all disabled:cursor-default ${idx <= activeStepIndex ? 'bg-blue-800 text-white' : 'bg-gray-300 text-gray-600'} ${idx < activeStepIndex ? 'cursor-pointer hover:bg-blue-700' : ''
+                    }`}
+                  onClick={() => setStep(s)}
+                >
+                  {idx + 1}
+                </button>
+                {idx < workflowSteps.length - 1 && <div className={`flex-1 h-1 mx-2 ${idx < activeStepIndex ? 'bg-blue-800' : 'bg-gray-300'}`} />}
+              </React.Fragment>
+            ))}
+          </div>
+          <div className="mt-3 flex justify-between text-xs font-medium text-gray-600">
+            <span>Channel</span>
+            <span>Audience</span>
+            <span>Compose</span>
+            <span>{step === 'send' ? 'Report' : 'Review & send'}</span>
+          </div>
         </div>
       </div>
 
       {/* Content */}
       <div className="flex-1 overflow-auto p-6">
+        {step === 'channel' && (
+          <div className="mx-auto w-full max-w-2xl space-y-4">
+            <h2 className="text-xl font-bold text-slate-900">Step 1: Choose a channel</h2>
+            <p className="text-sm text-slate-600">How should the school reach this audience?</p>
+            {[
+              { id: 'sms', title: 'SMS', detail: 'Send a text message to parent or guardian numbers.', color: 'border-blue-700 bg-blue-50 text-blue-900', icon: Phone },
+              { id: 'whatsapp', title: 'WhatsApp', detail: 'Send a WhatsApp message to parent or guardian numbers.', color: 'border-emerald-700 bg-emerald-50 text-emerald-900', icon: MessageSquare },
+            ].map(option => {
+              const Icon = option.icon;
+              return (
+                <button key={option.id} type="button" aria-pressed={channel === option.id} onClick={() => setChannel(option.id)} className={`flex min-h-16 w-full items-center gap-4 border-b px-3 py-3 text-left transition ${channel === option.id ? option.color : 'border-slate-200 bg-white text-slate-800 hover:bg-slate-50'}`}>
+                  <Icon size={22} />
+                  <span className="min-w-0 flex-1"><span className="block text-sm font-extrabold">{option.title}</span><span className="mt-0.5 block text-xs opacity-80">{option.detail}</span></span>
+                  <span className="text-xs font-bold">{channel === option.id ? 'Selected' : 'Choose'}</span>
+                </button>
+              );
+            })}
+            <Button onClick={() => setStep('recipients')} className="mt-2 w-full gap-2 bg-blue-800 py-5 font-bold text-white hover:bg-blue-900">
+              Choose audience <ChevronRight size={18} />
+            </Button>
+          </div>
+        )}
+
         {step === 'recipients' && (
-          <div className="max-w-3xl space-y-6">
-            <h2 className="text-2xl font-medium text-gray-800">Step 1: Select Recipients</h2>
+          <div className="mx-auto w-full max-w-3xl space-y-6">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+              <h2 className="text-xl font-bold text-slate-900">Step 2: Choose the audience</h2>
+              <p className="text-sm text-slate-600">Sending by {channel === 'sms' ? 'SMS' : 'WhatsApp'}</p>
+            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Manual Numbers */}
-              <Card
-                className={`cursor-pointer transition ${recipientSource === 'manual' ? 'border-brand-purple border-2' : ''}`}
-                onClick={() => setRecipientSource('manual')}
-              >
-                <CardContent className="p-6 text-center">
-                  <Phone size={32} className="mx-auto mb-2 text-brand-teal" />
-                  <h3 className="font-medium text-gray-800">Manual Entry</h3>
-                  <p className="text-sm text-gray-500 mt-1">Enter phone numbers directly</p>
-                </CardContent>
-              </Card>
-
-              {/* CSV Upload */}
-              <Card
-                className={`cursor-pointer transition ${recipientSource === 'csv' ? 'border-brand-purple border-2' : ''}`}
-                onClick={() => setRecipientSource('csv')}
-              >
-                <CardContent className="p-6 text-center">
-                  <FileUp size={32} className="mx-auto mb-2 text-brand-teal" />
-                  <h3 className="font-medium text-gray-800">CSV/Excel</h3>
-                  <p className="text-sm text-gray-500 mt-1">Upload a file with phone numbers</p>
-                </CardContent>
-              </Card>
-
-              {/* Group */}
-              <Card
-                className={`cursor-pointer transition ${recipientSource === 'group' ? 'border-brand-purple border-2' : ''}`}
-                onClick={() => setRecipientSource('group')}
-              >
-                <CardContent className="p-6 text-center">
-                  <Users size={32} className="mx-auto mb-2 text-brand-teal" />
-                  <h3 className="font-medium text-gray-800">Grade/Group</h3>
-                  <p className="text-sm text-gray-500 mt-1">Select a grade or group</p>
-                </CardContent>
-              </Card>
-
-              {/* All Parents */}
-              <Card
-                className={`cursor-pointer transition ${recipientSource === 'all' ? 'border-brand-purple border-2' : ''}`}
-                onClick={() => setRecipientSource('all')}
-              >
-                <CardContent className="p-6 text-center">
-                  <Users size={32} className="mx-auto mb-2 text-brand-teal" />
-                  <h3 className="font-medium text-gray-800">All Parents</h3>
-                  <p className="text-sm text-gray-500 mt-1">Send to entire school</p>
-                </CardContent>
-              </Card>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" role="group" aria-label="Choose recipients">
+              {[
+                { id: 'manual', title: 'Enter phone numbers', detail: 'Type or paste contacts', icon: Phone },
+                { id: 'csv', title: 'Upload contacts', detail: 'CSV or .xlsx file', icon: FileUp },
+                { id: 'group', title: 'Choose grades', detail: 'Select one or more grades', icon: Users },
+                { id: 'all', title: 'All parents', detail: 'Reach every parent contact', icon: Users },
+              ].map(option => {
+                const Icon = option.icon;
+                const selected = recipientSource === option.id;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    aria-pressed={selected}
+                    onClick={() => setRecipientSource(option.id)}
+                    className={`flex min-h-14 w-full items-center gap-3 rounded-lg border px-3 py-2 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-700 ${selected ? 'border-blue-800 bg-blue-50 text-blue-950' : 'border-slate-200 bg-white text-slate-800 hover:border-blue-300 hover:bg-slate-50'}`}
+                  >
+                    <Icon size={20} className={selected ? 'text-blue-800' : 'text-slate-500'} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-semibold">{option.title}</span>
+                      <span className="block text-xs text-slate-600">{option.detail}</span>
+                    </span>
+                    <span aria-hidden="true" className={`flex h-4 w-4 items-center justify-center rounded-full border ${selected ? 'border-blue-800' : 'border-slate-400'}`}>
+                      {selected && <span className="h-2 w-2 rounded-full bg-blue-800" />}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
 
             {/* Source-specific input */}
@@ -612,7 +635,7 @@ const BroadcastMessagesPage = () => {
                     value={manualNumbers}
                     onChange={(e) => setManualNumbers(e.target.value)}
                     placeholder="0712345678, 0723456789&#10;+254734567890&#10;714567890"
-                    rows={6}
+                    rows={3}
                     className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-brand-purple resize-none font-mono text-sm"
                   />
                   {manualNumbers.trim() && (
@@ -632,17 +655,18 @@ const BroadcastMessagesPage = () => {
             {recipientSource === 'csv' && (
               <Card>
                 <CardHeader>
-                  <CardTitle>Upload CSV/Excel</CardTitle>
-                  <CardDescription>File should contain phone numbers (with or without header)</CardDescription>
+                  <CardTitle>Upload a contact list</CardTitle>
+                  <CardDescription>Include a Phone, Mobile, Parent Phone, or Guardian Phone column. Name and Grade columns are optional.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <input
                     type="file"
-                    accept=".csv,.xlsx,.xls"
-                    onChange={(e) => setCsvFile(e.target.files?.[0])}
+                    accept=".csv,.tsv,.xlsx"
+                    onChange={(e) => { setCsvFile(e.target.files?.[0] || null); setRecipientImportNote(''); }}
                     className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-brand-teal file:text-white file:font-medium hover:file:bg-brand-teal/90"
                   />
                   {csvFile && <p className="text-sm text-green-600 font-medium">✓ {csvFile.name}</p>}
+                  {recipientImportNote && <p className="text-sm text-amber-800">{recipientImportNote}</p>}
                 </CardContent>
               </Card>
             )}
@@ -674,20 +698,23 @@ const BroadcastMessagesPage = () => {
               </Card>
             )}
 
-            <Button
-              onClick={handleLoadRecipients}
-              disabled={loadingRecipients || !recipientSource || (recipientSource === 'manual' && !manualNumbers) || (recipientSource === 'csv' && !csvFile) || (recipientSource === 'group' && selectedGroups.length === 0)}
-              className="w-full bg-brand-purple hover:bg-brand-purple/90 text-white font-medium gap-2 py-6 text-lg"
-            >
-              {loadingRecipients ? <Loader2 size={20} className="animate-spin" /> : <ChevronRight size={20} />}
-              Load Recipients
-            </Button>
+            <div className="flex gap-3">
+              <Button onClick={() => setStep('channel')} variant="outline" className="min-h-12 flex-1 gap-2"><ChevronLeft size={18} />Channel</Button>
+              <Button
+                onClick={handleLoadRecipients}
+                disabled={loadingRecipients || !recipientSource || (recipientSource === 'manual' && !manualNumbers) || (recipientSource === 'csv' && !csvFile) || (recipientSource === 'group' && selectedGroups.length === 0)}
+                className="min-h-12 flex-1 gap-2 bg-blue-800 font-bold text-white hover:bg-blue-900"
+              >
+                {loadingRecipients ? <Loader2 size={20} className="animate-spin" /> : <ChevronRight size={20} />}
+                Load audience
+              </Button>
+            </div>
           </div>
         )}
 
         {step === 'compose' && (
-          <div className="max-w-3xl space-y-6">
-            <h2 className="text-2xl font-medium text-gray-800">Step 2: Compose Message</h2>
+          <div className="mx-auto w-full max-w-3xl space-y-6">
+            <h2 className="text-xl font-bold text-slate-900">Step 3: Write the message</h2>
 
             <Card>
               <CardHeader>
@@ -701,23 +728,42 @@ const BroadcastMessagesPage = () => {
 
             <Card>
               <CardHeader>
-                <CardTitle>Message Template</CardTitle>
-                <CardDescription>Use variables: {'{name}'}, {'{grade}'}, {'{schoolName}'}</CardDescription>
+                <CardTitle>Write the message</CardTitle>
+                <CardDescription>Choose a starter, then edit it. Personalize with {'{name}'}, {'{grade}'}, and {'{schoolName}'}.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                <p className="text-xs font-bold text-slate-700">Channel: <span className={channel === 'whatsapp' ? 'text-emerald-700' : 'text-blue-800'}>{channel === 'sms' ? 'SMS' : 'WhatsApp'}</span></p>
+                <div className="space-y-1.5">
+                  <Label htmlFor="broadcast-template">Message starter</Label>
+                  <select
+                    id="broadcast-template"
+                    value={templateSelection}
+                    onChange={(event) => {
+                      const selected = BROADCAST_TEMPLATES.find(item => item.id === event.target.value);
+                      setTemplateSelection(event.target.value);
+                      if (selected) setMessageTemplate(selected.message);
+                    }}
+                    className="min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-700"
+                  >
+                    <option value="">Start from a blank message</option>
+                    {BROADCAST_TEMPLATES.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
+                  </select>
+                </div>
                 <textarea
                   value={messageTemplate}
-                  onChange={(e) => setMessageTemplate(e.target.value)}
+                  onChange={(e) => { setMessageTemplate(e.target.value); setTemplateSelection(''); }}
                   placeholder="Hello {name}, this is a message from {schoolName}..."
                   rows={5}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-brand-purple resize-none"
                 />
                 <div className="flex justify-between items-center text-xs mt-1">
                   <div className="text-gray-500 font-medium">
-                    Standard SMS: 160 chars
+                    {channel === 'sms' ? 'SMS segment estimate' : 'WhatsApp message'}
                   </div>
                   <div className={`font-medium ${messageTemplate.length > 160 ? 'text-orange-600' : 'text-brand-purple'}`}>
-                    {messageTemplate.length} characters | {messageTemplate.length > 160 ? Math.ceil(messageTemplate.length / 153) : (messageTemplate.length > 0 ? 1 : 0)} SMS
+                    {channel === 'sms'
+                      ? `${messageTemplate.length} characters | about ${getSmsSegments(messageTemplate)} SMS per recipient`
+                      : `${messageTemplate.length} characters`}
                   </div>
                 </div>
               </CardContent>
@@ -747,11 +793,12 @@ const BroadcastMessagesPage = () => {
             {/* Test */}
             <Button
               onClick={() => setShowTestDialog(true)}
+              disabled={channel !== 'sms'}
               variant="outline"
-              className="w-full border-brand-teal text-brand-teal hover:bg-brand-teal/10 font-medium gap-2"
+              className="w-full border-brand-teal text-brand-teal hover:bg-brand-teal/10 font-medium gap-2 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Phone size={18} />
-              Send Test Message
+              {channel === 'sms' ? 'Send SMS Test' : 'Select SMS to send a test'}
             </Button>
 
             <div className="flex gap-3">
@@ -777,8 +824,9 @@ const BroadcastMessagesPage = () => {
         )}
 
         {step === 'review' && (
-          <div className="max-w-3xl space-y-6">
-            <h2 className="text-2xl font-medium text-gray-800">Step 3: Review & Confirm</h2>
+          <div className="mx-auto w-full max-w-3xl space-y-6">
+            <h2 className="text-xl font-bold text-slate-900">Review before sending</h2>
+            <p className="text-sm text-slate-600">You’re sending by {channel === 'sms' ? 'SMS' : 'WhatsApp'} to {recipients.length} recipients from {recipientSource === 'all' ? 'all parent contacts' : recipientSource === 'group' ? selectedGroups.map(id => groups.find(group => group.id === id)?.name || id).join(', ') : recipientSource === 'manual' ? 'your entered contact list' : 'your uploaded contact list'}.</p>
 
             <div className="grid grid-cols-2 gap-4">
               <Card>
@@ -793,7 +841,7 @@ const BroadcastMessagesPage = () => {
                   <p className="text-3xl font-medium text-brand-teal">
                     {messageTemplate.length}
                     <span className="text-sm font-normal text-gray-500 ml-2">
-                      ({messageTemplate.length > 160 ? Math.ceil(messageTemplate.length / 153) : (messageTemplate.length > 0 ? 1 : 0)} SMS)
+                      {channel === 'sms' ? `(about ${getSmsSegments(messageTemplate)} SMS)` : '(WhatsApp)'}
                     </span>
                   </p>
                 </CardContent>
@@ -802,7 +850,7 @@ const BroadcastMessagesPage = () => {
 
             <Card>
               <CardHeader>
-                <CardTitle>Message Preview</CardTitle>
+                  <CardTitle>Message preview</CardTitle>
               </CardHeader>
               <CardContent className="bg-gray-50 p-4 rounded-lg">
                 <p className="text-sm text-gray-800 whitespace-pre-wrap">
@@ -843,54 +891,28 @@ const BroadcastMessagesPage = () => {
                 Back
               </Button>
               <Button
-                onClick={() => setStep('send')}
-                disabled={sending || !messageTemplate.trim()}
+                onClick={handleSendBroadcast}
+                disabled={sending || !messageTemplate.trim() || recipients.length === 0}
                 title={!messageTemplate.trim() ? "Message cannot be empty" : ""}
-                className="flex-1 bg-green-600 hover:bg-green-700 text-white font-medium gap-2"
+                className="flex-1 gap-2 bg-blue-800 font-bold text-white hover:bg-blue-900"
               >
                 {sending ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
-                Send Broadcast
+                {sending ? 'Sending…' : `Send to ${recipients.length} recipients`}
               </Button>
             </div>
+            {sendError && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{sendError}</div>}
           </div>
         )}
 
         {step === 'send' && (
-          <div className="max-w-3xl space-y-6">
-            <h2 className="text-2xl font-medium text-gray-800">Step 4: Sending & Results</h2>
-
-            {!sending && deliveryReport.length === 0 ? (
-              <div className="text-center py-12">
-                <Button
-                  onClick={handleSendBroadcast}
-                  className="bg-green-600 hover:bg-green-700 text-white font-medium gap-2 px-6 py-3 text-lg"
-                >
-                  <Send size={20} />
-                  Start Sending
-                </Button>
-              </div>
+          <div className="mx-auto w-full max-w-3xl space-y-6">
+            <h2 className="text-xl font-bold text-slate-900">Broadcast report</h2>
+            <p className="text-sm text-slate-600">“Accepted by provider” means the SMS or WhatsApp service accepted the request. Delivery and bounce receipts are not available here yet.</p>
+            {campaignId && <p className="text-xs text-slate-500">Campaign reference: <span className="font-mono">{campaignId}</span></p>}
+            {deliveryReport.length === 0 ? (
+              <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">No recipient results were returned. Check Broadcast History before sending again.</div>
             ) : (
               <>
-                {/* Progress */}
-                {sending && (
-                  <Card className="bg-blue-50 border-blue-200">
-                    <CardContent className="p-6">
-                      <div className="space-y-4">
-                        <div className="flex justify-between font-medium">
-                          <span>Sending Progress</span>
-                          <span>{progress}%</span>
-                        </div>
-                        <div className="w-full bg-gray-200 rounded-full h-3">
-                          <div className="bg-brand-purple h-3 rounded-full transition-all" style={{ width: `${progress}%` }} />
-                        </div>
-                        <p className="text-sm text-gray-600">
-                          {deliveryReport.length} of {recipients.length} messages processed...
-                        </p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-
                 {/* Results */}
                 {deliveryReport.length > 0 && (
                   <>
@@ -902,9 +924,9 @@ const BroadcastMessagesPage = () => {
                             <p className="text-3xl font-medium text-gray-800">{deliveryReport.length}</p>
                           </div>
                           <div className="text-center">
-                            <p className="text-gray-600 text-sm">Sent</p>
+                            <p className="text-gray-600 text-sm">Accepted by provider</p>
                             <p className="text-3xl font-medium text-green-600">
-                              {deliveryReport.filter(r => r.status === 'Sent').length}
+                              {deliveryReport.filter(r => r.status === 'Accepted by provider').length}
                             </p>
                           </div>
                           <div className="text-center">
@@ -921,8 +943,8 @@ const BroadcastMessagesPage = () => {
                     <Card>
                       <CardHeader className="flex flex-row items-center justify-between">
                         <div>
-                          <CardTitle>Delivery Report</CardTitle>
-                          <p className="text-sm text-gray-500 mt-1">All messages with tracking IDs</p>
+                          <CardTitle>Send results</CardTitle>
+                          <p className="text-sm text-gray-500 mt-1">Provider response and message references</p>
                         </div>
                         <div className="flex gap-2">
                           {failedRecipients.length > 0 && (
@@ -937,11 +959,11 @@ const BroadcastMessagesPage = () => {
                           )}
                           <Button
                             variant="outline"
-                            onClick={() => setShowDeliveryLog(!showDeliveryLog)}
+                            onClick={handleOpenHistory}
                             className="gap-2 text-sm"
                           >
                             <Eye size={16} />
-                            Details
+                            View history
                           </Button>
                         </div>
                       </CardHeader>
@@ -953,17 +975,17 @@ const BroadcastMessagesPage = () => {
                               <th className="px-3 py-2 text-left font-semibold text-[color:var(--table-header-fg)]">Phone</th>
                               <th className="px-3 py-2 text-left font-semibold text-[color:var(--table-header-fg)]">Status</th>
                               <th className="px-3 py-2 text-left font-semibold text-[color:var(--table-header-fg)]">Message ID</th>
-                              <th className="px-3 py-2 text-left font-semibold text-[color:var(--table-header-fg)]">Sent At</th>
+                              <th className="px-3 py-2 text-left font-semibold text-[color:var(--table-header-fg)]">Result time</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y max-h-96 overflow-y-auto">
                             {deliveryReport.map((r, i) => (
-                              <tr key={i} className={r.status === 'Sent' ? 'bg-green-50 hover:bg-green-100' : 'bg-red-50 hover:bg-red-100'}>
+                              <tr key={i} className={r.status === 'Accepted by provider' ? 'bg-green-50 hover:bg-green-100' : 'bg-red-50 hover:bg-red-100'}>
                                 <td className="px-3 py-2 font-medium">{r.name}</td>
                                 <td className="px-3 py-2 font-mono">{r.displayPhone}</td>
                                 <td className="px-3 py-2">
-                                  <Badge className={r.status === 'Sent' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'}>
-                                    {r.status === 'Sent' ? <CheckCircle size={12} className="mr-1" /> : <AlertCircle size={12} className="mr-1" />}
+                                  <Badge className={r.status === 'Accepted by provider' ? 'bg-green-700 text-white' : 'bg-red-700 text-white'}>
+                                    {r.status === 'Accepted by provider' ? <CheckCircle size={12} className="mr-1" /> : <AlertCircle size={12} className="mr-1" />}
                                     {r.status}
                                   </Badge>
                                 </td>
@@ -983,8 +1005,10 @@ const BroadcastMessagesPage = () => {
                     setStep('recipients');
                     setRecipients([]);
                     setMessageTemplate('');
+                    setTemplateSelection('');
                     setDeliveryReport([]);
-                    setProgress(0);
+                    setCampaignId(null);
+                    setSendError('');
                   }}
                   className="w-full bg-brand-purple hover:bg-brand-purple/90 text-white font-medium gap-2"
                 >
@@ -1006,7 +1030,7 @@ const BroadcastMessagesPage = () => {
               Broadcast Message History ({messageHistory.length})
             </DialogTitle>
             <DialogDescription>
-              View all recently sent broadcasts and delivery stats
+              Review past campaigns and provider submission results
             </DialogDescription>
           </DialogHeader>
 
@@ -1024,11 +1048,11 @@ const BroadcastMessagesPage = () => {
                     <div className="grid grid-cols-4 gap-3 items-start">
                       <div className="col-span-2">
                         <p className="font-medium text-gray-800 text-sm line-clamp-2">{item.messagePreview}</p>
-                        <p className="text-xs text-gray-500 mt-1">Sent: {item.timestamp}</p>
+                        <p className="text-xs text-gray-500 mt-1">{item.channel || 'Message'} · {item.timestamp}</p>
                         <p className="text-xs text-gray-400 mt-1 font-mono">{item.id}</p>
                       </div>
                       <div className="text-right">
-                        <p className="text-xs text-gray-600 mb-1">Delivery</p>
+                          <p className="text-xs text-gray-600 mb-1">Accepted / failed</p>
                         <div className="flex gap-2 justify-end text-sm">
                           <Badge variant="default" className="bg-green-600">✓ {item.successCount}</Badge>
                           {item.failedCount > 0 && (
@@ -1082,7 +1106,9 @@ const BroadcastMessagesPage = () => {
                   .replace(/{schoolName}/gi, previewData.schoolName) || '(Message preview)'}
               </CardContent>
               <div className="px-4 pb-2 text-right text-[10px] text-gray-500 font-medium">
-                {messageTemplate.length} chars | {messageTemplate.length > 160 ? Math.ceil(messageTemplate.length / 153) : (messageTemplate.length > 0 ? 1 : 0)} SMS
+                {channel === 'sms'
+                  ? `${messageTemplate.length} chars | about ${getSmsSegments(messageTemplate)} SMS`
+                  : `${messageTemplate.length} chars | WhatsApp`}
               </div>
             </Card>
 

@@ -1,6 +1,49 @@
 import { Response } from 'express';
 import prisma from '../config/database';
 import { AuthRequest } from '../middleware/permissions.middleware';
+import { hasPermission, type Role } from '../config/permissions';
+import { getCanonicalRoles, hasAnyRole } from '../utils/roleNormalizer';
+
+/** Roles that author and manage notices (drafts, scheduled and archived included). */
+const canManageNotices = (user: AuthRequest['user']) =>
+  getCanonicalRoles(user).some((role) => hasPermission(role as Role, 'SEND_SCHOOL_NOTICES'));
+
+/**
+ * Audience tokens a reader matches. A notice's targetAudience may be empty or
+ * ALL (everyone) or a comma separated list of PARENTS, STUDENTS, TEACHERS, STAFF.
+ */
+const audienceTokensFor = (user: AuthRequest['user']) => {
+  const roles = getCanonicalRoles(user) as string[];
+  const tokens = new Set<string>(['ALL']);
+  if (roles.includes('PARENT')) tokens.add('PARENTS');
+  if (roles.includes('STUDENT')) tokens.add('STUDENTS');
+  if (roles.includes('TEACHER')) tokens.add('TEACHERS');
+  if (roles.some((role) => role !== 'PARENT' && role !== 'STUDENT')) tokens.add('STAFF');
+  return tokens;
+};
+
+/** What a non-manager may see: published, already live, not expired, and aimed at them. */
+const isNoticeVisibleTo = (notice: any, user: AuthRequest['user'], now: Date) => {
+  if (String(notice.status || 'PUBLISHED').toUpperCase() !== 'PUBLISHED') return false;
+  if (notice.archived) return false;
+  if (notice.publishedAt && new Date(notice.publishedAt) > now) return false;
+  if (notice.expiresAt && new Date(notice.expiresAt) <= now) return false;
+
+  const audience = String(notice.targetAudience || '').trim();
+  if (!audience) return true;
+  const tokens = audienceTokensFor(user);
+  return audience
+    .split(',')
+    .map((part) => part.trim().toUpperCase())
+    .filter(Boolean)
+    .some((part) => tokens.has(part));
+};
+
+/** Parents and students do not need to see staff email addresses. */
+const withoutAuthorEmail = (notice: any) =>
+  notice.createdBy
+    ? { ...notice, createdBy: { id: notice.createdBy.id, firstName: notice.createdBy.firstName, lastName: notice.createdBy.lastName } }
+    : notice;
 
 
 
@@ -9,10 +52,12 @@ export class NoticeController {
     try {
 
       const { status, category, includeArchived } = req.query;
+      const isManager = canManageNotices(req.user);
+      const now = new Date();
       const notices = await prisma.notice.findMany({
         where: {
-          ...(includeArchived === 'true' ? {} : { archived: false }),
-          ...(status ? { status: String(status) } : {}),
+          ...(includeArchived === 'true' && isManager ? {} : { archived: false }),
+          ...(status && isManager ? { status: String(status) } : {}),
           ...(category ? { category: String(category) } : {})
         },
         include: {
@@ -28,7 +73,11 @@ export class NoticeController {
         orderBy: [{ publishedAt: 'desc' }, { createdAt: 'desc' }]
       });
 
-      return res.json({ success: true, data: notices });
+      const visibleNotices = isManager
+        ? notices
+        : notices.filter((notice) => isNoticeVisibleTo(notice, req.user, now)).map(withoutAuthorEmail);
+
+      return res.json({ success: true, data: visibleNotices });
     } catch (error: any) {
       return res.status(500).json({ success: false, error: error.message || 'Failed to fetch notices' });
     }
@@ -56,6 +105,13 @@ export class NoticeController {
 
       if (!notice) {
         return res.status(404).json({ success: false, error: 'Notice not found' });
+      }
+
+      if (!canManageNotices(req.user)) {
+        if (!isNoticeVisibleTo(notice, req.user, new Date())) {
+          return res.status(404).json({ success: false, error: 'Notice not found' });
+        }
+        return res.json({ success: true, data: withoutAuthorEmail(notice) });
       }
 
       return res.json({ success: true, data: notice });
@@ -148,9 +204,12 @@ export class NoticeController {
       }
 
       const isOwner = existing.createdById === userId;
+      const isSchoolAdmin = hasAnyRole(req.user, ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER']);
       const isSystemAdminOwner = isOwner && userRole === 'SUPER_ADMIN';
 
-      if (!isOwner) {
+      // Authors can archive their own notices; school admins can archive any
+      // notice (e.g. one posted by a staff member who has since left).
+      if (!isOwner && !isSchoolAdmin) {
         return res.status(403).json({ success: false, error: 'You can only archive your own notices' });
       }
 

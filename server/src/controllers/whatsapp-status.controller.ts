@@ -7,22 +7,26 @@ import { Response } from 'express';
 import { AuthRequest } from '../middleware/permissions.middleware';
 import { whatsappService } from '../services/whatsapp.service';
 import { ApiError } from '../utils/error.util';
+import { hasAnyRole } from '../utils/roleNormalizer';
 
 import logger from '../utils/logger';
 class WhatsAppStatusController {
     /**
-     * Get WhatsApp connection status
+     * Get WhatsApp connection status.
+     * The raw QR string links a device to the school's WhatsApp number, so it is
+     * only returned to administrators; other staff just see the status.
      */
     async getStatus(req: AuthRequest, res: Response) {
         try {
             const status = whatsappService.getStatus();
+            const canSeeQr = hasAnyRole(req.user, ['SUPER_ADMIN', 'ADMIN']);
 
             res.json({
                 success: true,
                 data: {
                     status: status.status,
                     hasQRCode: !!status.qrCode,
-                    qrCode: status.qrCode  // Include raw QR string for frontend rendering
+                    ...(canSeeQr ? { qrCode: status.qrCode } : {})
                 }
             });
         } catch (error: any) {

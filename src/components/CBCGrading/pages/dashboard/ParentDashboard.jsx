@@ -21,7 +21,9 @@ import { useRolePreview } from '../../../../contexts/RolePreviewContext';
 import { useModuleAccess } from '../../../../contexts/ModuleAccessContext';
 import { hasPageAccess } from '../../utils/appAccess';
 import MobilePortalAppBar from '../../layout/MobilePortalAppBar';
+import ParentBottomNav from '../../layout/ParentBottomNav';
 import EditStudentModal from '../parent/EditStudentModal';
+import ParentOnboardingOverlay from '../parent-portal/shared/ParentOnboardingOverlay';
 import { Skeleton } from '../../../ui';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -50,13 +52,20 @@ const getChildPhoto = (child) =>
 // ─── ChildCard ────────────────────────────────────────────────────────────────
 // Answers: who is my child, how are they doing, do I need to act?
 
-function ChildCard({ child, showFees, onViewChild, onEditChild }) {
+function ChildCard({ child, showFees, onViewChild, onEditChild, onNavigate }) {
   const balance    = Number(child.feeBalance || 0);
-  const attendance = Math.round(Number(child.attendanceRate || 0));
+  const attendance = child.attendanceRate !== null && child.attendanceRate !== undefined
+    ? Math.round(Number(child.attendanceRate))
+    : null;
+  const hasAttendance = attendance !== null;
   const termAvg    = child.termAverage != null ? Math.round(Number(child.termAverage)) : null;
   const isPresent  = child.todayStatus === 'PRESENT' || child.isPresent;
   const photoSrc   = getChildPhoto(child);
   const initials   = (child.name || '??').split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase();
+
+  // Check if child is in Grade 7-9 (junior secondary / transition age) for pathway prompt
+  const gradeNum = parseInt((child.grade || '').replace(/[^0-9]/g, ''), 10);
+  const showPathwayPrompt = gradeNum >= 7 && gradeNum <= 9;
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
@@ -77,16 +86,37 @@ function ChildCard({ child, showFees, onViewChild, onEditChild }) {
           >
             {initials}
           </div>
-          {/* Presence dot */}
-          <span className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white ${isPresent ? 'bg-emerald-500' : 'bg-gray-300'}`} />
+          {/* Presence dot — tappable to school today */}
+          {onNavigate && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onNavigate('parent-portal-school-today'); }}
+              aria-label="View school today"
+              className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white ${isPresent ? 'bg-emerald-500' : 'bg-gray-300'} hover:scale-125 transition-transform`}
+            />
+          )}
+          {!onNavigate && (
+            <span className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white ${isPresent ? 'bg-emerald-500' : 'bg-gray-300'}`} />
+          )}
         </div>
 
         <div className="flex-1 min-w-0">
           <p className="text-sm font-bold text-gray-900 truncate">{child.name}</p>
           <p className="text-xs text-slate-600">{child.grade} · {child.className || 'Class'}</p>
-          <p className={`mt-0.5 text-[10px] font-semibold ${isPresent ? 'text-emerald-800' : 'text-slate-600'}`}>
-            {isPresent ? 'Present today' : 'Not marked present'}
-          </p>
+          {/* Tappable presence label */}
+          {onNavigate ? (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onNavigate('parent-portal-school-today'); }}
+              className={`mt-0.5 text-[10px] font-semibold flex items-center gap-1 ${isPresent ? 'text-emerald-800' : 'text-slate-600'} hover:underline`}
+            >
+              {isPresent ? '● Present today — tap for schedule' : '○ Not marked — tap to check'}
+            </button>
+          ) : (
+            <p className={`mt-0.5 text-[10px] font-semibold ${isPresent ? 'text-emerald-800' : 'text-slate-600'}`}>
+              {isPresent ? 'Present today' : 'Not marked present'}
+            </p>
+          )}
         </div>
         <ChevronRight size={17} className="shrink-0 text-slate-600" />
         </button>
@@ -104,7 +134,9 @@ function ChildCard({ child, showFees, onViewChild, onEditChild }) {
       <div className={`grid border-t border-slate-100 divide-x divide-slate-100 ${showFees ? 'grid-cols-3' : 'grid-cols-2'}`}>
         <div className="px-2 py-2 text-center">
           <p className="text-[9px] font-bold text-slate-600">Attendance</p>
-          <p className={`mt-0.5 text-sm font-extrabold ${attendanceColor(attendance)}`}>{attendance}%</p>
+          <p className={`mt-0.5 text-sm font-extrabold ${hasAttendance ? attendanceColor(attendance) : 'text-slate-400'}`}>
+            {hasAttendance ? `${attendance}%` : '—'}
+          </p>
         </div>
         {showFees && (
           <div className="px-2 py-2 text-center">
@@ -121,6 +153,19 @@ function ChildCard({ child, showFees, onViewChild, onEditChild }) {
           </p>
         </div>
       </div>
+
+      {/* Pathway recommendation prompt for Grade 7-9 children */}
+      {showPathwayPrompt && onNavigate && (
+        <button
+          type="button"
+          onClick={() => onNavigate('parent-portal-pathway')}
+          className="w-full border-t border-slate-100 bg-violet-50 px-3 py-2 flex items-center gap-2 text-left hover:bg-violet-100 transition-colors"
+        >
+          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-violet-200 text-violet-700 text-[10px] font-black">!</span>
+          <p className="flex-1 text-[10px] font-bold text-violet-800">Pathway recommendations available for your child</p>
+          <ChevronRight size={12} className="text-violet-600" />
+        </button>
+      )}
     </div>
   );
 }
@@ -171,7 +216,7 @@ function MyChildren({ children, loading, showFees, onViewChild, onEditChild, onN
         <ChevronDown size={18} className={`shrink-0 text-slate-600 transition-transform ${expanded ? 'rotate-180' : ''}`} />
       </button>
       {expanded && <div className="grid grid-cols-1 gap-2 border-t border-slate-100 bg-slate-50/60 p-2 sm:grid-cols-2">
-        {children.map(child => <ChildCard key={child.id} child={child} showFees={showFees} onViewChild={onViewChild} onEditChild={onEditChild} />)}
+        {children.map(child => <ChildCard key={child.id} child={child} showFees={showFees} onViewChild={onViewChild} onEditChild={onEditChild} onNavigate={onNavigate} />)}
         <button type="button" onClick={() => onNavigate('parent-portal-children')} className="flex min-h-11 items-center justify-center gap-1 rounded-lg border border-dashed border-slate-300 bg-white px-3 text-xs font-bold text-indigo-800 hover:bg-indigo-50">View all children <ChevronRight size={14} /></button>
       </div>}
     </section>
@@ -339,7 +384,7 @@ const ParentDashboard = ({ user, onNavigate, onLogout, brandingSettings }) => {
           onLogout={onLogout}
           brandingSettings={brandingSettings}
           accentColor="#3B1FA3"
-          bellTarget="parent-portal-communication"
+          bellTarget="parent-portal-messages"
         />
       </div>
 
@@ -353,7 +398,7 @@ const ParentDashboard = ({ user, onNavigate, onLogout, brandingSettings }) => {
         />
       )}
 
-      <div className="px-3 md:px-0 space-y-4 pt-2 md:pt-0">
+      <div className="px-3 md:px-0 space-y-4 pt-2 md:pt-0 pb-20 md:pb-0">
         {/* ── Greeting ── */}
         <div>
           <h1 className="text-lg font-extrabold text-slate-950">
@@ -382,7 +427,7 @@ const ParentDashboard = ({ user, onNavigate, onLogout, brandingSettings }) => {
           <button type="button" onClick={() => onNavigate('parent-portal-school-today')} className="flex min-h-12 w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-slate-50">
             <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-violet-700 text-white"><Calendar size={19} /></span><span className="flex-1 text-sm font-bold text-slate-950">Check today’s attendance</span><ChevronRight size={17} className="text-slate-500" />
           </button>
-          <button type="button" onClick={() => onNavigate('parent-portal-communication')} className="flex min-h-12 w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-slate-50">
+          <button type="button" onClick={() => onNavigate('parent-portal-messages')} className="flex min-h-12 w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-slate-50">
             <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-orange-600 text-white"><MessageSquare size={19} /></span><span className="flex-1 text-sm font-bold text-slate-950">Message the school</span><ChevronRight size={17} className="text-slate-500" />
           </button>
         </section>}
@@ -404,6 +449,15 @@ const ParentDashboard = ({ user, onNavigate, onLogout, brandingSettings }) => {
           ))}
         </section>}
       </div>
+
+      {/* Persistent bottom navigation */}
+      <ParentBottomNav
+        currentPage="parent-portal-home"
+        onNavigate={onNavigate}
+      />
+
+      {/* First-run onboarding overlay */}
+      <ParentOnboardingOverlay user={user} />
     </div>
   );
 };

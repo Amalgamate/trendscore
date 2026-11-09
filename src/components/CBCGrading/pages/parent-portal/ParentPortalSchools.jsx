@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { dashboardAPI, pathwayPlannerAPI } from '../../../../services/api';
 import { Skeleton } from '../../../ui';
+import ChildSelector from './shared/ChildSelector';
 import SchoolMatchingPanel from '../../shared/SchoolMatchingPanel';
 import FamilySchoolPreferences from '../../shared/FamilySchoolPreferences';
 
@@ -274,15 +275,14 @@ const ParentPortalSchools = ({ onNavigate }) => {
       <div className="pt-1 space-y-4">
 
         {/* Child selector */}
-        {children.length > 1 && (
-          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
-            {children.map(c => (
-              <button key={c.id} type="button" onClick={() => setChild(c)}
-                className={`flex-shrink-0 rounded-full px-3 py-1.5 text-xs font-bold border transition-colors ${selectedChild?.id === c.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-700 border-gray-200 hover:border-indigo-300'}`}>
-                {c.name?.split(' ')[0]}
-              </button>
-            ))}
-          </div>
+        {children.length > 0 && (
+          <ChildSelector
+            children={children}
+            selectedId={selectedChild?.id}
+            onSelect={(id) => setChild(children.find(c => c.id === id))}
+            variant="pills"
+            accentColor="#4F46E5"
+          />
         )}
 
         {selectedChild && (
