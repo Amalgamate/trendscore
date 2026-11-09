@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { dashboardAPI, classAPI } from '../../../../services/api';
 import { Skeleton } from '../../../ui';
+import ChildSelector from './shared/ChildSelector';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const getTodayName = () => DAY_NAMES[new Date().getDay()];
@@ -141,6 +142,12 @@ export default function ParentPortalSchoolToday({ onNavigate }) {
 
   useEffect(() => { loadChildren(); }, [loadChildren]);
 
+  const selectedChildId = children[activeIdx]?.id;
+  const handleChildSelect = (id) => {
+    const idx = children.findIndex(c => c.id === id);
+    if (idx !== -1) setActiveIdx(idx);
+  };
+
   const child = children[activeIdx];
 
   // Real schedule: same class-scoped endpoint the teacher dashboard widget
@@ -196,15 +203,17 @@ export default function ParentPortalSchoolToday({ onNavigate }) {
           </p>
         </div>
 
-        {/* Child tabs */}
+        {/* Child selector */}
         {loading ? (
           <Skeleton className="h-10 rounded-xl" />
-        ) : children.length > 1 ? (
-          <div className="flex gap-2 overflow-x-auto scrollbar-none pb-1">
-            {children.map((c, i) => (
-              <ChildTab key={c.id} child={c} active={activeIdx === i} onClick={() => setActiveIdx(i)} />
-            ))}
-          </div>
+        ) : children.length > 0 ? (
+          <ChildSelector
+            children={children}
+            selectedId={selectedChildId}
+            onSelect={handleChildSelect}
+            variant="tabs"
+            showPresence
+          />
         ) : null}
 
         {/* Presence status */}

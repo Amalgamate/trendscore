@@ -347,9 +347,10 @@ const ParentPortalAttendance = ({ onNavigate }) => {
 
   useEffect(() => { load(); }, [load]);
 
-  const avg = children.length
-    ? Math.round(children.reduce((s, c) => s + Number(c.attendanceRate || 0), 0) / children.length)
-    : 0;
+  const childrenWithAttendance = children.filter(c => c.attendanceRate !== null && c.attendanceRate !== undefined);
+  const avg = childrenWithAttendance.length
+    ? Math.round(childrenWithAttendance.reduce((s, c) => s + Number(c.attendanceRate), 0) / childrenWithAttendance.length)
+    : null;
   const totalPresent = children.reduce((sum, child) => sum + Number(child.attendanceSummary?.presentDays || 0), 0);
   const totalAbsent = children.reduce((sum, child) => sum + Number(child.attendanceSummary?.absentDays || 0), 0);
 
@@ -374,9 +375,9 @@ const ParentPortalAttendance = ({ onNavigate }) => {
 
             {loading ? <Skeleton className="h-10 w-28 bg-white/20 mt-4" /> : (
               <div className="mt-4">
-                <p className="text-4xl font-black tracking-tight">{avg}%</p>
+                <p className="text-4xl font-black tracking-tight">{avg !== null ? `${avg}%` : '—'}</p>
                 <p className="text-xs text-blue-100 mt-1">
-                  {avg >= 95 ? 'Strong routine across the family.' : avg >= 85 ? 'Healthy week with room to improve.' : 'A few attendance gaps need attention.'}
+                  {avg === null ? 'No attendance recorded yet.' : avg >= 95 ? 'Strong routine across the family.' : avg >= 85 ? 'Healthy week with room to improve.' : 'A few attendance gaps need attention.'}
                 </p>
               </div>
             )}

@@ -4,6 +4,7 @@ import ErrorBoundary from '../shared/ErrorBoundary';
 import EmptyState from '../shared/EmptyState';
 import ComingSoon from '../shared/ComingSoon';
 import MobilePortalAppBar from './MobilePortalAppBar';
+import ParentBottomNav from './ParentBottomNav';
 import { hasPageAccess, isParentPortalPage, resolveDashboardPage, userHasParentPortalAccess } from '../utils/appAccess';
 import { PAGE_TITLES } from '../utils/constants';
 import { useRolePreview } from '../../../contexts/RolePreviewContext';
@@ -416,9 +417,13 @@ const PageRouter = ({
           </h1>
         </div>
       </div>}
-      <div className="min-w-0">
+      <div className="min-w-0 pb-20 md:pb-0">
         {content}
       </div>
+      <ParentBottomNav
+        currentPage={normalizedPage}
+        onNavigate={handleNavigate}
+      />
     </div>
   );
 
@@ -653,9 +658,11 @@ const PageRouter = ({
           case 'parent-portal-schools':
             return renderParentPortalShell(<ParentPortalSchools onNavigate={handleNavigate} />);
           case 'parent-portal-academics':
-            return renderParentPortalShell(<ParentPortalAcademics onNavigate={handleNavigate} />, { hideBack: false });
+            // Merged into parent-portal-results — redirect there
+            return renderParentPortalShell(<ParentPortalResults onNavigate={handleNavigate} />);
           case 'parent-portal-communication':
             return renderParentPortalShell(<UnifiedInboxPage user={user} onNavigate={handleNavigate} />, { hideBack: false, edgeToEdge: true });
+
           case 'parent-portal-school-today':
             return renderParentPortalShell(<ParentPortalSchoolToday onNavigate={handleNavigate} />, { hideBack: false });
           case 'parent-portal-suggestion':

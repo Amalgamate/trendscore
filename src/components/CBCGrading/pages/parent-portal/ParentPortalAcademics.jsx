@@ -12,6 +12,7 @@ import {
 import { dashboardAPI, reportAPI } from '../../../../services/api';
 import ParentChildProfile from '../parent/ParentChildProfile';
 import { Skeleton } from '../../../ui';
+import ChildSelector from './shared/ChildSelector';
 import {
   summarizeAnalytics,
   scoreColor,
@@ -22,59 +23,6 @@ import { ResultsEmptyState, ResultsErrorState } from '../results/ResultsShared';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const getChildPhoto = (c) => c?.photoUrl || c?.profilePicture || c?.photo || null;
-
-// ─── ChildSelector ────────────────────────────────────────────────────────────
-function ChildSelector({ children, selectedId, onSelect }) {
-  const [open, setOpen] = useState(false);
-  const selected = children.find(c => c.id === selectedId) || children[0];
-  if (!selected) return null;
-
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen(v => !v)}
-        className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-3 py-2 text-left shadow-sm w-full sm:w-auto"
-      >
-        {getChildPhoto(selected) ? (
-          <img src={getChildPhoto(selected)} alt="" className="w-7 h-7 rounded-full object-cover flex-shrink-0" />
-        ) : (
-          <div className="w-7 h-7 rounded-full bg-[#3B1FA3]/10 text-[#3B1FA3] font-black text-xs flex items-center justify-center flex-shrink-0">
-            {(selected.name || '?')[0]}
-          </div>
-        )}
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-bold text-gray-900 truncate">{selected.name}</p>
-          <p className="text-[10px] text-gray-500">{selected.grade} · {selected.className || 'Class'}</p>
-        </div>
-        <ChevronDown size={14} className={`text-gray-400 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
-      </button>
-
-      {open && children.length > 1 && (
-        <div className="absolute top-full left-0 right-0 mt-1 z-20 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
-          {children.map(c => (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => { onSelect(c.id); setOpen(false); }}
-              className={`w-full flex items-center gap-2 px-3 py-2.5 text-left text-sm hover:bg-gray-50 ${c.id === selectedId ? 'bg-[#3B1FA3]/5 text-[#3B1FA3] font-bold' : 'text-gray-700'}`}
-            >
-              {getChildPhoto(c) ? (
-                <img src={getChildPhoto(c)} alt="" className="w-6 h-6 rounded-full object-cover" />
-              ) : (
-                <div className="w-6 h-6 rounded-full bg-[#3B1FA3]/10 text-[#3B1FA3] font-black text-xs flex items-center justify-center">
-                  {(c.name || '?')[0]}
-                </div>
-              )}
-              <span className="truncate">{c.name}</span>
-              <span className="text-[10px] text-gray-400 ml-auto">{c.grade}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ─── PerformanceSnapshot ──────────────────────────────────────────────────────
 function PerformanceSnapshot({ childId, year }) {
@@ -223,7 +171,7 @@ export default function ParentPortalAcademics({ onNavigate }) {
         {loading ? <Skeleton className="h-12 rounded-xl" /> : (
           <div className="flex items-start gap-2 flex-wrap">
             <div className="flex-1 min-w-0">
-              <ChildSelector children={children} selectedId={selectedId} onSelect={setSelectedId} />
+              <ChildSelector children={children} selectedId={selectedId} onSelect={setSelectedId} variant="dropdown" />
             </div>
             <YearSelector value={year} onChange={setYear} />
           </div>

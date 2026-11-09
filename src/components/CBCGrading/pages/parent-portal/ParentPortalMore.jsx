@@ -7,10 +7,12 @@ import React, { useState } from 'react';
 import {
   ArrowLeft, User, Bell, FileText, HelpCircle,
   Settings, LogOut, Lock,
-  ChevronRight, ExternalLink, AlertCircle, MessageSquare, Calendar, Mail
+  ChevronRight, ExternalLink, AlertCircle, MessageSquare, Calendar, Mail,
+  Languages,
 } from 'lucide-react';
 import { authAPI } from '../../../../services/api/auth.api';
 import { useNotifications } from '../../hooks/useNotifications';
+import { useParentLang, LANGS } from './shared/parent-i18n';
 
 // ─── Helper Components ──────────────────────────────────────────────
 
@@ -106,6 +108,7 @@ const ParentPortalMore = ({ user, onNavigate, onLogout }) => {
   const [showChangePasswordConfirm, setShowChangePasswordConfirm] = useState(false);
   const [sendingReset, setSendingReset] = useState(false);
   const { showSuccess, showError } = useNotifications();
+  const { lang, setLang, t } = useParentLang();
 
   const handleLogout = () => {
     setShowLogoutConfirm(false);
@@ -159,6 +162,37 @@ const ParentPortalMore = ({ user, onNavigate, onLogout }) => {
         <div className="mb-6">
           <ProfileCard user={user} onEditProfile={() => onNavigate('settings-profile')} />
         </div>
+
+        {/* Language Section */}
+        <MenuSection title="Language / Lugha">
+          <div className="px-4 py-4 border-b border-gray-100 last:border-b-0">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="p-2.5 rounded-lg bg-brand-purple/10 text-brand-purple flex-shrink-0">
+                <Languages size={18} />
+              </div>
+              <div className="flex-1">
+                <p className="font-semibold text-sm text-gray-900">Language / Lugha</p>
+                <p className="text-xs text-gray-500 mt-0.5">Choose your preferred language</p>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              {Object.entries(LANGS).map(([code, label]) => (
+                <button
+                  key={code}
+                  type="button"
+                  onClick={() => setLang(code)}
+                  className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-colors ${
+                    lang === code
+                      ? 'bg-brand-purple text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </MenuSection>
 
         {/* Account Section */}
         <MenuSection title="Account">
