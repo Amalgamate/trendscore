@@ -1338,17 +1338,27 @@ async function applyInstanceAction(instanceKey, action) {
 
 app.post('/api/instances/:key/:action', requireAuth, requireRole('super_admin'), async (req, res) => {
   const action = String(req.params.action || '').toLowerCase();
-  if (!['start', 'stop', 'drop', 'restart', 'redeploy', 'health'].includes(action)) {
+  if (!['start', 'stop', 'pause', 'resume', 'drop', 'restart', 'redeploy', 'health'].includes(action)) {
     return res.status(400).json({ error: 'Unsupported action' });
   }
 
   try {
+    const targetInfo = (await buildDeployTargets()).find(target =>
+      target.composeProject === req.params.key || target.id === req.params.key,
+    );
+    if (targetInfo && !['stack', 'main'].includes(targetInfo.kind)) {
+      return res.status(400).json({ error: 'Lifecycle controls are only available for school deployments.' });
+    }
+    const runtimeKey = targetInfo?.composeProject || req.params.key;
     const target = action === 'health'
-      ? (await collectRuntime()).instances.find(i => i.key === req.params.key || i.name === req.params.key)
-      : await applyInstanceAction(req.params.key, action);
+      ? (await collectRuntime()).instances.find(i => i.key === runtimeKey || i.name === runtimeKey)
+      : await applyInstanceAction(runtimeKey, action === 'pause' ? 'stop' : action === 'resume' ? 'start' : action);
     if (!target) return res.status(404).json({ error: 'Instance not found' });
 
-    pushAudit(action.toUpperCase(), target.name, req.user.email, `Action ${action} executed on ${target.name}`, action === 'stop' || action === 'drop' ? 'Warning' : 'Success');
+    if (targetInfo && ['pause', 'resume'].includes(action)) {
+      updateManifestSchool(targetInfo, { paused: action === 'pause' });
+    }
+    pushAudit(action.toUpperCase(), target.name, req.user.email, `Action ${action} executed on ${target.name}`, ['stop', 'pause', 'drop'].includes(action) ? 'Warning' : 'Success');
     res.json({ ok: true, target: target.name, action });
   } catch (error) {
     const code = error.code || 500;
@@ -2861,18 +2871,101 @@ app.get('/api/billing/schools', requireAuth, requireRole('super_admin', 'platfor
   try {
     const manifest = loadDeployManifest();
     const manifestById = new Map((manifest.instances || []).map(instance => [instance.id, instance]));
+    const { instances: runtimeInstances } = await collectRuntime();
+    const runtimeByProject = new Map(runtimeInstances.map(instance => [instance.composeProject, instance]));
     const schools = (await buildDeployTargets())
       .filter(target => ['stack', 'main'].includes(target.kind))
-      .filter(target => target.tier === 'production')
-      .filter(target => {
-        const instance = manifestById.get(target.id);
-        return !instance || (instance.archived !== true && instance.active !== false
-          && !['inactive', 'disabled'].includes(String(instance.status || '').toLowerCase()));
-      })
-      .map(target => ({ id: target.id, name: target.label, tenantKey: target.id, domain: target.domain || '' }));
+      .map(target => {
+        const saved = manifestById.get(target.id) || {};
+        const runtime = runtimeByProject.get(target.composeProject);
+        const archived = saved.archived === true || saved.active === false
+          || ['inactive', 'disabled', 'archived'].includes(String(saved.status || '').toLowerCase());
+        const paused = saved.paused === true;
+        return {
+          id: target.id,
+          name: target.label,
+          tenantKey: target.id,
+          domain: target.domain || '',
+          tier: target.tier || 'production',
+          kind: target.kind,
+          composeProject: target.composeProject || '',
+          discovered: target.discovered === true,
+          archived,
+          paused,
+          status: archived ? 'Archived' : paused ? 'Paused' : runtime?.status || 'Offline',
+          version: runtime?.version || null,
+          created: runtime?.created || null,
+          containers: runtime?.containers || 0,
+          runningContainers: runtime?.runningContainers || 0,
+          storageGb: runtime?.storage || 0,
+        };
+      });
     res.json({ ok: true, schools });
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message || 'Could not load provisioned schools' });
+  }
+});
+
+function updateManifestSchool(target, changes) {
+  if (!CONSOLE_MANIFEST_PATH) throw new Error('School deployment manifest is not configured.');
+  const manifest = loadDeployManifest();
+  if (!Array.isArray(manifest.instances)) manifest.instances = [];
+  let instance = manifest.instances.find(item => String(item.id) === String(target.id));
+  if (!instance) {
+    instance = {
+      id: target.id,
+      label: target.label,
+      tier: target.tier || 'production',
+      kind: target.kind || 'stack',
+      compose_project: target.composeProject,
+      public_domain: target.domain || '',
+    };
+    manifest.instances.push(instance);
+  }
+  Object.assign(instance, changes);
+  fs.writeFileSync(CONSOLE_MANIFEST_PATH, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+  return instance;
+}
+
+app.post('/api/billing/schools/:id/decommission', requireAuth, requireRole('super_admin'), async (req, res) => {
+  try {
+    const schoolId = String(req.params.id || '');
+    const targetInfo = (await buildDeployTargets()).find(target => String(target.id) === schoolId);
+    if (!targetInfo || !['stack', 'main'].includes(targetInfo.kind)) {
+      return res.status(404).json({ ok: false, error: 'School deployment not found.' });
+    }
+    const confirmName = String(req.body?.confirmName || '').trim();
+    if (!confirmName || confirmName !== targetInfo.label) {
+      return res.status(400).json({ ok: false, error: 'Enter the exact school name to confirm decommissioning.' });
+    }
+
+    const runtime = (await collectRuntime()).instances.find(instance =>
+      instance.composeProject === targetInfo.composeProject,
+    );
+    if (runtime) {
+      for (const id of runtime.containerIds) {
+        const container = docker.getContainer(id);
+        try { await container.stop({ t: 10 }); } catch (error) {
+          if (error.statusCode !== 304 && error.statusCode !== 404) throw error;
+        }
+        try { await container.remove({ force: true, v: false }); } catch (error) {
+          if (error.statusCode !== 404) throw error;
+        }
+      }
+    }
+
+    updateManifestSchool(targetInfo, {
+      archived: true,
+      active: false,
+      paused: false,
+      status: 'archived',
+      archivedAt: new Date().toISOString(),
+    });
+    pushAudit('SCHOOL_DECOMMISSION', targetInfo.label, req.user.email,
+      `School deployment ${targetInfo.id} decommissioned; Docker data volumes retained for recovery`, 'Warning');
+    return res.json({ ok: true, schoolId, archived: true, dataVolumesRetained: true });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error.message || 'School decommissioning failed.' });
   }
 });
 

@@ -128,11 +128,10 @@ function StepHeader({ number, title }) {
 // ─── Step 1 — Choose payment type ────────────────────────────────────────────
 
 function Step1ChooseType({ selected, onChange, children }) {
-  const total = children.reduce((s, c) => s + Number(c.feeBalance || 0), 0);
   const modes = [
-    { id: 'full',    icon: '💳', label: 'Pay Full Amount',  sub: `Pay KES ${fmt(total)}`       },
-    { id: 'partial', icon: '💰', label: 'Partial Payment',  sub: 'Pay part of the total'       },
-    { id: 'one',     icon: '👤', label: 'Pay One Child',    sub: 'Pay for a specific child'    },
+    { id: 'full',    icon: '💳', label: 'Pay Next Invoice',  sub: 'Pay one outstanding invoice in full' },
+    { id: 'partial', icon: '💰', label: 'Partial Payment',  sub: 'Pay part of the next outstanding invoice' },
+    { id: 'one',     icon: '👤', label: 'Choose a Child',   sub: 'Select a child, then pay one invoice' },
   ];
   return (
     <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
@@ -453,9 +452,6 @@ const ParentPortalFees = ({ user, onNavigate }) => {
 
   const totalBalance = children.reduce((s, c) => s + Number(c.feeBalance || 0), 0);
 
-  // Determine current step for progress bar
-  const step = !payMode ? 0 : payMode === 'full' ? 2 : amount ? (strategy ? 4 : 3) : 2;
-
   const resetFlow = () => {
     setPayMode(null);
     setAmount('');
@@ -464,9 +460,43 @@ const ParentPortalFees = ({ user, onNavigate }) => {
     setSelectedChildId(null);
   };
 
-  // Resolve which child's invoice the STK push should be attributed to, and
-  // for how much, then open MpesaPaymentModal. Full/partial payments across
-  // several children are attributed to the first child with an outstanding
+  // Determine current step for progress bar (only used in advanced mode)
+  const step = !payMode || payMode === 'advanced' ? 0 : payMode === 'full' ? 2 : amount ? (strategy ? 4 : 3) : 2;
+
+  // Resolve one outstanding invoice for the quick-pay STK push. The family
+  // balance can span several invoices, so this action pays only this invoice;
+  // parents can repeat it or use Advanced options for a custom allocation.
+  // ─── Quick Pay (simplified default path) ───
+  // Resolves the first child with an outstanding invoice and opens M-Pesa
+  // STK push directly for the full family balance — no mode selection,
+  // no distribution strategy, just one tap to pay.
+  const handleQuickPay = async () => {
+    setError(null);
+    const targetChildId = children.find(c => Number(c.feeBalance || 0) > 0)?.id;
+    if (!targetChildId) {
+      setError('No outstanding balance found');
+      return;
+    }
+    setPreparingPayment(true);
+    try {
+      const res = await feeAPI.getLearnerInvoices(targetChildId);
+      const invoices = res?.data ?? res ?? [];
+      const list = Array.isArray(invoices) ? invoices : [];
+      const outstanding = list.find((inv) => Number(inv?.balance ?? inv?.outstanding ?? 0) > 0);
+      if (!outstanding) {
+        setError('No outstanding invoice found for this child');
+        return;
+      }
+      const invoiceBalance = Number(outstanding?.balance ?? outstanding?.outstanding ?? 0);
+      setPayingInvoice({ id: outstanding.id, balance: invoiceBalance });
+      setShowPaymentModal(true);
+    } catch (e) {
+      setError(e?.message || 'Failed to prepare payment');
+    } finally {
+      setPreparingPayment(false);
+    }
+  };
+
   // balance — MpesaPaymentModal drives a single M-Pesa transaction per push.
   const handleReviewPay = async () => {
     setError(null);
@@ -480,8 +510,8 @@ const ParentPortalFees = ({ user, onNavigate }) => {
       return;
     }
 
-    const payAmount = payMode === 'full' ? totalBalance : Number(amount) || 0;
-    if (payAmount <= 0) {
+    const requestedAmount = Number(amount) || 0;
+    if (payMode !== 'full' && requestedAmount <= 0) {
       setError('Enter a valid amount to pay');
       return;
     }
@@ -498,7 +528,13 @@ const ParentPortalFees = ({ user, onNavigate }) => {
         return;
       }
 
-      setPayingInvoice({ id: outstanding.id, balance: payAmount });
+      const invoiceBalance = Number(outstanding?.balance ?? outstanding?.outstanding ?? 0);
+      const payAmount = payMode === 'full' ? invoiceBalance : requestedAmount;
+      if (payAmount > invoiceBalance) {
+        setError(`This payment is tied to one invoice. Its remaining balance is KES ${fmt(invoiceBalance)}.`);
+        return;
+      }
+      setPayingInvoice({ id: outstanding.id, balance: invoiceBalance, amount: payAmount });
       setShowPaymentModal(true);
     } catch (e) {
       setError(e?.message || 'Failed to prepare payment');
@@ -515,27 +551,53 @@ const ParentPortalFees = ({ user, onNavigate }) => {
         {/* Family balance header */}
         <FamilyFeeHeader children={children} loading={loading} />
 
-        {!loading && totalBalance > 0 && (
+        {/* ─── Simplified Quick Pay (default path) ─── */}
+        {!loading && totalBalance > 0 && !payMode && (
+          <div className="bg-white border border-gray-200 rounded-2xl p-4 space-y-3">
+            <div className="text-center">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Total family balance</p>
+              <p className="text-3xl font-black text-[#3B1FA3]">KES {fmt(totalBalance)}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleQuickPay()}
+              disabled={preparingPayment}
+              className="w-full py-3.5 bg-[#3B1FA3] text-white text-sm font-bold rounded-xl hover:bg-[#2d1680] transition-colors disabled:opacity-60"
+            >
+              {preparingPayment ? 'Preparing M-Pesa…' : 'Pay next outstanding invoice'}
+            </button>
+            <p className="text-center text-[11px] text-gray-500">This pays one invoice. Use advanced options to choose a child or split a payment.</p>
+            <button
+              type="button"
+              onClick={() => setPayMode('advanced')}
+              className="w-full py-2 text-xs font-semibold text-gray-500 hover:text-[#3B1FA3] transition-colors"
+            >
+              Advanced options (partial, one child, custom split)
+            </button>
+          </div>
+        )}
+
+        {/* ─── Advanced payment flow (hidden by default) ─── */}
+        {!loading && totalBalance > 0 && payMode === 'advanced' && (
           <>
-            {/* Section title */}
-            <div>
-              <h2 className="text-sm font-bold text-[#3B1FA3] mb-1">Smart Payment Flow</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-bold text-[#3B1FA3]">Advanced Payment</h2>
               <StepIndicator step={step} total={4} />
             </div>
             {/* Step 1 */}
             <Step1ChooseType
-              selected={payMode}
+              selected={payMode === 'advanced' ? null : payMode}
               onChange={m => { setPayMode(m); setAmount(''); setStrategy(null); setCustom({}); }}
               children={children}
             />
 
             {/* Step 2 — amount (only for partial / one) */}
-            {payMode && payMode !== 'full' && (
+            {payMode && payMode !== 'full' && payMode !== 'advanced' && (
               <Step2EnterAmount mode={payMode} amount={amount} setAmount={setAmount} children={children} />
             )}
 
-            {/* Step 3 — distribution */}
-            {payMode && (payMode === 'full' || Number(amount) > 0) && (
+            {/* Select a child when a parent is paying an invoice for one child. */}
+            {payMode === 'one' && (
               <Step3Distribution
                 mode={payMode}
                 amount={amount}
@@ -550,9 +612,9 @@ const ParentPortalFees = ({ user, onNavigate }) => {
             )}
 
             {/* Step 4 — Review & Pay CTA */}
-            {payMode && (
+            {payMode && payMode !== 'advanced' && (
               payMode === 'full' ||
-              (payMode === 'partial' && Number(amount) > 0 && strategy) ||
+              (payMode === 'partial' && Number(amount) > 0) ||
               (payMode === 'one' && Number(amount) > 0 && selectedChildId)
             ) && (
               <div className="bg-white border border-gray-200 rounded-xl p-4">
@@ -566,6 +628,15 @@ const ParentPortalFees = ({ user, onNavigate }) => {
                 </button>
               </div>
             )}
+
+            {/* Back to simple view */}
+            <button
+              type="button"
+              onClick={resetFlow}
+              className="w-full py-2 text-xs font-semibold text-gray-500 hover:text-[#3B1FA3] transition-colors"
+            >
+              ← Back to simple pay
+            </button>
           </>
         )}
 

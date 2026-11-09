@@ -39,6 +39,40 @@ interface CreateNotificationParams {
 
 const APPROVAL_NOTIFICATION_LINK = (requestId: string) => `/app/settings-approvals?requestId=${requestId}`;
 
+/**
+ * Rewrite internal notification links to be role-aware.
+ * Links like /app/learning/assignments/{id} are valid for students/teachers
+ * but not for parents, who navigate through the parent portal shell.
+ * This rewrites those links to their parent-portal equivalents so that
+ * when a parent taps a notification, they land on a route that exists
+ * in their navigation context.
+ */
+const PARENT_LINK_REWRITES: Array<{ pattern: RegExp; replacement: string }> = [
+  { pattern: /^\/app\/learning\/assignments\/[^/]+$/, replacement: '/app/parent-portal-homework' },
+  { pattern: /^\/app\/learning\/assignments\/[^/]+\/submission\/[^/]+$/, replacement: '/app/parent-portal-homework' },
+  { pattern: /^\/app\/learning\/lessons\/[^/]+$/, replacement: '/app/parent-portal-homework' },
+  { pattern: /^\/app\/learning\/marketplace/, replacement: '/app/parent-portal-support' },
+];
+
+async function rewriteLinkForUser(userId: string, link?: string): Promise<string | undefined> {
+  if (!link) return link;
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
+    });
+    if (!user || user.role !== 'PARENT') return link;
+
+    for (const { pattern, replacement } of PARENT_LINK_REWRITES) {
+      if (pattern.test(link)) return replacement;
+    }
+    return link;
+  } catch {
+    return link;
+  }
+}
+
 const getRequesterName = (request: {
   requestedBy?: { firstName?: string | null; lastName?: string | null } | null;
 }) => {
@@ -54,7 +88,10 @@ export class NotificationService {
    * Create a notification and emit real-time event
    */
   static async createNotification(params: CreateNotificationParams) {
-    const { userId, title, message, type = NotificationType.INFO, link, showAsPopup = false, metadata } = params;
+    const { userId, title, message, type = NotificationType.INFO, showAsPopup = false, metadata } = params;
+
+    // Rewrite the link to be role-aware (e.g., parent portal routes for PARENT users)
+    const link = await rewriteLinkForUser(userId, params.link);
 
     try {
       // 1. Save to database

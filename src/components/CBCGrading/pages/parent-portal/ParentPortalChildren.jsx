@@ -33,7 +33,10 @@ function StatPill({ label, value, icon: Icon, colorClass, borderClass }) {
 
 function ChildCard({ child, onSelect, showFees }) {
   const bal            = Number(child.feeBalance || 0);
-  const attendance     = Math.round(Number(child.attendanceRate || 0));
+  const attendance     = child.attendanceRate !== null && child.attendanceRate !== undefined
+    ? Math.round(Number(child.attendanceRate))
+    : null;
+  const hasAttendance  = attendance !== null;
   const avgScore       = Math.round(Number(child.averageScore || 0));
   const photoSrc        = getChildPhoto(child);
   const statusLabel     = child.status === 'ACTIVE' ? 'Active' : child.status || 'Enrolled';
@@ -95,10 +98,10 @@ function ChildCard({ child, onSelect, showFees }) {
         <div className="mt-4 grid grid-cols-3 gap-2">
           <StatPill
             label="Attendance"
-            value={`${attendance}%`}
+            value={hasAttendance ? `${attendance}%` : '—'}
             icon={Calendar}
-            colorClass={attendance >= 90 ? 'bg-emerald-50 text-emerald-700' : attendance >= 75 ? 'bg-amber-50 text-amber-700' : 'bg-rose-50 text-rose-700'}
-            borderClass={attendance >= 90 ? 'border-emerald-200' : attendance >= 75 ? 'border-amber-200' : 'border-rose-200'}
+            colorClass={!hasAttendance ? 'bg-gray-50 text-gray-500' : attendance >= 90 ? 'bg-emerald-50 text-emerald-700' : attendance >= 75 ? 'bg-amber-50 text-amber-700' : 'bg-rose-50 text-rose-700'}
+            borderClass={!hasAttendance ? 'border-gray-200' : attendance >= 90 ? 'border-emerald-200' : attendance >= 75 ? 'border-amber-200' : 'border-rose-200'}
           />
           <StatPill
             label="Avg Score"

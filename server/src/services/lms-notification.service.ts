@@ -14,6 +14,12 @@ import {
   NotificationService,
   NotificationType,
 } from './notification.service';
+import { SmsService } from './sms.service';
+import {
+  whatsAppBusinessService,
+  isWabaConfigured,
+} from '../domains/communication/whatsapp-business.service';
+import logger from '../utils/logger';
 import type {
   LearningAssignment,
   LearningSubmission,
@@ -46,6 +52,87 @@ async function resolveParentUserId(learnerId: string): Promise<string | null> {
     select: { parentId: true },
   });
   return learner?.parentId ?? null;
+}
+
+/**
+ * Resolve the parent's phone number for a learner.
+ * Mirrors the fallback chain from attendance-notification.service.ts:
+ * parent.phone → primaryContactPhone → guardianPhone → motherPhone → fatherPhone
+ */
+async function resolveParentPhone(learnerId: string): Promise<string | null> {
+  const learner = await prisma.learner.findUnique({
+    where: { id: learnerId },
+    select: {
+      parent: { select: { phone: true } },
+      primaryContactPhone: true,
+      guardianPhone: true,
+      motherPhone: true,
+      fatherPhone: true,
+    },
+  });
+  if (!learner) return null;
+  return (
+    learner.parent?.phone       ||
+    learner.primaryContactPhone ||
+    learner.guardianPhone       ||
+    learner.motherPhone         ||
+    learner.fatherPhone         ||
+    null
+  );
+}
+
+/**
+ * Resolve the learner's name for personalised messages.
+ */
+async function resolveLearnerName(learnerId: string): Promise<string> {
+  const learner = await prisma.learner.findUnique({
+    where: { id: learnerId },
+    select: { firstName: true, lastName: true, grade: true },
+  });
+  if (!learner) return 'your child';
+  return `${learner.firstName} ${learner.lastName}`;
+}
+
+/**
+ * Send an SMS and/or WhatsApp message to a parent about an LMS event.
+ * Fire-and-forget — errors are caught and logged, never re-thrown.
+ * Mirrors the dual-delivery pattern from AttendanceNotificationService.
+ */
+async function sendParentChannelNotification(
+  learnerId: string,
+  message: string,
+): Promise<void> {
+  const phone = await resolveParentPhone(learnerId);
+  if (!phone) {
+    logger.debug('[LMSNotification] No parent phone — skipping channel notification', { learnerId });
+    return;
+  }
+
+  // SMS delivery
+  try {
+    const smsResult = await SmsService.sendSms(phone, message);
+    if (smsResult.success) {
+      logger.info('[LMSNotification] SMS sent', { learnerId, phone: phone.slice(0, 7) + '****' });
+    } else {
+      logger.warn('[LMSNotification] SMS failed', { learnerId, error: smsResult.error });
+    }
+  } catch (smsErr: any) {
+    logger.warn('[LMSNotification] SMS exception', { learnerId, error: smsErr?.message });
+  }
+
+  // WhatsApp delivery (WABA only, if configured)
+  if (isWabaConfigured()) {
+    try {
+      const waResult = await whatsAppBusinessService.sendText({ to: phone, body: message });
+      logger.info('[LMSNotification] WhatsApp sent', {
+        learnerId,
+        success: waResult.success,
+        messageId: waResult.messageId,
+      });
+    } catch (waErr: any) {
+      logger.warn('[LMSNotification] WhatsApp exception', { learnerId, error: waErr?.message });
+    }
+  }
 }
 
 /**
@@ -123,8 +210,19 @@ export class LMSNotificationService {
               title: 'New Assignment Published',
               message: `A new assignment "${title}" has been published for your child.`,
               type: NotificationType.INFO,
-              link: `/app/learning/assignments/${id}`,
+              link: `/app/parent-portal-homework`,
             });
+          }),
+        );
+
+        // Send SMS/WhatsApp to parents who have no in-app account but do have a phone.
+        // Also sends to parents who DO have an account — the channel notification is
+        // complementary to the in-app notification, not a replacement.
+        const channelNotifications = await Promise.allSettled(
+          enrollments.map(async ({ learnerId }) => {
+            const learnerName = await resolveLearnerName(learnerId);
+            const smsMessage = `Dear Parent, a new assignment "${title}" has been published for ${learnerName}. Check the Parent Portal for details.`;
+            return sendParentChannelNotification(learnerId, smsMessage);
           }),
         );
 
@@ -243,9 +341,14 @@ export class LMSNotificationService {
             title: 'Teacher Feedback Available',
             message: `Your child's assignment "${title}" has been marked. Teacher feedback is now available.`,
             type: NotificationType.INFO,
-            link: `/app/learning/assignments/${assignmentId}`,
+            link: `/app/parent-portal-homework`,
           });
         }
+
+        // Send SMS/WhatsApp to the parent about the marked assignment.
+        const learnerName = await resolveLearnerName(learnerId);
+        const smsMessage = `Dear Parent, ${learnerName}'s assignment "${title}" has been marked. Teacher feedback is now available on the Parent Portal.`;
+        await sendParentChannelNotification(learnerId, smsMessage);
       }
     } catch (err: any) {
       console.error(

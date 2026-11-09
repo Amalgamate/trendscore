@@ -328,6 +328,8 @@ test('reset is refused once an invoice has been issued', async () => {
 test('Daraja matches the entered school name only when one customer and one open invoice are unambiguous', async () => {
   const flag = await api('PUT', '/api/feature-flags/MPESA_C2B_ENABLED', { enabled: true });
   assert.equal(flag.status, 200, JSON.stringify(flag.body));
+  const paymentDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Nairobi' }).format(new Date());
+  const transactionTime = `${paymentDate.replaceAll('-', '')}120000`;
   const customer = await newCustomer('Canonical School Name', 'canonical-school-name');
 
   async function createIssuedInvoice() {
