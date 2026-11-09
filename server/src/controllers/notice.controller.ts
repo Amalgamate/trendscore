@@ -8,6 +8,10 @@ import { getCanonicalRoles, hasAnyRole } from '../utils/roleNormalizer';
 const canManageNotices = (user: AuthRequest['user']) =>
   getCanonicalRoles(user).some((role) => hasPermission(role as Role, 'SEND_SCHOOL_NOTICES'));
 
+/** Roles that may publish class-level diary entries (teachers, but not school-wide). */
+const canPublishClassDiary = (user: AuthRequest['user']) =>
+  getCanonicalRoles(user).some((role) => hasPermission(role as Role, 'PUBLISH_CLASS_DIARY'));
+
 /**
  * Audience tokens a reader matches. A notice's targetAudience may be empty or
  * ALL (everyone) or a comma separated list of PARENTS, STUDENTS, TEACHERS, STAFF.
@@ -53,11 +57,13 @@ export class NoticeController {
 
       const { status, category, includeArchived } = req.query;
       const isManager = canManageNotices(req.user);
+      const isDiaryPublisher = canPublishClassDiary(req.user);
+      const userId = req.user?.userId;
       const now = new Date();
       const notices = await prisma.notice.findMany({
         where: {
-          ...(includeArchived === 'true' && isManager ? {} : { archived: false }),
-          ...(status && isManager ? { status: String(status) } : {}),
+          ...(includeArchived === 'true' && (isManager || isDiaryPublisher) ? {} : { archived: false }),
+          ...(status && (isManager || isDiaryPublisher) ? { status: String(status) } : {}),
           ...(category ? { category: String(category) } : {})
         },
         include: {
@@ -75,7 +81,11 @@ export class NoticeController {
 
       const visibleNotices = isManager
         ? notices
-        : notices.filter((notice) => isNoticeVisibleTo(notice, req.user, now)).map(withoutAuthorEmail);
+        : isDiaryPublisher
+          ? notices.filter((notice) =>
+              notice.createdById === userId || isNoticeVisibleTo(notice, req.user, now)
+            ).map(withoutAuthorEmail)
+          : notices.filter((notice) => isNoticeVisibleTo(notice, req.user, now)).map(withoutAuthorEmail);
 
       return res.json({ success: true, data: visibleNotices });
     } catch (error: any) {
@@ -108,7 +118,8 @@ export class NoticeController {
       }
 
       if (!canManageNotices(req.user)) {
-        if (!isNoticeVisibleTo(notice, req.user, new Date())) {
+        const isAuthor = notice.createdById === req.user?.userId;
+        if (!isAuthor && !isNoticeVisibleTo(notice, req.user, new Date())) {
           return res.status(404).json({ success: false, error: 'Notice not found' });
         }
         return res.json({ success: true, data: withoutAuthorEmail(notice) });
@@ -130,6 +141,22 @@ export class NoticeController {
       const { title, content, category, priority, status, targetAudience, publishedAt, expiresAt } = req.body;
       if (!title || !content) {
         return res.status(400).json({ success: false, error: 'title and content are required' });
+      }
+
+      // Teachers may only post class-level diary entries targeting parents or
+      // students. School-wide audiences (ALL, STAFF, TEACHERS) are reserved for
+      // roles holding SEND_SCHOOL_NOTICES.
+      const isSchoolNoticeManager = canManageNotices(req.user);
+      const audience = String(targetAudience || '').trim().toUpperCase();
+      if (!isSchoolNoticeManager && audience) {
+        const allowed = audience.split(',').map((t) => t.trim()).filter(Boolean);
+        const forbidden = allowed.some((t) => ['ALL', 'STAFF', 'TEACHERS'].includes(t.toUpperCase()));
+        if (forbidden) {
+          return res.status(403).json({
+            success: false,
+            error: 'Teachers can only publish diary entries to parents or students, not school-wide audiences.',
+          });
+        }
       }
 
       const notice = await prisma.notice.create({
