@@ -1,14 +1,15 @@
 /**
  * ParentChildProfile
  * Design ref: purple header card + avatar + name + grade/class + Present today badge
- * Tabs: Results · Attendance · Fees
+ * Tabs: Diary (teacher notes + history) · Fees · Attendance · Learning · More
+ * Diary tab: grouped by teacher, with subject tags, priority badges, and 7-day history
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   ArrowLeft, BookOpen, CalendarDays, ChevronRight, ClipboardList, CreditCard, FileText,
   GraduationCap, MessageCircle, MoreVertical, Bus, Headphones,
-  CheckCircle2, Loader2,
+  CheckCircle2, Loader2, Clock,
   Receipt, Wallet,
 } from 'lucide-react';
 import api from '../../../../services/api';
@@ -210,12 +211,42 @@ function FeesTab({ learnerId }) {
   );
 }
 
-// ─── Class Diary Panel ───────────────────────────────────────────────────────
+// ─── Teacher Avatar ──────────────────────────────────────────────────────────
 
-function ClassDiaryPanel({ diaryDate }) {
-  const [notices, setNotices]   = useState([]);
-  const [loading, setLoading]   = useState(false);
-  const [error, setError]       = useState(null);
+function teacherInitials(firstName, lastName) {
+  return ((firstName || '').charAt(0) + (lastName || '').charAt(0)).toUpperCase() || '?';
+}
+
+function teacherDisplayName(createdBy) {
+  if (!createdBy) return 'School';
+  const first = createdBy.firstName || '';
+  const last  = createdBy.lastName || '';
+  return [first, last].filter(Boolean).join(' ').trim() || 'Staff';
+}
+
+const SUBJECT_COLORS = [
+  'bg-blue-600',    'bg-emerald-600',  'bg-violet-600',   'bg-amber-600',
+  'bg-rose-600',    'bg-teal-600',     'bg-indigo-600',   'bg-orange-600',
+];
+function subjectColor(category) {
+  if (!category) return 'bg-slate-600';
+  const hash = category.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+  return SUBJECT_COLORS[hash % SUBJECT_COLORS.length];
+}
+
+const PRIORITY_TONE = {
+  URGENT: { ring: 'ring-rose-200', badge: 'bg-rose-100 text-rose-700', label: 'Urgent' },
+  HIGH:   { ring: 'ring-amber-200', badge: 'bg-amber-100 text-amber-700', label: 'Important' },
+  NORMAL: { ring: 'ring-slate-100', badge: '', label: '' },
+  LOW:    { ring: 'ring-slate-100', badge: '', label: '' },
+};
+
+// ─── Diary Notes Panel ───────────────────────────────────────────────────────
+
+function DiaryNotesPanel({ diaryDate, child }) {
+  const [allNotices, setAllNotices] = useState([]);
+  const [loading, setLoading]       = useState(false);
+  const [error, setError]           = useState(null);
 
   const dateKey = diaryDate.toISOString().slice(0, 10);
 
@@ -223,67 +254,178 @@ function ClassDiaryPanel({ diaryDate }) {
     setLoading(true); setError(null);
     try {
       const res = await api.notices?.getAll?.();
-      const all = res?.data || res || [];
-      // Filter notices published on the selected diary date (or within ±1 day
-      // for weekend carry-over). Only published, parent-visible notices.
-      const dayStart = new Date(diaryDate);
-      dayStart.setHours(0, 0, 0, 0);
-      const dayEnd = new Date(diaryDate);
-      dayEnd.setHours(23, 59, 59, 999);
-
-      const dayNotices = all.filter((n) => {
-        if (!n.publishedAt) return false;
-        const published = new Date(n.publishedAt);
-        return published >= dayStart && published <= dayEnd;
-      });
-
-      setNotices(dayNotices);
+      setAllNotices(res?.data || res || []);
     } catch (e) {
-      setError(e?.message || 'Could not load diary');
+      setError(e?.message || 'Could not load notes');
     } finally {
       setLoading(false);
     }
-  }, [dateKey]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 
+  // ── Split notices into "today" and "history" ──
+  const dayStart = new Date(diaryDate); dayStart.setHours(0, 0, 0, 0);
+  const dayEnd   = new Date(diaryDate); dayEnd.setHours(23, 59, 59, 999);
+  const now      = new Date();
+  const sevenDaysAgo = new Date(now); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+  const todayNotices = allNotices.filter((n) => {
+    if (!n.publishedAt) return false;
+    const published = new Date(n.publishedAt);
+    return published >= dayStart && published <= dayEnd;
+  });
+
+  const historyNotices = allNotices.filter((n) => {
+    if (!n.publishedAt) return false;
+    const published = new Date(n.publishedAt);
+    return published < dayStart && published >= sevenDaysAgo;
+  }).sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
+
+  // ── Group today's notices by teacher ──
+  const teacherGroups = {};
+  for (const notice of todayNotices) {
+    const teacherId = notice.createdBy?.id || 'school';
+    const teacherName = teacherDisplayName(notice.createdBy);
+    if (!teacherGroups[teacherId]) {
+      teacherGroups[teacherId] = { name: teacherName, initials: teacherInitials(notice.createdBy?.firstName, notice.createdBy?.lastName), notes: [] };
+    }
+    teacherGroups[teacherId].notes.push(notice);
+  }
+  const teacherEntries = Object.values(teacherGroups);
+
+  // ── Group history by day ──
+  const historyByDay = {};
+  for (const notice of historyNotices) {
+    const dayKey = new Date(notice.publishedAt).toLocaleDateString('en-KE', { weekday: 'short', day: 'numeric', month: 'short' });
+    if (!historyByDay[dayKey]) historyByDay[dayKey] = [];
+    historyByDay[dayKey].push(notice);
+  }
+  const historyDays = Object.entries(historyByDay);
+
   if (loading) {
     return (
-      <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2.5 text-xs text-slate-400 flex items-center gap-2">
-        <Loader2 size={12} className="animate-spin" /> Loading class diary…
+      <div className="space-y-2">
+        {[1, 2].map(i => (
+          <div key={i} className="animate-pulse rounded-xl border border-slate-200 bg-white p-3">
+            <div className="flex items-center gap-2"><div className="h-8 w-8 rounded-full bg-slate-200" /><div className="flex-1 space-y-1.5"><div className="h-2.5 w-20 rounded bg-slate-200" /><div className="h-2 w-16 rounded bg-slate-100" /></div></div>
+            <div className="mt-2 space-y-1"><div className="h-2 w-full rounded bg-slate-100" /><div className="h-2 w-3/4 rounded bg-slate-100" /></div>
+          </div>
+        ))}
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="mt-3 rounded-lg bg-rose-50 border border-rose-100 px-3 py-2.5 text-xs text-rose-600">
+      <div className="rounded-lg bg-rose-50 border border-rose-100 px-3 py-2.5 text-xs text-rose-600">
         {error}
       </div>
     );
   }
 
-  if (notices.length === 0) {
-    return (
-      <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2.5 text-xs text-slate-500">
-        No class notes shared for this date. Try browsing a different day.
-      </div>
-    );
-  }
-
   return (
-    <div className="mt-3 space-y-2">
-      {notices.map((notice) => (
-        <div key={notice.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2.5">
-          <p className="text-xs font-bold text-slate-800">{notice.title}</p>
-          <p className="text-[11px] text-slate-600 mt-1 line-clamp-3">{notice.content}</p>
-          {notice.publishedAt && (
-            <p className="text-[10px] text-slate-400 mt-1.5">
-              {new Date(notice.publishedAt).toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit', hour12: true })}
-            </p>
+    <div className="space-y-4">
+      {/* ── Today's Notes ── */}
+      <div>
+        <div className="flex items-center gap-2 mb-2">
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-700 text-white text-[11px] font-black">
+            {diaryDate.getDate()}
+          </span>
+          <h3 className="text-sm font-extrabold text-slate-950">Today&rsquo;s notes</h3>
+          {todayNotices.length > 0 && (
+            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">{todayNotices.length} note{todayNotices.length === 1 ? '' : 's'}</span>
           )}
         </div>
-      ))}
+
+        {todayNotices.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/50 px-4 py-6 text-center">
+            <BookOpen size={22} className="mx-auto text-slate-300" />
+            <p className="mt-2 text-xs font-bold text-slate-700">No notes shared yet today</p>
+            <p className="mt-0.5 text-[11px] text-slate-500">When teachers post updates, you&rsquo;ll see them here.</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {teacherEntries.map((group) => (
+              <div key={group.name} className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                {/* Teacher header */}
+                <div className="flex items-center gap-2.5 border-b border-slate-100 bg-slate-50/60 px-3 py-2">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-[11px] font-extrabold text-indigo-900">{group.initials}</div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-bold text-slate-950 truncate">{group.name}</p>
+                    <p className="text-[10px] text-slate-500">{group.notes.length} note{group.notes.length === 1 ? '' : 's'} shared</p>
+                  </div>
+                </div>
+                {/* Teacher's notes */}
+                <div className="divide-y divide-slate-50">
+                  {group.notes.map((notice) => {
+                    const tone = PRIORITY_TONE[String(notice.priority || 'NORMAL').toUpperCase()] || PRIORITY_TONE.NORMAL;
+                    return (
+                      <div key={notice.id} className={`px-3 py-2.5 ring-1 ring-inset ${tone.ring}`}>
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-xs font-bold text-slate-900 flex-1">{notice.title}</p>
+                          {tone.label && <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${tone.badge}`}>{tone.label}</span>}
+                        </div>
+                        <p className="mt-1 text-[11px] leading-relaxed text-slate-600">{notice.content}</p>
+                        <div className="mt-1.5 flex items-center gap-2">
+                          {notice.category && (
+                            <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold text-white ${subjectColor(notice.category)}`}>{notice.category}</span>
+                          )}
+                          {notice.publishedAt && (
+                            <span className="text-[10px] text-slate-400">
+                              {new Date(notice.publishedAt).toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── Recent History ── */}
+      {historyDays.length > 0 && (
+        <div>
+          <div className="flex items-center gap-2 mb-2">
+            <Clock size={15} className="text-slate-500" />
+            <h3 className="text-sm font-extrabold text-slate-950">Recent history</h3>
+            <span className="text-[10px] text-slate-500">Last 7 days</span>
+          </div>
+          <div className="space-y-1.5">
+            {historyDays.slice(0, 5).map(([dayLabel, dayNotices]) => (
+              <details key={dayLabel} className="group rounded-lg border border-slate-200 bg-white overflow-hidden">
+                <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 hover:bg-slate-50">
+                  <span className="text-[11px] font-bold text-slate-700 flex-1">{dayLabel}</span>
+                  <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-600">{dayNotices.length}</span>
+                  <ChevronRight size={13} className="text-slate-400 transition-transform group-open:rotate-90" />
+                </summary>
+                <div className="divide-y divide-slate-50 border-t border-slate-100">
+                  {dayNotices.map((notice) => {
+                    const teacherName = teacherDisplayName(notice.createdBy);
+                    const initials = teacherInitials(notice.createdBy?.firstName, notice.createdBy?.lastName);
+                    return (
+                      <div key={notice.id} className="flex items-start gap-2 px-3 py-2">
+                        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-[9px] font-extrabold text-indigo-900">{initials}</div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[11px] font-bold text-slate-800 truncate">{notice.title}</p>
+                          <p className="text-[10px] text-slate-500 truncate">{teacherName}{notice.category ? ` · ${notice.category}` : ''}</p>
+                        </div>
+                        <span className="shrink-0 text-[9px] text-slate-400">
+                          {new Date(notice.publishedAt).toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit', hour12: true })}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </details>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -356,22 +498,21 @@ export default function ParentChildProfile({ child, siblings = [], onSelectChild
           {siblings.length > 1 && <select id="parent-child-switcher" value={child.id} onChange={e => onSelectChild?.(siblings.find(s => String(s.id) === e.target.value))} className="max-w-28 rounded-lg border border-slate-300 bg-white px-2 py-2 text-xs font-bold text-slate-800"><option value={child.id}>{child.name?.split(' ')[0]}</option>{siblings.filter(s => String(s.id) !== String(child.id)).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select>}
         </div>
 
-        <nav aria-label="Child activities" className="overflow-hidden rounded-xl border border-slate-200 bg-white divide-y divide-slate-100">
-            {visibleTabs.map(({ id, label, icon: Icon, color }) => (
+        {/* Compact horizontal tab pills — keeps nav minimal so content gets focus */}
+        <nav aria-label="Child activities" className="flex items-center gap-1.5 overflow-x-auto rounded-xl border border-slate-200 bg-white px-2 py-1.5">
+          {visibleTabs.map(({ id, label, icon: Icon, color }) => (
             <button
               key={id}
               onClick={() => setTab(id)}
               className={cn(
-                'flex min-h-12 w-full items-center gap-3 px-3 py-2.5 text-left text-sm font-bold transition-colors',
+                'flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold transition-colors',
                 tab === id
-                  ? 'bg-indigo-50 text-indigo-950'
-                  : 'bg-white text-slate-800 hover:bg-slate-50',
+                  ? 'bg-indigo-50 text-indigo-950 ring-1 ring-indigo-200'
+                  : 'text-slate-600 hover:bg-slate-50',
               )}
             >
-              <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-white ${color}`}><Icon size={18} /></span>
-              <span className="flex-1">{label}</span>
-              {tab === id && <span className="text-[10px] font-bold uppercase tracking-wide text-indigo-800">Open</span>}
-              <ChevronRight size={17} className="shrink-0 text-slate-500" />
+              <span className={`flex h-5 w-5 items-center justify-center rounded text-white ${color}`}><Icon size={12} /></span>
+              {label}
             </button>
           ))}
         </nav>
@@ -379,15 +520,21 @@ export default function ParentChildProfile({ child, siblings = [], onSelectChild
       {/* Tab content */}
       <div className="min-w-0">
         {tab === 'diary' && <div className="space-y-3">
+          {/* Date picker — clean, direct */}
           <div className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2">
-            <div><p className="text-[10px] font-bold uppercase tracking-wide text-slate-600">Diary date</p><p className="text-xs font-extrabold text-slate-950">{diaryDate.toLocaleDateString('en-KE', { weekday: 'long', day: 'numeric', month: 'long' })}</p></div>
-            <div className="flex items-center gap-1"><button type="button" onClick={() => shiftDiaryDate(-1)} aria-label="Previous diary day" className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50"><ArrowLeft size={16} /></button><button type="button" onClick={() => setDiaryDate(new Date())} className="min-h-9 rounded-lg px-2 text-xs font-bold text-indigo-800 hover:bg-indigo-50">Today</button><button type="button" onClick={() => shiftDiaryDate(1)} aria-label="Next diary day" className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50"><ChevronRight size={16} /></button></div>
+            <div><p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Showing notes for</p><p className="text-xs font-extrabold text-slate-950">{diaryDate.toLocaleDateString('en-KE', { weekday: 'long', day: 'numeric', month: 'long' })}</p></div>
+            <div className="flex items-center gap-1"><button type="button" onClick={() => shiftDiaryDate(-1)} aria-label="Previous day" className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50"><ArrowLeft size={16} /></button><button type="button" onClick={() => setDiaryDate(new Date())} className="min-h-9 rounded-lg px-2 text-xs font-bold text-indigo-800 hover:bg-indigo-50">Today</button><button type="button" onClick={() => shiftDiaryDate(1)} aria-label="Next day" className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50"><ChevronRight size={16} /></button></div>
           </div>
-          <section className="rounded-xl border border-slate-200 bg-white p-3">
-            <div className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-700 text-white"><BookOpen size={17} /></span><div><h2 className="text-sm font-extrabold text-slate-950">Class diary</h2><p className="text-xs text-slate-600">Notes shared by the teacher will appear here.</p></div></div>
-            <ClassDiaryPanel diaryDate={diaryDate} />
+          {/* Teacher notes + history */}
+          <DiaryNotesPanel diaryDate={diaryDate} child={child} />
+          {/* Homework */}
+          <section className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-700 text-white"><ClipboardList size={17} /></span>
+              <div><h2 className="text-sm font-extrabold text-slate-950">Homework</h2><p className="text-xs text-slate-600">Check work, due dates and teacher feedback.</p></div>
+            </div>
+            <ParentChildDiaryWork child={child} />
           </section>
-          <section className="space-y-2"><div className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-700 text-white"><ClipboardList size={17} /></span><div><h2 className="text-sm font-extrabold text-slate-950">Homework</h2><p className="text-xs text-slate-600">Check work, due dates and teacher feedback.</p></div></div><ParentChildDiaryWork child={child} /></section>
         </div>}
         {tab === 'results'    && <ResultsTab    child={child} />}
         {tab === 'attendance' && <AttendanceTab learnerId={child.id} />}
