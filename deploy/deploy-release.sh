@@ -694,6 +694,37 @@ run_migrations() {
       SKIP1=20260707121500_allow_multiple_summative_series
       SKIP2=20260811090000_link_learners_to_student_users
 
+      # 0. Recover migrations that PostgreSQL rolled back due to disk-full errors.
+      # A previous deploy may have left rows in _prisma_migrations with
+      # finished_at IS NULL and logs mentioning ENOSPC / recovery mode.
+      # Since Postgres already aborted those transactions, resolving them as
+      # rolled back lets prisma migrate deploy retry cleanly. We only do this
+      # when the logs look like a disk-space failure; other stuck migrations
+      # are left for manual review.
+      stuck_migrations=$(node -e "
+        const { Client } = require('pg');
+        const c = new Client({ connectionString: process.env.DATABASE_URL });
+        c.connect()
+          .then(() => c.query('SELECT migration_name, logs FROM _prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL'))
+          .then(r => {
+            const names = r.rows
+              .filter(x => /No space left on device|the database system is in recovery mode|could not extend file/i.test(x.logs || ''))
+              .map(x => x.migration_name);
+            console.log(names.join('\n'));
+            c.end();
+          })
+          .catch(() => { console.log(''); c.end(); });
+      " 2>/dev/null || true)
+
+      if [[ -n "${stuck_migrations}" ]]; then
+        echo "  [recovery] disk-full stuck migrations detected"
+        while IFS= read -r name; do
+          [[ -n "${name}" ]] || continue
+          echo "  [recovery] resolving ${name} as rolled back"
+          npx prisma migrate resolve --rolled-back "${name}" >/tmp/recovery-${name}.log 2>&1 || true
+        done <<< "${stuck_migrations}"
+      fi
+
       # 1. Baseline check
       # Three possible states:
       #   a) migration_count > 0  → existing live DB, history intact → skip baseline
