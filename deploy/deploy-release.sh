@@ -701,20 +701,7 @@ run_migrations() {
       # rolled back lets prisma migrate deploy retry cleanly. We only do this
       # when the logs look like a disk-space failure; other stuck migrations
       # are left for manual review.
-      stuck_migrations=$(node -e "
-        const { Client } = require('pg');
-        const c = new Client({ connectionString: process.env.DATABASE_URL });
-        c.connect()
-          .then(() => c.query('SELECT migration_name, logs FROM _prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL'))
-          .then(r => {
-            const names = r.rows
-              .filter(x => /No space left on device|the database system is in recovery mode|could not extend file/i.test(x.logs || ''))
-              .map(x => x.migration_name);
-            console.log(names.join('\n'));
-            c.end();
-          })
-          .catch(() => { console.log(''); c.end(); });
-      " 2>/dev/null || true)
+      stuck_migrations=$(node -e 'const{Client}=require("pg");const c=new Client({connectionString:process.env.DATABASE_URL});c.connect().then(()=>c.query("SELECT migration_name, logs FROM _prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL")).then(r=>{const n=r.rows.filter(x=>/No space left on device|the database system is in recovery mode|could not extend file/i.test(x.logs||"")).map(x=>x.migration_name);console.log(n.join("\n"));c.end();}).catch(()=>{console.log("");c.end();});' 2>/dev/null || true)
 
       if [[ -n "${stuck_migrations}" ]]; then
         echo "  [recovery] disk-full stuck migrations detected"
