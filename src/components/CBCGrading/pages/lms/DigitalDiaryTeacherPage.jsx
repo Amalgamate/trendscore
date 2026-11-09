@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { dashboardAPI } from '../../../../services/api';
+import api, { dashboardAPI } from '../../../../services/api';
 import ClockInStatusWidget from '../../dashboard/widgets/teacher/ClockInStatusWidget';
 import {
   Activity, ArrowLeft, ArrowRight, Bell, BookOpen, Calendar,
   CalendarDays, Check, CheckCircle2, ChevronDown, ChevronRight,
-  Circle, ClipboardList, Eye, FileText, MessageSquare, Plus,
-  Users,
+  Circle, ClipboardList, Eye, FileText, Loader2, MessageSquare,
+  Plus, Users, AlertCircle, X,
 } from 'lucide-react';
 
 const CLASSES = [
@@ -80,9 +80,23 @@ export default function DigitalDiaryTeacherPage({ user, onNavigate }) {
   const nextAction = dashboard?.nextAction;
 
   const shiftDate = (amount) => setSelectedDate((current) => new Date(current.getFullYear(), current.getMonth(), current.getDate() + amount));
+
+  const showToast = (message, tone = 'info') => {
+    setToast({ message, tone });
+    window.setTimeout(() => setToast(''), 4000);
+  };
+
+  const handlePublished = (noticeTitle) => {
+    showToast(`"${noticeTitle}" published to parents successfully.`, 'success');
+    setEntryPage(null);
+  };
+
+  const handlePublishError = (message) => {
+    showToast(message || 'Could not publish. Please try again.', 'error');
+  };
+
   const previewNotice = () => {
-    setToast('Preview only — nothing has been saved or sent.');
-    window.setTimeout(() => setToast(''), 3600);
+    showToast('Preview only — nothing has been saved or sent.', 'info');
   };
 
   const tabs = [
@@ -128,12 +142,17 @@ export default function DigitalDiaryTeacherPage({ user, onNavigate }) {
 
         {activeTab === 'plan' && <ClassPlanWorkspace selectedClass={selectedClass} onNavigate={onNavigate} />}
         {activeTab === 'entries' && (entryPage
-          ? <DiaryEntryComposerPage kind={entryPage} selectedClass={selectedClass} selectedDate={selectedDate} onBack={() => setEntryPage(null)} onPreview={previewNotice} />
+          ? <DiaryEntryComposerPage kind={entryPage} selectedClass={selectedClass} selectedDate={selectedDate} onBack={() => setEntryPage(null)} onPublished={handlePublished} onError={handlePublishError} />
           : <DiaryEntriesWorkspace selectedClass={selectedClass} onCompose={setEntryPage} onPreview={previewNotice} />)}
         {activeTab === 'assessment' && <AssessmentWorkspace selectedClass={selectedClass} onPreview={previewNotice} />}
         {activeTab === 'attendance' && <AttendanceWorkspace selectedClass={selectedClass} onPreview={previewNotice} />}
       </div>
-      {toast && <div role="status" className="fixed bottom-5 left-1/2 z-[110] -translate-x-1/2 rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white shadow-xl">{toast}</div>}
+      {toast && (() => {
+        const tone = typeof toast === 'string' ? 'info' : toast.tone;
+        const msg = typeof toast === 'string' ? toast : toast.message;
+        const cls = tone === 'success' ? 'bg-emerald-600' : tone === 'error' ? 'bg-rose-600' : 'bg-slate-900';
+        return <div role="status" className={`fixed bottom-5 left-1/2 z-[110] -translate-x-1/2 rounded-xl px-4 py-3 text-sm font-semibold text-white shadow-xl ${cls}`}>{msg}</div>;
+      })()}
     </main>
   );
 }
@@ -173,28 +192,69 @@ function DiaryEntriesWorkspace({ selectedClass, onCompose, onPreview }) {
   </div>;
 }
 
-function DiaryEntryComposerPage({ kind, selectedClass, selectedDate, onBack, onPreview }) {
+function DiaryEntryComposerPage({ kind, selectedClass, selectedDate, onBack, onPublished, onError }) {
   const isMessage = kind === 'note';
   const isHoliday = kind === 'holiday';
-  const title = isMessage ? 'Class message' : isHoliday ? 'Holiday homework' : 'Daily homework';
-  const [completionMode, setCompletionMode] = useState('online');
 
-  const handleSubmit = (event) => {
+  // ── Form state ──
+  const [subject, setSubject] = useState('');
+  const [content, setContent] = useState('');
+  const [learningArea, setLearningArea] = useState(selectedClass.subject || 'Mathematics');
+  const [dueDate, setDueDate] = useState('');
+  const [priority, setPriority] = useState('NORMAL');
+  const [completionMode, setCompletionMode] = useState('online');
+  const [submitting, setSubmitting] = useState(false);
+
+  const headingText = isMessage ? 'Write a class message' : isHoliday ? 'Set holiday homework' : 'Set daily homework';
+  const publishLabel = isMessage ? 'Publish message' : 'Publish homework';
+
+  const handleSubmit = async (event) => {
     event.preventDefault();
-    onPreview();
+    if (!subject.trim() || !content.trim()) return;
+
+    // Build the notice payload. targetAudience: 'PARENTS' so it appears in
+    // parent diary feeds (server filters by role tokens — see
+    // notice.controller.ts isNoticeVisibleTo).
+    const payload = {
+      title: subject.trim(),
+      content: content.trim(),
+      category: isMessage ? 'General' : 'Homework',
+      priority,
+      status: 'PUBLISHED',
+      targetAudience: 'PARENTS',
+    };
+
+    setSubmitting(true);
+    try {
+      const res = await api.notices.create(payload);
+      if (res?.success === false) {
+        throw new Error(res?.error || res?.message || 'Server rejected the notice');
+      }
+      onPublished?.(subject.trim());
+    } catch (err) {
+      const msg = err?.message?.includes('403')
+        ? 'You don\u2019t have permission to publish notices. Contact your school admin.'
+        : err?.message?.includes('429')
+        ? 'Too many notices published recently. Please wait a minute and try again.'
+        : err?.message || 'Could not publish. Please try again.';
+      onError?.(msg);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return <div className="space-y-3">
     <button type="button" onClick={onBack} className="inline-flex items-center gap-2 rounded-lg px-2 py-2 text-sm font-bold text-indigo-800 hover:bg-white"><ArrowLeft size={16} /> Diary entries</button>
-    <div className="flex flex-wrap items-end justify-between gap-2"><div><SmallLabel>{selectedClass.name} · {formatDate(selectedDate)}</SmallLabel><h2 className="mt-1 text-xl font-black tracking-tight text-slate-950">{isMessage ? 'Write a class message' : isHoliday ? 'Set holiday homework' : 'Set daily homework'}</h2></div><span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-bold text-indigo-800">Preview only</span></div>
+    <div className="flex flex-wrap items-end justify-between gap-2"><div><SmallLabel>{selectedClass.name} · {formatDate(selectedDate)}</SmallLabel><h2 className="mt-1 text-xl font-black tracking-tight text-slate-950">{headingText}</h2></div></div>
     <form onSubmit={handleSubmit} className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_260px]">
       <Surface className="space-y-3 p-3.5 sm:p-4">
-        {!isMessage && <div className="grid gap-3 sm:grid-cols-2"><label className="block text-xs font-bold text-slate-600">Learning area<select defaultValue={selectedClass.subject} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm font-medium text-slate-800 outline-none focus:border-indigo-500"><option>{selectedClass.subject}</option><option>English</option><option>Science</option><option>Mathematics</option></select></label><label className="block text-xs font-bold text-slate-600">Due date<input type="date" className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-[11px] text-sm text-slate-800 outline-none focus:border-indigo-500" /></label></div>}
-        <label className="block text-xs font-bold text-slate-600">{isMessage ? 'Message subject' : 'Assignment title'}<input required placeholder={isMessage ? 'e.g. Reminder for tomorrow' : 'e.g. Fractions practice'} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-3 text-sm font-medium text-slate-800 outline-none placeholder:font-normal placeholder:text-slate-400 focus:border-indigo-500" /></label>
-        <label className="block text-xs font-bold text-slate-600">{isMessage ? 'Message' : 'Instructions for learners'}<textarea required rows={7} placeholder={isMessage ? 'Write the update or reminder for your class…' : 'Explain the work, how to complete it, and what to submit…'} className="mt-1.5 w-full resize-y rounded-xl border border-slate-200 px-3.5 py-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-indigo-500" /></label>
+        {!isMessage && <div className="grid gap-3 sm:grid-cols-2"><label className="block text-xs font-bold text-slate-600">Learning area<select value={learningArea} onChange={(e) => setLearningArea(e.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm font-medium text-slate-800 outline-none focus:border-indigo-500"><option>{selectedClass.subject || 'General'}</option><option>English</option><option>Science</option><option>Mathematics</option><option>Social Studies</option><option>Kiswahili</option><option>Religious Education</option><option>Creative Arts</option><option>Pre-Technical Studies</option></select></label><label className="block text-xs font-bold text-slate-600">Due date<input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-[11px] text-sm text-slate-800 outline-none focus:border-indigo-500" /></label></div>}
+        <label className="block text-xs font-bold text-slate-600">{isMessage ? 'Message subject' : 'Assignment title'}<input required value={subject} onChange={(e) => setSubject(e.target.value)} maxLength={200} placeholder={isMessage ? 'e.g. Reminder for tomorrow' : 'e.g. Fractions practice'} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-3 text-sm font-medium text-slate-800 outline-none placeholder:font-normal placeholder:text-slate-400 focus:border-indigo-500" /></label>
+        <label className="block text-xs font-bold text-slate-600">{isMessage ? 'Message' : 'Instructions for learners'}<textarea required rows={7} value={content} onChange={(e) => setContent(e.target.value)} maxLength={10000} placeholder={isMessage ? 'Write the update or reminder for your class…' : 'Explain the work, how to complete it, and what to submit…'} className="mt-1.5 w-full resize-y rounded-xl border border-slate-200 px-3.5 py-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-indigo-500" /></label>
         {!isMessage && <fieldset><legend className="text-xs font-bold text-slate-600">How will learners complete the work?</legend><div className="mt-2 grid gap-2 sm:grid-cols-2"><button type="button" aria-pressed={completionMode === 'online'} onClick={() => setCompletionMode('online')} className={`rounded-xl border p-3 text-left ${completionMode === 'online' ? 'border-indigo-300 bg-indigo-50 ring-1 ring-indigo-200' : 'border-slate-200 bg-white'}`}><span className="flex items-center gap-2 text-sm font-bold text-slate-800"><FileText size={16} className="text-indigo-600" /> Online submission</span><span className="mt-1 block text-xs text-slate-500">Learners submit work in TrendSCORE</span></button><button type="button" aria-pressed={completionMode === 'paper'} onClick={() => setCompletionMode('paper')} className={`rounded-xl border p-3 text-left ${completionMode === 'paper' ? 'border-emerald-300 bg-emerald-50 ring-1 ring-emerald-200' : 'border-slate-200 bg-white'}`}><span className="flex items-center gap-2 text-sm font-bold text-slate-800"><CheckCircle2 size={16} className="text-emerald-600" /> Paper / offline</span><span className="mt-1 block text-xs text-slate-500">Record class completion later</span></button></div></fieldset>}
+        <div><p className="text-xs font-bold text-slate-600 mb-2">Priority</p><div className="flex gap-2">{[{ id: 'LOW', label: 'Low' }, { id: 'NORMAL', label: 'Normal' }, { id: 'HIGH', label: 'High' }, { id: 'URGENT', label: 'Urgent' }].map((opt) => <button key={opt.id} type="button" aria-pressed={priority === opt.id} onClick={() => setPriority(opt.id)} className={`rounded-xl border px-3 py-2 text-xs font-bold transition ${priority === opt.id ? (opt.id === 'URGENT' ? 'border-rose-300 bg-rose-50 text-rose-800 ring-1 ring-rose-200' : opt.id === 'HIGH' ? 'border-amber-300 bg-amber-50 text-amber-800 ring-1 ring-amber-200' : 'border-indigo-300 bg-indigo-50 text-indigo-800 ring-1 ring-indigo-200') : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'}`}>{opt.label}</button>)}</div></div>
       </Surface>
-      <div className="space-y-3"><Surface className="p-3.5"><p className="text-sm font-bold text-slate-900">For {selectedClass.name}</p><p className="mt-1 text-xs text-slate-600">Learners and families can see this, based on school settings.</p></Surface><div className="flex flex-col gap-2"><button type="submit" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#172554] px-4 py-3 text-sm font-bold text-white hover:bg-[#1e3a8a]"><Eye size={16} /> Preview {isMessage ? 'message' : 'homework'}</button><button type="button" onClick={onBack} className="min-h-10 rounded-xl px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-white">Cancel</button></div></div>
+      <div className="space-y-3"><Surface className="p-3.5"><p className="text-sm font-bold text-slate-900">For {selectedClass.name}</p><p className="mt-1 text-xs text-slate-600">Parents in this school will see this in their child\u2019s diary feed.</p></Surface><div className="flex flex-col gap-2"><button type="submit" disabled={submitting || !subject.trim() || !content.trim()} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#172554] px-4 py-3 text-sm font-bold text-white hover:bg-[#1e3a8a] disabled:cursor-not-allowed disabled:opacity-50 transition-colors">{submitting ? <><Loader2 size={16} className="animate-spin" /> Publishing\u2026</> : <><MessageSquare size={16} /> {publishLabel}</>}</button><button type="button" onClick={onBack} className="min-h-10 rounded-xl px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-white">Cancel</button></div></div>
     </form>
   </div>;
 }
