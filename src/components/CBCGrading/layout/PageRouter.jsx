@@ -104,7 +104,6 @@ const ParentPortalHomework = lazy(() => import('../pages/parent-portal/ParentPor
 const ParentPortalPathway = lazy(() => import('../pages/parent-portal/ParentPortalPathway'));
 const ParentPortalSchools = lazy(() => import('../pages/parent-portal/ParentPortalSchools'));
 const ParentPortalBoarding = lazy(() => import('../pages/parent-portal/ParentPortalBoarding'));
-const ParentPortalAcademics = lazy(() => import('../pages/parent-portal/ParentPortalAcademics'));
 const UnifiedInboxPage = lazy(() => import('../pages/UnifiedInboxPage'));
 const ParentPortalSchoolToday = lazy(() => import('../pages/parent-portal/ParentPortalSchoolToday'));
 const ParentPortalSuggestion = lazy(() => import('../pages/parent-portal/ParentPortalSuggestion'));

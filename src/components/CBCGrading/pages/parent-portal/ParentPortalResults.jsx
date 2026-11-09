@@ -1,13 +1,14 @@
 /**
  * ParentPortalResults
- * Screen 1: Family view — Academic Overview with year selector, summary stats,
- *           per-child performance rows with a real recharts BarChart of subject scores.
+ * Screen 1: Family view — year selector, per-child performance rows with
+ *           a real recharts BarChart of subject scores, family insights.
  * Screen 2: Child detail — opens ParentChildProfile on child row tap.
  *
  * DATA SOURCES:
  *   dashboardAPI.getParentMetrics()        — list of children (id, name, grade, photo)
- *   useLearnerResults(id, year)            — real cross-term, cross-subject results for
- *     one child (Batch 1 endpoint; server enforces parent-own-children-only access).
+ *   reportAPI.getLearnerAnalytics(id, yr)  — real cross-term, cross-subject results
+ *     per child (server enforces parent-own-children-only access).
+ *   summarizeAnalytics()                   — collapses raw payload into per-term summary.
  *
  * Grading vocabulary (canonical — see results/useLearnerResults glossary):
  *   cbcGrade   — PRIMARY grade badge (EE/ME/AE/BE)
@@ -21,7 +22,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   ChevronDown, ChevronUp,
   Star, AlertCircle as AlertIcon, BarChart2, FileText,
-  Users, MessageSquare, BookOpen, Loader2, TrendingUp,
+  Users, TrendingDown, TrendingUp, Target,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, Tooltip,
@@ -30,16 +31,18 @@ import {
 import { dashboardAPI, reportAPI } from '../../../../services/api';
 import ParentChildProfile from '../parent/ParentChildProfile';
 import { Skeleton } from '../../../ui';
-import ChildSelector from './shared/ChildSelector';
 import {
   summarizeAnalytics,
   scoreColor,
   barFill,
   termLabel,
-  useLearnerResults,
 } from '../results/useLearnerResults';
 import {
-  ResultsLoadingState,
+  computeInsights,
+  getTopInsightFlag,
+} from '../results/useAcademicInsights';
+import InsightsPanel from '../results/InsightsPanel';
+import {
   ResultsErrorState,
   ResultsEmptyState,
   TermAccordion,
@@ -89,6 +92,44 @@ function SubjectBarChart({ subjects }) {
 // ─── Header ──────────────────────────────────────────────────────────────────
 // YearSelector is imported from results/ResultsShared
 
+// ─── Insight Badge (compact flag for family-view rows) ────────────────────────
+//
+// Shows a glanceable pill next to each child's average so parents can spot
+// declines or improvements without expanding the row.
+
+function InsightBadge({ flag }) {
+  if (!flag) return null;
+
+  const config = {
+    critical: {
+      cls: 'bg-rose-100 text-rose-700 border-rose-200',
+      Icon: TrendingDown,
+    },
+    warning: {
+      cls: 'bg-amber-100 text-amber-700 border-amber-200',
+      Icon: TrendingDown,
+    },
+    positive: {
+      cls: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+      Icon: TrendingUp,
+    },
+    info: {
+      cls: 'bg-blue-100 text-blue-700 border-blue-200',
+      Icon: Target,
+    },
+  };
+
+  const c = config[flag.level] || config.info;
+  const Icon = c.Icon;
+
+  return (
+    <span className={`inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[9px] font-bold ${c.cls}`}>
+      <Icon size={9} />
+      {flag.text}
+    </span>
+  );
+}
+
 // ─── Child Performance Row ────────────────────────────────────────────────────
 
 function ChildPerformanceRow({ child, entry, onSelect }) {
@@ -98,6 +139,12 @@ function ChildPerformanceRow({ child, entry, onSelect }) {
   const loading = entry?.loading;
   const loadError = entry?.error;
   const summary = entry?.data ? summarizeAnalytics(entry.data) : { hasData: false, terms: [] };
+
+  // Compute insights to surface the top flag as a glanceable badge
+  const { insights, hasInsights } = entry?.data
+    ? computeInsights(entry.data, summary)
+    : { insights: [], hasInsights: false };
+  const topFlag = hasInsights ? getTopInsightFlag(insights) : null;
 
   const avg = summary.latest?.avg ?? null;
   const col = avg !== null ? scoreColor(avg) : 'text-gray-400';
@@ -145,6 +192,13 @@ function ChildPerformanceRow({ child, entry, onSelect }) {
                 : <ChevronDown size={15} className="text-blue-500 flex-shrink-0 mt-1" />}
             </div>
 
+            {/* Insight badge — shows when collapsed so parents see the flag at a glance */}
+            {!loading && !expanded && topFlag && (
+              <div className="mt-1.5">
+                <InsightBadge flag={topFlag} />
+              </div>
+            )}
+
             {!loading && summary.hasData && (
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <div className="rounded-xl border border-blue-200 bg-blue-50 px-2 py-1.5">
@@ -185,6 +239,11 @@ function ChildPerformanceRow({ child, entry, onSelect }) {
 
             {!loading && summary.hasData && (
               <>
+                {/* Insight cards — decline/improvement/projection for this child */}
+                {hasInsights && (
+                  <InsightsPanel insights={insights} hasInsights={hasInsights} />
+                )}
+
                 <div className="rounded-xl border border-gray-100 bg-gray-50 p-2">
                   <SubjectBarChart subjects={summary.latest.subjects} />
                   <div className="grid mt-1" style={{ gridTemplateColumns: `repeat(${Math.min(summary.latest.subjects.length, 6)}, 1fr)` }}>
@@ -305,144 +364,6 @@ function InsightCard({ children, analytics }) {
   );
 }
 
-// ─── Performance Snapshot (from Academics, now merged here) ──────────────────
-function PerformanceSnapshot({ childId, year }) {
-  const { loading, error, summary } = useLearnerResults(childId, year);
-
-  if (loading) return <Skeleton className="h-24 rounded-2xl" />;
-  if (error)   return <ResultsErrorState message={error} />;
-  if (!summary.hasData) return null;
-
-  const latest = summary.latest;
-  const avg = latest?.avg ?? null;
-  const trend = summary.trend;
-
-  return (
-    <div className="rounded-2xl bg-gradient-to-br from-[#3B1FA3] to-indigo-600 p-4 text-white">
-      <p className="text-[9px] font-bold uppercase tracking-wider text-white/60 mb-2">Performance snapshot</p>
-      <div className="grid grid-cols-3 gap-3 text-center">
-        <div>
-          <p className="text-[9px] text-white/60 uppercase tracking-wide">Overall</p>
-          <p className="text-2xl font-black mt-0.5">{avg != null ? `${avg}%` : '—'}</p>
-          <p className="text-[9px] text-white/60">{latest ? termLabel(latest.term) : '—'}</p>
-        </div>
-        <div>
-          <p className="text-[9px] text-white/60 uppercase tracking-wide">Trend</p>
-          <p className={`text-2xl font-black mt-0.5 ${trend != null ? (trend >= 0 ? 'text-emerald-300' : 'text-rose-300') : ''}`}>
-            {trend != null ? `${trend >= 0 ? '+' : ''}${trend}` : '—'}
-          </p>
-          <p className="text-[9px] text-white/60">vs last term</p>
-        </div>
-        <div>
-          <p className="text-[9px] text-white/60 uppercase tracking-wide">Terms</p>
-          <p className="text-2xl font-black mt-0.5">{summary.terms.length}/3</p>
-          <p className="text-[9px] text-white/60">recorded</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Subject Grid (from Academics, now merged here) ───────────────────────────
-function SubjectGrid({ childId, year }) {
-  const { loading, summary } = useLearnerResults(childId, year);
-  const subjects = summary.latest?.subjects || [];
-
-  if (loading) return <Skeleton className="h-32 rounded-2xl" />;
-  if (!subjects.length) return null;
-
-  return (
-    <div className="bg-white rounded-2xl border border-gray-200 p-4">
-      <p className="text-sm font-bold text-gray-900 mb-3">Subjects</p>
-      <div className="grid grid-cols-2 gap-2">
-        {subjects.map((s, i) => {
-          const pct = s.percentage != null ? Math.round(Number(s.percentage)) : null;
-          return (
-            <div key={i} className="flex items-center justify-between rounded-xl bg-gray-50 px-3 py-2.5">
-              <p className="text-xs font-semibold text-gray-700 truncate mr-2">{s.name || `Subject ${i + 1}`}</p>
-              <p className={`text-sm font-black flex-shrink-0 ${pct != null ? scoreColor(pct) : 'text-gray-400'}`}>
-                {pct != null ? `${pct}%` : s.grade || '—'}
-              </p>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ─── Report Card Download ────────────────────────────────────────────────────
-function ReportCardDownload({ child, year }) {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [reports, setReports] = useState([]);
-
-  useEffect(() => {
-    if (!child?.id) return;
-    let cancelled = false;
-    (async () => {
-      setLoading(true); setError(null);
-      try {
-        const res = await reportAPI.getLearnerReports?.(child.id, { academicYear: year });
-        if (cancelled) return;
-        setReports(Array.isArray(res?.data) ? res.data : []);
-      } catch (e) {
-        if (!cancelled) setError(e?.message || 'Could not load report cards');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [child?.id, year]);
-
-  if (loading) return <Skeleton className="h-20 rounded-2xl" />;
-  if (error) return (
-    <div className="bg-rose-50 border border-rose-200 rounded-xl p-3">
-      <p className="text-xs text-rose-700">{error}</p>
-    </div>
-  );
-  if (!reports.length) return (
-    <div className="bg-white rounded-2xl border border-gray-200 p-4">
-      <div className="flex items-center gap-2 mb-1">
-        <FileText size={16} className="text-[#3B1FA3]" />
-        <p className="text-sm font-bold text-gray-900">Report Cards</p>
-      </div>
-      <p className="text-xs text-gray-500">No report cards published for {year} yet.</p>
-    </div>
-  );
-
-  return (
-    <div className="bg-white rounded-2xl border border-gray-200 p-4">
-      <div className="flex items-center gap-2 mb-3">
-        <FileText size={16} className="text-[#3B1FA3]" />
-        <p className="text-sm font-bold text-gray-900">Report Cards</p>
-      </div>
-      <div className="space-y-2">
-        {reports.map((r, i) => (
-          <button
-            key={i}
-            type="button"
-            onClick={() => {
-              if (r.url) window.open(r.url, '_blank');
-              else if (r.fileUrl) window.open(r.fileUrl, '_blank');
-            }}
-            className="w-full flex items-center gap-2 rounded-xl bg-gray-50 px-3 py-2.5 text-left hover:bg-gray-100 transition-colors"
-          >
-            <FileText size={14} className="text-gray-400 flex-shrink-0" />
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold text-gray-700 truncate">
-                {r.title || r.term ? `${termLabel(r.term)} Report` : `Report ${i + 1}`}
-              </p>
-              <p className="text-[10px] text-gray-400">{r.academicYear || year}</p>
-            </div>
-            <ChevronDown size={14} className="text-gray-300 -rotate-90 flex-shrink-0" />
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 const ParentPortalResults = ({ onNavigate }) => {
@@ -451,7 +372,6 @@ const ParentPortalResults = ({ onNavigate }) => {
   const [error, setError]                 = useState(null);
   const [year, setYear]                   = useState(String(new Date().getFullYear()));
   const [selectedChild, setSelectedChild] = useState(null);
-  const [selectedChildId, setSelectedChildId] = useState(null);
   const [analytics, setAnalytics]         = useState({}); // { [childId]: { loading, error, data } }
 
   const loadChildren = useCallback(async () => {
@@ -460,7 +380,6 @@ const ParentPortalResults = ({ onNavigate }) => {
       const res = await dashboardAPI.getParentMetrics();
       if (res?.success) {
         setChildren(res.data?.children || []);
-        if (res.data?.children?.length) setSelectedChildId(res.data.children[0].id);
       }
       else setError(res?.message || 'Failed to load');
     } catch (e) { setError(e?.message || 'Failed to load'); }
@@ -517,35 +436,17 @@ const ParentPortalResults = ({ onNavigate }) => {
           <h1 className="text-xl font-black text-gray-900 mt-0.5">Results & Performance</h1>
         </div>
 
-        {/* Child selector + year */}
+        {/* Year selector */}
         {!loadingChildren && children.length > 0 && (
-          <div className="flex items-start gap-2 flex-wrap">
-            <div className="flex-1 min-w-0">
-              <ChildSelector
-                children={children}
-                selectedId={selectedChildId}
-                onSelect={setSelectedChildId}
-                variant="dropdown"
-              />
-            </div>
-            <YearSelector value={year} onChange={setYear} />
-          </div>
-        )}
-
-        {/* Per-child snapshot, subjects, and report cards */}
-        {!loadingChildren && selectedChildId && (
-          <>
-            <PerformanceSnapshot childId={selectedChildId} year={year} />
-            <SubjectGrid childId={selectedChildId} year={year} />
-            <ReportCardDownload child={children.find(c => c.id === selectedChildId)} year={year} />
-          </>
+          <YearSelector value={year} onChange={setYear} />
         )}
 
         {/* Family-wide performance rows */}
         {!loadingChildren && children.length > 0 && (
           <>
             <div className="pt-2">
-              <p className="text-sm font-bold text-gray-900 mb-3">All Children</p>
+              <p className="text-sm font-bold text-gray-900 mb-1">All children</p>
+              <p className="text-[11px] text-gray-400 mb-3">Tap a child to see their full results & performance</p>
               <div className="space-y-2.5">
                 {children.map(child => (
                   <ChildPerformanceRow

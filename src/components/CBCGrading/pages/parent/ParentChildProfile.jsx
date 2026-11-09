@@ -437,7 +437,7 @@ const TABS = [
   { id: 'diary',       label: 'Diary',       icon: BookOpen,       color: 'bg-blue-700' },
   { id: 'fees',        label: 'Fees',        icon: Wallet,         color: 'bg-emerald-700' },
   { id: 'attendance',  label: 'Attendance',  icon: CalendarDays,   color: 'bg-violet-700' },
-  { id: 'results',     label: 'Learning',    icon: GraduationCap,  color: 'bg-amber-600' },
+  { id: 'results',     label: 'Results',    icon: GraduationCap,  color: 'bg-amber-600' },
   { id: 'more',        label: 'More',        icon: ClipboardList,  color: 'bg-slate-700' },
 ];
 
