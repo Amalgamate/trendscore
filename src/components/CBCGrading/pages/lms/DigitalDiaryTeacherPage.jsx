@@ -1,25 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import api, { dashboardAPI, attendanceAPI, assessmentAPI } from '../../../../services/api';
 import ClockInStatusWidget from '../../dashboard/widgets/teacher/ClockInStatusWidget';
 import {
   Activity, ArrowLeft, ArrowRight, Bell, BookOpen, Calendar,
   CalendarDays, Check, CheckCircle2, ChevronDown, ChevronRight,
-  ClipboardList, Eye, FileText, Loader2, MessageSquare,
-  Plus, Users, AlertCircle, X,
+  ClipboardList, FileText, Loader2, MessageSquare,
+  Users, AlertCircle,
 } from 'lucide-react';
-
-const CLASSES = [
-  { id: 'g7a', name: 'Grade 7 A', count: 28, subject: 'Mathematics' },
-  { id: 'g7b', name: 'Grade 7 B', count: 26, subject: 'Mathematics' },
-  { id: 'g6a', name: 'Grade 6 A', count: 31, subject: 'Science' },
-];
-
-const LEARNERS = [
-  { initials: 'AM', name: 'Amina Mwangi', admission: 'ADM-2025-0341', state: 'Submitted', tone: 'blue' },
-  { initials: 'BK', name: 'Brian Kiptoo', admission: 'ADM-2025-0178', state: 'Done · paper', tone: 'green' },
-  { initials: 'CN', name: 'Cynthia Njeri', admission: 'ADM-2025-0294', state: 'Not submitted', tone: 'amber' },
-  { initials: 'DM', name: 'David Mutua', admission: 'ADM-2025-0412', state: 'Excused', tone: 'violet' },
-];
 
 function formatDate(date) {
   return new Intl.DateTimeFormat('en-KE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(date);
@@ -37,7 +24,7 @@ export default function DigitalDiaryTeacherPage({ user, onNavigate }) {
   const [dashboard, setDashboard] = useState(null);
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const [dashboardError, setDashboardError] = useState('');
-  const [classId, setClassId] = useState('g7a');
+  const [classId, setClassId] = useState('');
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [activeTab, setActiveTab] = useState('today');
   const [mobileHomeOpen, setMobileHomeOpen] = useState(true);
@@ -52,25 +39,34 @@ export default function DigitalDiaryTeacherPage({ user, onNavigate }) {
   const assessmentsToMark = dashboard?.assessmentsToMark || [];
   const schedule = dashboard?.schedule || [];
   const assignedClasses = dashboard?.myClasses || [];
-  const classOptions = assignedClasses.length
-    ? assignedClasses.map((item, index) => ({ id: String(item.id || `assigned-${index}`), name: item.name || 'Assigned class', count: Number(item.learnerCount || 0), subject: item.subjects?.[0] || 'Class' }))
-    : CLASSES;
-  const selectedClass = classOptions.find((item) => item.id === classId) || classOptions[0];
+  const classOptions = assignedClasses.map((item, index) => ({
+    id: String(item.id || `assigned-${index}`),
+    name: item.name || 'Assigned class',
+    count: Number(item.learnerCount || 0),
+    subject: item.subjects?.[0] || 'Class',
+  }));
+  const selectedClass = classOptions.find((item) => item.id === classId) || classOptions[0] || null;
 
-  useEffect(() => {
-    let active = true;
+  const loadDashboard = useCallback(() => {
+    setDashboardLoading(true);
+    setDashboardError('');
     dashboardAPI.getTeacherMetrics('today')
       .then((response) => {
-        if (!active) return;
         if (response?.success) setDashboard(response.data || {});
         else setDashboardError(response?.message || 'Daily teacher overview is unavailable.');
       })
       .catch((error) => {
-        if (active) setDashboardError(error?.message || 'Could not load your daily teacher overview.');
+        setDashboardError(error?.message || 'Could not load your daily teacher overview.');
       })
-      .finally(() => { if (active) setDashboardLoading(false); });
-    return () => { active = false; };
+      .finally(() => setDashboardLoading(false));
   }, [user?.id, user?.userId]);
+
+  useEffect(() => { loadDashboard(); }, [loadDashboard]);
+
+  // Once the dashboard returns real classes, auto-select the first one
+  useEffect(() => {
+    if (!classId && classOptions.length) setClassId(classOptions[0].id);
+  }, [classOptions, classId]);
 
   const nextAction = dashboard?.nextAction;
 
@@ -90,10 +86,6 @@ export default function DigitalDiaryTeacherPage({ user, onNavigate }) {
     showToast(message || 'Could not publish. Please try again.', 'error');
   };
 
-  const previewNotice = () => {
-    showToast('Preview only — nothing has been saved or sent.', 'info');
-  };
-
   const tabs = [
     { id: 'today', label: 'My Day Today', icon: CalendarDays, color: 'bg-[#2563eb]', tint: 'bg-blue-50', border: 'border-blue-500' },
     { id: 'plan', label: 'Class Plan', icon: Calendar, color: 'bg-[#16a34a]', tint: 'bg-emerald-50', border: 'border-emerald-500' },
@@ -108,8 +100,11 @@ export default function DigitalDiaryTeacherPage({ user, onNavigate }) {
         <header className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#172554] text-white"><BookOpen size={18} /></div><div><div className="flex items-center gap-2"><h1 className="text-xl font-black tracking-tight text-slate-950">Teacher Workspace</h1></div></div></div>
           <div className={`flex flex-wrap items-center gap-2 ${mobileHomeOpen ? 'hidden md:flex' : ''}`}>
-            <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2"><Users size={15} className="text-indigo-600" /><select aria-label="Select class" value={selectedClass.id} onChange={(event) => setClassId(event.target.value)} className="max-w-[150px] bg-transparent text-xs font-bold text-slate-800 outline-none">{classOptions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><ChevronDown size={14} className="text-slate-400" /></label>
-            {!assignedClasses.length && <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold text-amber-950">Sample classes</span>}
+            {selectedClass ? (
+              <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2"><Users size={15} className="text-indigo-600" /><select aria-label="Select class" value={selectedClass.id} onChange={(event) => setClassId(event.target.value)} className="max-w-[150px] bg-transparent text-xs font-bold text-slate-800 outline-none">{classOptions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><ChevronDown size={14} className="text-slate-400" /></label>
+            ) : (
+              <span className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-500">{dashboardLoading ? 'Loading classes…' : 'No classes assigned'}</span>
+            )}
             <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1"><button onClick={() => shiftDate(-1)} aria-label="Previous day" className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"><ArrowLeft size={14} /></button><button onClick={() => setSelectedDate(new Date())} className="px-2 text-[11px] font-bold text-slate-700">{new Intl.DateTimeFormat('en-KE', { weekday: 'short', day: 'numeric', month: 'short' }).format(selectedDate)}</button><button onClick={() => shiftDate(1)} aria-label="Next day" className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"><ArrowRight size={14} /></button></div>
           </div>
         </header>
@@ -135,12 +130,19 @@ export default function DigitalDiaryTeacherPage({ user, onNavigate }) {
           <Surface className="overflow-hidden"><div className="flex items-center justify-between border-b border-slate-100 px-4 py-3"><div><SmallLabel>UP NEXT</SmallLabel><h2 className="mt-0.5 text-sm font-extrabold">Your day</h2></div><span className="text-[11px] font-semibold text-slate-600">{formatDate(selectedDate)}</span></div><div className="grid gap-0 sm:grid-cols-2 sm:divide-x sm:divide-slate-100"><div className="p-4">{dashboardLoading ? <p className="text-xs text-slate-700">Loading daily tasks…</p> : nextAction ? <button onClick={() => nextAction.navigateTo === 'attendance-daily' ? setActiveTab('attendance') : nextAction.navigateTo === 'assess-summative-assessment' ? setActiveTab('assessment') : setActiveTab('plan')} className="flex w-full items-start gap-3 rounded-xl bg-indigo-50 p-3 text-left"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#2939a7] text-white"><Bell size={15} /></span><span><strong className="block text-xs text-slate-950">{nextAction.title}</strong><span className="mt-1 block text-[11px] leading-relaxed text-slate-700">{nextAction.description}</span><span className="mt-1.5 block text-[11px] font-bold text-indigo-900">{nextAction.actionLabel}</span></span></button> : <p className="text-xs text-slate-700">No urgent tasks are waiting.</p>}</div><div className="p-4"><div className="flex items-center justify-between"><SmallLabel>TODAY’S CLASSES</SmallLabel><button onClick={() => setActiveTab('plan')} className="text-[11px] font-bold text-indigo-800">Class plan <ChevronRight size={12} className="inline" /></button></div>{schedule.length ? <div className="mt-1 divide-y divide-slate-100">{schedule.slice(0, 3).map((item, index) => <div key={`${item.id || item.subject}-${index}`} className="flex items-center justify-between gap-2 py-2"><div className="min-w-0"><p className="truncate text-xs font-bold text-slate-900">{item.subject || item.learningArea || 'Lesson'}</p><p className="truncate text-[10px] text-slate-600">{item.className || item.class?.name || item.class?.stream || 'Assigned class'}</p></div><span className="shrink-0 text-[10px] font-semibold text-slate-700">{item.time || item.startTime || ''}</span></div>)}</div> : <p className="mt-2 text-xs text-slate-700">{dashboardLoading ? 'Loading schedule…' : 'No lessons scheduled today.'}</p>}</div></div></Surface>
         </div>}
 
-        {activeTab === 'plan' && <ClassPlanWorkspace selectedClass={selectedClass} schedule={schedule} dashboardLoading={dashboardLoading} onNavigate={onNavigate} />}
-        {activeTab === 'entries' && (entryPage
+        {activeTab === 'plan' && selectedClass && <ClassPlanWorkspace selectedClass={selectedClass} schedule={schedule} dashboardLoading={dashboardLoading} onNavigate={onNavigate} />}
+        {activeTab === 'entries' && selectedClass && (entryPage
           ? <DiaryEntryComposerPage kind={entryPage} selectedClass={selectedClass} selectedDate={selectedDate} onBack={() => setEntryPage(null)} onPublished={handlePublished} onError={handlePublishError} />
           : <DiaryEntriesWorkspace selectedClass={selectedClass} onCompose={setEntryPage} />)}
-        {activeTab === 'assessment' && <AssessmentWorkspace selectedClass={selectedClass} />}
-        {activeTab === 'attendance' && <AttendanceWorkspace selectedClass={selectedClass} />}
+        {activeTab === 'assessment' && selectedClass && <AssessmentWorkspace selectedClass={selectedClass} />}
+        {activeTab === 'attendance' && selectedClass && <AttendanceWorkspace selectedClass={selectedClass} />}
+        {!selectedClass && !dashboardLoading && activeTab !== 'today' && (
+          <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center">
+            <Users size={28} className="mx-auto mb-2 text-slate-300" />
+            <p className="text-sm font-bold text-slate-700">No classes assigned yet</p>
+            <p className="mt-1 text-xs text-slate-500">Once an administrator assigns you a class, you can take attendance, record scores, and write diary entries.</p>
+          </div>
+        )}
       </div>
       {toast && (() => {
         const tone = typeof toast === 'string' ? 'info' : toast.tone;
@@ -462,8 +464,4 @@ function ClassPlanWorkspace({ selectedClass, schedule = [], dashboardLoading = f
       }))
     : [];
   return <div className="space-y-3"><div className="flex flex-wrap items-end justify-between gap-2"><div><SmallLabel>{selectedClass.name}</SmallLabel><h2 className="mt-1 text-xl font-black tracking-tight">Class Plan</h2><p className="mt-1 text-sm text-slate-700">Check your lessons and plan what comes next.</p></div></div><Surface className="overflow-hidden"><h3 className="border-b border-slate-100 px-4 py-3 text-sm font-extrabold text-slate-950">Today's lessons</h3>{dashboardLoading ? <div className="flex items-center gap-2 px-4 py-6 text-xs text-slate-500"><Loader2 size={14} className="animate-spin" /> Loading schedule...</div> : periods.length === 0 ? <div className="px-4 py-6 text-center text-xs text-slate-500">No lessons scheduled for today.</div> : <div className="divide-y divide-slate-100">{periods.map((period, index) => <div key={`${period.time}-${index}`} className="flex gap-3 px-4 py-3"><span className="w-24 shrink-0 pt-0.5 text-xs font-bold text-slate-700">{period.time}</span><div className="border-l-2 border-indigo-300 pl-3"><p className="text-sm font-bold text-slate-900">{period.subject}</p><p className="mt-0.5 text-xs text-slate-600">{period.detail}</p></div></div>)}</div>}</Surface><div><h3 className="mb-1 px-1 text-sm font-bold text-slate-900">Plan and prepare</h3><div className="divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white">{[{ title: 'Plan a scheme of work', icon: ClipboardList, page: 'planner-schemes' }, { title: 'Prepare a lesson', icon: BookOpen, page: 'learning-hub-lesson-plans' }, { title: 'Create a quiz or activity', icon: Activity, page: 'learning-interactive' }, { title: 'Find revision resources', icon: FileText, page: 'learning-revision' }].map(({ title, icon: Icon, page }) => <button key={title} onClick={() => onNavigate?.(page)} className="flex min-h-12 w-full items-center gap-3 px-3 text-left transition hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-700"><Icon size={19} className="text-indigo-800" /><span className="flex-1 text-sm font-semibold text-slate-950">{title}</span><ChevronRight size={17} className="text-slate-600" /></button>)}</div></div></div>;
-}
-
-function PreviewNotice() {
-  return <p className="flex items-center gap-2 text-xs text-slate-700"><Circle size={9} className="text-indigo-700" /> Preview only. Nothing is saved or sent.</p>;
 }

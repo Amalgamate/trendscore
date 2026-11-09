@@ -141,7 +141,6 @@ export default function StudentDigitalDiaryPage() {
         <p className="mt-2 text-xs text-slate-700">Due {selectedAssignment.dueDate ? new Date(selectedAssignment.dueDate).toLocaleDateString('en-KE', { weekday: 'long', day: 'numeric', month: 'long' }) : 'No due date'}</p>
         {selectedAssignment.instructions && <p className="mt-3 whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-sm leading-relaxed text-slate-800">{selectedAssignment.instructions}</p>}
         {selectedAssignment.mySubmission?.feedback && <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3"><p className="text-xs font-extrabold text-emerald-950">Teacher feedback</p><p className="mt-1 text-sm text-emerald-950">{selectedAssignment.mySubmission.feedback}</p></div>}
-        <p className="mt-4 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-950">This is a Diary UI preview. Assignment submission remains in the current Work flow until the Diary screens are approved.</p>
       </section>
     </div>}
   </main>;
