@@ -157,7 +157,7 @@ const INITIAL_TERM_FORM = {
   isParentVisible: true,
 };
 
-export default function AnnualPlannerPage({ initialTab = 'dashboard' } = {}) {
+export default function AnnualPlannerPage({ initialTab = 'dashboard', onNavigate } = {}) {
   // Term dates are term settings, which only school admins may change.
   const { isAnyRole } = usePermissions();
   const canSetUpYear = isAnyRole(['ADMIN', 'SUPER_ADMIN']);
@@ -948,7 +948,7 @@ export default function AnnualPlannerPage({ initialTab = 'dashboard' } = {}) {
 
           {/* TAB 4: ACADEMIC YEAR SETUP (terms, breaks and exam weeks in one save) */}
           {activeTab === 'terms' && canSetUpYear && (
-            <AcademicYearSetup academicYear={academicYear} onSaved={fetchEvents} onDirtyChange={setSetupDirty} />
+            <AcademicYearSetup academicYear={academicYear} onSaved={fetchEvents} onDirtyChange={setSetupDirty} onNavigate={onNavigate} />
           )}
 
           {/* TAB 5: EVENTS MANAGER TAB */}

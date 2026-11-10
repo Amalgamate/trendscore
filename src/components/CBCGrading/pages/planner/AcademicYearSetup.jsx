@@ -12,11 +12,19 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
-import { AlertCircle, CheckCircle2, Info, Loader2, Save } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Info, Loader2, Save, GraduationCap, ArrowRight } from 'lucide-react';
 import api from '../../../../services/api';
 import { Button } from '../../../ui/button';
 import { Input } from '../../../ui/input';
 import { Label } from '../../../ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../../../ui/dialog';
 
 const TERMS = [
   { id: 'TERM_1', label: 'Term 1', bar: 'bg-blue-500' },
@@ -103,7 +111,7 @@ function YearBar({ form, year }) {
   );
 }
 
-export default function AcademicYearSetup({ academicYear, onSaved, onDirtyChange }) {
+export default function AcademicYearSetup({ academicYear, onSaved, onDirtyChange, onNavigate }) {
   const [form, setForm] = useState(emptyForm);
   const [dirty, setDirty] = useState(false);
   const [activeTerm, setActiveTerm] = useState('');
@@ -114,6 +122,7 @@ export default function AcademicYearSetup({ academicYear, onSaved, onDirtyChange
   const [saving, setSaving] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [reason, setReason] = useState('');
+  const [showPromotionPrompt, setShowPromotionPrompt] = useState(false);
 
   const isComplete = TERMS.every((t) => form[t.id].startDate && form[t.id].endDate);
 
@@ -233,6 +242,7 @@ export default function AcademicYearSetup({ academicYear, onSaved, onDirtyChange
       setDirty(false);
       setSources({ TERM_1: 'settings', TERM_2: 'settings', TERM_3: 'settings' });
       if (onSaved) onSaved();
+      setShowPromotionPrompt(true);
     } catch (error) {
       console.error(error);
       toast.error(error?.message || 'Failed to save the academic year');
@@ -384,6 +394,44 @@ export default function AcademicYearSetup({ academicYear, onSaved, onDirtyChange
           </Button>
         </div>
       </section>
+
+      {/* Promotion prompt — shown after a successful academic year save */}
+      <Dialog open={showPromotionPrompt} onOpenChange={setShowPromotionPrompt}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-purple-100">
+              <GraduationCap className="h-6 w-6 text-purple-600" />
+            </div>
+            <DialogTitle className="text-center">Promote learners to {academicYear}?</DialogTitle>
+            <DialogDescription className="text-center">
+              The academic year <strong>{academicYear}</strong> is now set up.
+              Promote learners to their next grade so class lists, attendance, and
+              assessments align with the new year. This avoids confusion when term
+              activities begin.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-col gap-2 sm:flex-col">
+            <Button
+              onClick={() => {
+                setShowPromotionPrompt(false);
+                if (onNavigate) onNavigate('learners-promotion');
+              }}
+              className="w-full bg-purple-600 hover:bg-purple-700 text-white flex items-center justify-center gap-2"
+            >
+              <GraduationCap className="h-4 w-4" />
+              Go to Promotion
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => setShowPromotionPrompt(false)}
+              className="w-full text-slate-500"
+            >
+              I'll do this later
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
