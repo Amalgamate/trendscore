@@ -181,6 +181,10 @@ export const PERMISSIONS = {
   // VIEW_UNMATCHED_PAYMENTS: browse the unmatched payment queue.
   VIEW_UNMATCHED_PAYMENTS: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST'],
 
+  // Overpayment credit allocation — finance staff can move excess payments
+  // (held in Tuition Deposits 2100) to sibling invoices.
+  ALLOCATE_OVERPAYMENT_CREDIT: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'],
+
   // ============================================
   // AUDIT & LOGS
   // ============================================
