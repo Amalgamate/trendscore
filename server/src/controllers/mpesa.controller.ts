@@ -760,12 +760,20 @@ export const handleB2cResult = async (req: Request, res: Response) => {
                 },
             });
 
-            // If this was a refund payout, mark the refund as completed
+            // If this was a refund payout, mark the refund as disbursed/failed
             const refundId = (matchingTx.metadata as any)?.refundId;
-            if (refundId && isSuccess) {
-                // The refund model doesn't exist yet (Step 4 will add it).
-                // When it does, this is where we'd mark it as DISBURSED.
-                logger.info(`[B2CResult] Refund ${refundId} disbursement completed`);
+            if (refundId) {
+                try {
+                    // Import dynamically to avoid circular dependency
+                    const { refundService } = await import('../services/refund.service');
+                    if (isSuccess) {
+                        await refundService.markDisbursed(refundId, transactionId);
+                    } else {
+                        await refundService.markFailed(refundId, resultDesc || 'B2C disbursement failed');
+                    }
+                } catch (err: any) {
+                    logger.error(`[B2CResult] Failed to update refund ${refundId}:`, err?.message);
+                }
             }
 
             // If this was a payroll payout, log it for finance staff to verify
@@ -795,10 +803,75 @@ export const handleB2cResult = async (req: Request, res: Response) => {
  * retry or cancel.
  */
 export const handleB2cTimeout = async (req: Request, res: Response) => {
-    logger.warn('[B2CTimeout] B2C request timed out:', req.body);
+    const timeout = req.body;
+    logger.warn('[B2CTimeout] B2C request timed out:', JSON.stringify(timeout));
 
-    // No automatic action — staff should investigate PENDING payouts that
-    // have been stuck for too long.
+    try {
+        // Extract conversation ID from the timeout payload
+        const conversationId = timeout?.ConversationID || timeout?.Result?.ConversationID;
+
+        if (conversationId) {
+            // Find the stuck PENDING payout
+            const pendingPayouts = await prisma.mpesaTransaction.findMany({
+                where: {
+                    type: 'PAYOUT' as any,
+                    status: 'PENDING',
+                },
+                orderBy: { createdAt: 'desc' },
+                take: 50,
+            });
+
+            let matchingTx = null;
+            for (const tx of pendingPayouts) {
+                const meta = tx.metadata as any;
+                if (meta?.conversationId === conversationId) {
+                    matchingTx = tx;
+                    break;
+                }
+            }
+
+            if (matchingTx) {
+                // Mark the M-Pesa transaction as TIMEOUT
+                await prisma.mpesaTransaction.update({
+                    where: { id: matchingTx.id },
+                    data: {
+                        status: 'TIMEOUT' as any,
+                        resultDesc: 'B2C request timed out in Daraja queue',
+                    },
+                });
+
+                // If this was a refund payout, mark it for manual processing
+                const refundId = (matchingTx.metadata as any)?.refundId;
+                if (refundId) {
+                    try {
+                        const { refundService } = await import('../services/refund.service');
+                        // Mark the refund as MANUAL so finance staff can process it
+                        // outside of B2C. We don't use markFailed() because the
+                        // B2C didn't actually fail — it timed out, meaning the
+                        // money may or may not have been sent. Staff must verify.
+                        await prisma.refund.update({
+                            where: { id: refundId },
+                            data: {
+                                status: 'MANUAL' as any,
+                                b2cFailureReason: 'B2C request timed out in Daraja queue — verify whether funds were disbursed before retrying.',
+                            },
+                        });
+                        logger.warn(`[B2CTimeout] Refund ${refundId} marked MANUAL due to timeout`);
+                    } catch (err: any) {
+                        logger.error(`[B2CTimeout] Failed to update refund ${refundId}:`, err?.message);
+                    }
+                }
+
+                logger.info(`[B2CTimeout] Updated MpesaTransaction ${matchingTx.id} → TIMEOUT`);
+            } else {
+                logger.warn(`[B2CTimeout] No matching PENDING payout for conversation ${conversationId}`);
+            }
+        }
+    } catch (error: any) {
+        logger.error('[B2CTimeout] Error:', error.message);
+    }
+
+    // Always 200 to Daraja
     res.json({ success: true });
 };
 

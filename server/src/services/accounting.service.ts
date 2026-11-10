@@ -839,6 +839,58 @@ export class AccountingService {
             console.warn(`[Accounting] M-Pesa charge post failed:`, err?.message);
         }
     }
+
+    /**
+     * Post Refund Reversal to the Ledger
+     *
+     * When a refund is approved, the original payment's ledger entry must be
+     * reversed. The original entry was:
+     *   Dr Bank 1210 / Cr AR 1100
+     *
+     * The reversal entry is the mirror:
+     *   Dr AR 1100 (reverses the original credit)
+     *   Cr Bank 1210 (reverses the original debit)
+     *
+     * For cash refunds, Cr Cash in Hand 1200 instead.
+     */
+    async postRefundToLedger(refund: any, originalMethod: string): Promise<void> {
+        const { amount, receiptNumber } = refund;
+
+        const bankMethods = new Set(['BANK_TRANSFER', 'MPESA', 'CARD', 'CHEQUE']);
+        const isBank = bankMethods.has(String(originalMethod).toUpperCase());
+        const assetCode = isBank ? '1210' : '1200';
+        const journalCode = isBank ? 'BNK1' : 'CSH1';
+
+        let assetAccount = await this.getAccountByCode(assetCode);
+        let arAccount = await this.getAccountByCode('1100');
+        let journal = await this.getJournalByCode(journalCode);
+
+        if (!assetAccount || !arAccount || !journal) {
+            await this.ensureDefaultAccountingSetup();
+            this.clearCache();
+            assetAccount = await this.getAccountByCode(assetCode);
+            arAccount = await this.getAccountByCode('1100');
+            journal = await this.getJournalByCode(journalCode);
+        }
+
+        if (!assetAccount || !arAccount || !journal) {
+            console.warn('[Accounting] Missing accounts/journal for refund reversal — skipping');
+            return;
+        }
+
+        const reference = `REFUND/${receiptNumber}/${refund.id.slice(0, 8)}`;
+        const entry = await this.createJournalEntry({
+            journalId: journal.id,
+            reference,
+            date: new Date(),
+            items: [
+                { accountId: arAccount.id, debit: Number(amount), label: `Refund reversal: ${receiptNumber}` },
+                { accountId: assetAccount.id, credit: Number(amount), label: `Bank refund: ${receiptNumber}` },
+            ],
+        });
+
+        await this.postJournalEntry(entry.id);
+    }
 }
 
 export const accountingService = new AccountingService();
