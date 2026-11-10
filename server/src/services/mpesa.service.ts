@@ -1,11 +1,14 @@
 import { darajaService } from './daraja.service';
+import prisma from '../config/database';
+import { MpesaStatus, MpesaTransactionType } from '@prisma/client';
+import logger from '../utils/logger';
 
 /**
  * M-Pesa service — Safaricom Daraja is the only supported provider.
  *
  * Kopo Kopo and IntaSend were removed (no school used them). Keep this class as
- * the single entry point so callers (fees, LMS marketplace, payroll) do not need
- * to know which provider sits behind it.
+ * the single entry point so callers (fees, LMS marketplace, payroll, refunds)
+ * do not need to know which provider sits behind it.
  */
 class MpesaService {
     /**
@@ -25,17 +28,56 @@ class MpesaService {
     /**
      * Initiate Payout (B2C)
      *
-     * Not built yet: Daraja B2C has not been implemented. The old payout path
-     * was Kopo Kopo only and has been removed with it.
+     * Used for payroll salary disbursement and refund returns. Calls Daraja's
+     * B2C API. The result arrives asynchronously at the B2C result URL — the
+     * caller stores the ConversationID to match the result when it arrives.
+     *
+     * Requires the school to have B2C credentials configured (initiator name +
+     * security credential in env vars). If not configured, returns a clear
+     * error so callers can inform the user.
      */
-    async initiatePayout(_params: {
+    async initiatePayout(params: {
         phoneNumber: string;
         amount: number;
         staffId?: string;
         payrollRecordId?: string;
         reason?: string;
-    }): Promise<{ success: boolean; message?: string }> {
-        throw new Error('M-Pesa payouts are not available yet. Daraja B2C has not been built.');
+        refundId?: string;
+        commandId?: string;
+    }): Promise<{ success: boolean; message?: string; conversationId?: string }> {
+        const result = await darajaService.initiateB2cPayout({
+            phoneNumber: params.phoneNumber,
+            amount: params.amount,
+            occasion: params.reason || 'B2C Payout',
+            commandId: params.commandId || 'BusinessPayment',
+        });
+
+        if (result.success) {
+            // Track the payout as a PENDING MpesaTransaction so the B2C result
+            // callback can match it back when the disbursement completes.
+            try {
+                await prisma.mpesaTransaction.create({
+                    data: {
+                        type: MpesaTransactionType.PAYOUT,
+                        amount: params.amount,
+                        phoneNumber: params.phoneNumber,
+                        status: 'PENDING',
+                        staffId: params.staffId,
+                        payrollRecordId: params.payrollRecordId,
+                        metadata: {
+                            conversationId: result.conversationId,
+                            originatorConversationId: result.originatorConversationId,
+                            refundId: params.refundId,
+                            reason: params.reason,
+                        },
+                    },
+                });
+            } catch (err: any) {
+                logger.warn('[MpesaPayout] Failed to track B2C transaction:', err?.message);
+            }
+        }
+
+        return result;
     }
 
     /**

@@ -185,6 +185,13 @@ export const PERMISSIONS = {
   // (held in Tuition Deposits 2100) to sibling invoices.
   ALLOCATE_OVERPAYMENT_CREDIT: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'],
 
+  // Refund workflow — finance staff submit refund requests, but only the
+  // school owner (SUPER_ADMIN) can approve them. The submitter cannot
+  // self-approve. Approval triggers: invoice correction + ledger reversal +
+  // B2C return (where provider supports it).
+  SUBMIT_REFUND: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'],
+  APPROVE_REFUND: ['SUPER_ADMIN'],
+
   // ============================================
   // AUDIT & LOGS
   // ============================================
