@@ -6,6 +6,7 @@ import { resolveOrganicPayment, applyToSpecificInvoice, normalizePhone, applyAmo
 import { PRODUCT_DISPLAY_NAME } from '../config/productIdentity';
 import { LMSMarketplaceService } from '../services/lms-marketplace.service';
 import { accountingService } from '../services/accounting.service';
+import { overpaymentCreditService } from '../services/overpayment-credit.service';
 
 import logger from '../utils/logger';
 export const initiatePayment = async (req: Request, res: Response) => {
@@ -13,6 +14,22 @@ export const initiatePayment = async (req: Request, res: Response) => {
 
     if (!phoneNumber || !amount) {
         return res.status(400).json({ success: false, message: 'Phone number and amount are required' });
+    }
+
+    // ── Provider on/off switch ──────────────────────────────────────────────
+    // The school can disable M-Pesa collections from settings (CommunicationConfig.
+    // mpesaEnabled). When disabled, STK push is rejected so parents are not
+    // prompted to pay via a channel the school has turned off.
+    try {
+        const commConfig = await prisma.communicationConfig.findFirst();
+        if (commConfig && !commConfig.mpesaEnabled) {
+            return res.status(403).json({
+                success: false,
+                message: 'M-Pesa collections are currently disabled. Please contact the school office to make a payment.'
+            });
+        }
+    } catch (configErr: any) {
+        logger.warn('[MpesaInitiate] Could not check mpesaEnabled setting — proceeding:', configErr?.message);
     }
 
     try {
@@ -230,6 +247,30 @@ export const handleCallback = async (req: Request, res: Response) => {
                         } catch (ledgerErr: any) {
                             logger.error('[MpesaCallback] Ledger posting error:', ledgerErr?.message ?? ledgerErr);
                         }
+
+                        // ── Detect overpayment & post excess to Tuition Deposits ──
+                        // If the payment exceeded the invoice total, the excess is
+                        // held as a liability (Tuition Deposits 2100) for later
+                        // allocation to a sibling invoice or refund.
+                        try {
+                            await overpaymentCreditService.detectAndPostOverpayment(
+                                transaction.invoiceId!,
+                                createdPaymentId
+                            );
+                        } catch (overpayErr: any) {
+                            logger.error('[MpesaCallback] Overpayment detection error:', overpayErr?.message ?? overpayErr);
+                        }
+
+                        // ── Record M-Pesa transaction charge ──────────────────────
+                        // The school can optionally record the per-transaction M-Pesa
+                        // charge as an expense. The charge bearer setting determines
+                        // whether the school absorbs the cost or passes it to the
+                        // parent. By default the school bears the charge.
+                        try {
+                            await accountingService.postMpesaCharge(amount);
+                        } catch (chargeErr: any) {
+                            logger.error('[MpesaCallback] M-Pesa charge posting error:', chargeErr?.message ?? chargeErr);
+                        }
                     }
 
                     // SMS receipt
@@ -419,6 +460,20 @@ export const resolveUnmatchedPayment = async (req: Request, res: Response) => {
                 );
             } catch (ledgerErr: any) {
                 logger.error('[ResolveUnmatched] Ledger posting error:', ledgerErr?.message ?? ledgerErr);
+            }
+
+            // Detect overpayment & post excess to Tuition Deposits
+            try {
+                await overpaymentCreditService.detectAndPostOverpayment(invoiceId, createdPaymentId);
+            } catch (overpayErr: any) {
+                logger.error('[ResolveUnmatched] Overpayment detection error:', overpayErr?.message ?? overpayErr);
+            }
+
+            // Record M-Pesa transaction charge
+            try {
+                await accountingService.postMpesaCharge(Number(unmatched.amount));
+            } catch (chargeErr: any) {
+                logger.error('[ResolveUnmatched] M-Pesa charge posting error:', chargeErr?.message ?? chargeErr);
             }
         }
 

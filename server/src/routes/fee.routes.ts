@@ -503,6 +503,32 @@ router.post(
   asyncHandler(feeController.recordPayment.bind(feeController))
 );
 
+// ─── Overpayment Credit Allocation ──────────────────────────────────────────
+// Finance staff can view overpaid invoices (credit held in Tuition Deposits),
+// see sibling invoices for allocation, and transfer credit between siblings.
+
+router.get(
+  '/overpaid',
+  requireRole(['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN']),
+  rateLimit({ windowMs: 60_000, maxRequests: 50 }),
+  asyncHandler(feeController.getOverpaidInvoices.bind(feeController))
+);
+
+router.get(
+  '/overpaid/:invoiceId/siblings',
+  requireRole(['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN']),
+  rateLimit({ windowMs: 60_000, maxRequests: 50 }),
+  asyncHandler(feeController.getSiblingInvoicesForOverpayment.bind(feeController))
+);
+
+router.post(
+  '/overpaid/:invoiceId/allocate',
+  requireRole(['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN']),
+  rateLimit({ windowMs: 60_000, maxRequests: 20 }),
+  auditLog('ALLOCATE_OVERPAYMENT_CREDIT'),
+  asyncHandler(feeController.allocateOverpaymentCredit.bind(feeController))
+);
+
 // ─── Stats ─────────────────────────────────────────────────────────────────
 
 router.patch(

@@ -21,7 +21,9 @@ export class AccountingService {
         { code: '5000', name: 'Salaries Expense', type: AccountType.EXPENSE },
         { code: '5100', name: 'Electricity Expense', type: AccountType.EXPENSE },
         { code: '5200', name: 'Water Expense', type: AccountType.EXPENSE },
-        { code: '5300', name: 'Rent Expense', type: AccountType.EXPENSE }
+        { code: '5300', name: 'Rent Expense', type: AccountType.EXPENSE },
+        { code: '5400', name: 'Fee Waivers & Discounts', type: AccountType.EXPENSE },
+        { code: '5500', name: 'M-Pesa Transaction Charges', type: AccountType.EXPENSE }
     ];
 
     private defaultJournals = [
@@ -786,6 +788,56 @@ export class AccountingService {
                 };
             })
         };
+    }
+
+    /**
+     * Post M-Pesa Transaction Charge to the Ledger
+     *
+     * Daraja STK Push transactions may incur a per-transaction charge. The
+     * school bears this cost by default. The charge amount is configurable via
+     * the MPESA_CHARGE_PER_TRANSACTION env var (default: 0 — many schools are
+     * on a tariff where STK push is free).
+     *
+     * Entry:
+     *   Dr: M-Pesa Transaction Charges 5500
+     *   Cr: Main Bank Account 1210
+     */
+    async postMpesaCharge(paymentAmount: number): Promise<void> {
+        const charge = Number(process.env.MPESA_CHARGE_PER_TRANSACTION || 0);
+        if (charge <= 0) return; // No charge configured — skip
+
+        let chargeAccount = await this.getAccountByCode('5500');
+        let bankAccount   = await this.getAccountByCode('1210');
+        let journal       = await this.getJournalByCode('MISC');
+
+        if (!chargeAccount || !bankAccount || !journal) {
+            await this.ensureDefaultAccountingSetup();
+            this.clearCache();
+            chargeAccount = await this.getAccountByCode('5500');
+            bankAccount   = await this.getAccountByCode('1210');
+            journal       = await this.getJournalByCode('MISC');
+        }
+
+        if (!chargeAccount || !bankAccount || !journal) {
+            console.warn('[Accounting] Missing M-Pesa charge accounts — skipping charge post');
+            return;
+        }
+
+        const reference = `MPESA-CHARGE/${new Date().toISOString().slice(0, 10)}/${paymentAmount.toFixed(0)}`;
+        try {
+            const entry = await this.createJournalEntry({
+                journalId: journal.id,
+                reference,
+                date: new Date(),
+                items: [
+                    { accountId: chargeAccount.id, debit: charge, label: `M-Pesa transaction charge for KES ${paymentAmount} payment` },
+                    { accountId: bankAccount.id, credit: charge, label: `Bank deduction: M-Pesa charge` },
+                ],
+            });
+            await this.postJournalEntry(entry.id);
+        } catch (err: any) {
+            console.warn(`[Accounting] M-Pesa charge post failed:`, err?.message);
+        }
     }
 }
 

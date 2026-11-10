@@ -27,6 +27,7 @@ import { AuthRequest } from '../middleware/permissions.middleware';
 import { SmsService } from '../services/sms.service';
 import { whatsappService } from '../services/whatsapp.service';
 import { accountingService } from '../services/accounting.service';
+import { overpaymentCreditService } from '../services/overpayment-credit.service';
 import { complianceService } from '../services/compliance.service';
 import { EmailService } from '../services/email.service';
 import { calculateLearnerInvoice } from '../services/learnerFeeConfiguration.service';
@@ -1322,6 +1323,11 @@ export class FeeController {
       try {
         await accountingService.postFeePaymentToLedger(result.payment, paymentMethod);
 
+        // Detect overpayment & post excess to Tuition Deposits
+        if (result.invoice.status === 'OVERPAID') {
+          await overpaymentCreditService.detectAndPostOverpayment(result.invoice.id, result.payment.id);
+        }
+
         const learner = result.invoice.learner;
         const contactPhone = learner.primaryContactPhone || learner.guardianPhone;
         const newStatus: string = result.invoice.status;
@@ -1534,6 +1540,76 @@ export class FeeController {
       data: { payment: updatedPayment, invoice: updatedInvoice },
       message: `Payment ${payment.receiptNumber} reversed successfully`
     });
+  }
+
+  // ─── Overpayment Credit Allocation ─────────────────────────────────────────
+
+  /**
+   * GET /fees/overpaid
+   * Lists all OVERPAID invoices with unallocated credit that finance staff
+   * can allocate to sibling invoices.
+   */
+  async getOverpaidInvoices(req: AuthRequest, res: Response) {
+    try {
+      const invoices = await overpaymentCreditService.getOverpaidInvoices();
+      res.json({ success: true, data: invoices, count: invoices.length });
+    } catch (error: any) {
+      logger.error('[FeeController] getOverpaidInvoices error:', error?.message);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  /**
+   * GET /fees/overpaid/:invoiceId/siblings
+   * Returns outstanding invoices for siblings of the overpaid learner,
+   * sorted by biggest balance first (pre-selected for allocation).
+   */
+  async getSiblingInvoicesForOverpayment(req: AuthRequest, res: Response) {
+    const { invoiceId } = req.params;
+    try {
+      const invoice = await prisma.feeInvoice.findUnique({
+        where: { id: invoiceId },
+        select: { learnerId: true, status: true },
+      });
+      if (!invoice) throw new ApiError(404, 'Invoice not found');
+      if (invoice.status !== 'OVERPAID') throw new ApiError(400, 'Invoice is not overpaid');
+
+      const result = await overpaymentCreditService.getSiblingInvoices(invoice.learnerId);
+      res.json({ success: true, data: result });
+    } catch (error: any) {
+      if (error instanceof ApiError) throw error;
+      logger.error('[FeeController] getSiblingInvoicesForOverpayment error:', error?.message);
+      res.status(500).json({ success: false, message: error.message });
+    }
+  }
+
+  /**
+   * POST /fees/overpaid/:invoiceId/allocate
+   * Allocates credit from an overpaid invoice to a sibling's invoice.
+   * Body: { targetInvoiceId, amount }
+   */
+  async allocateOverpaymentCredit(req: AuthRequest, res: Response) {
+    const { invoiceId } = req.params;
+    const { targetInvoiceId, amount } = req.body;
+    const userId = req.user!.userId;
+
+    if (!targetInvoiceId || !amount || amount <= 0) {
+      throw new ApiError(400, 'targetInvoiceId and a positive amount are required');
+    }
+
+    try {
+      const result = await overpaymentCreditService.allocateCredit(
+        invoiceId,
+        targetInvoiceId,
+        Number(amount),
+        userId,
+      );
+      res.json({ success: true, data: result, message: `Allocated KES ${Number(amount).toLocaleString()} to sibling invoice` });
+    } catch (error: any) {
+      if (error instanceof ApiError) throw error;
+      logger.error('[FeeController] allocateOverpaymentCredit error:', error?.message);
+      res.status(400).json({ success: false, message: error.message });
+    }
   }
 
   // ─── Stats ─────────────────────────────────────────────────────────────────
