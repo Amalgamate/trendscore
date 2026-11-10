@@ -130,7 +130,7 @@ export const getCommunicationConfig = async (req: AuthRequest, res: Response) =>
                 },
                 mpesa: {
                     enabled: false,
-                    provider: 'intasend',
+                    provider: 'daraja',
                     hasSecretKey: false,
                     hasPasskey: false,
                     onboardingChecklist: {},
@@ -180,7 +180,7 @@ export const getCommunicationConfig = async (req: AuthRequest, res: Response) =>
             },
             mpesa: {
                 enabled: config.mpesaEnabled,
-                provider: config.mpesaProvider,
+                provider: 'daraja', // Daraja is the only supported provider
                 publicKey: config.mpesaPublicKey,
                 businessNumber: config.mpesaBusinessNo,
                 hasSecretKey: !!config.mpesaSecretKey,
@@ -275,7 +275,7 @@ export const saveCommunicationConfig = async (req: AuthRequest, res: Response) =
         if (mpesa.enabled === true && !isMpesaOnboardingComplete(onboardingChecklist)) {
             throw new ApiError(400, 'Complete all M-PESA activation prerequisites before enabling collections.');
         }
-        data.mpesaProvider = mpesa.provider || 'intasend';
+        data.mpesaProvider = 'daraja'; // Daraja is the only supported provider
         data.mpesaPublicKey = mpesa.publicKey || null;
         data.mpesaBusinessNo = mpesa.businessNumber || null;
         data.mpesaEnabled = mpesa.enabled !== undefined ? mpesa.enabled : false;

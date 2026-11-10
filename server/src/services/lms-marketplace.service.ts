@@ -498,9 +498,7 @@ class LMSMarketplaceServiceImpl {
 
       const checkoutRequestId = 'checkoutRequestId' in stkResult
         ? stkResult.checkoutRequestId
-        : 'externalId' in stkResult
-          ? stkResult.externalId
-          : undefined;
+        : undefined;
 
       if (!checkoutRequestId) {
         throw marketplaceError(500, 'STK_PUSH_FAILED');
