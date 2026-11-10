@@ -25,6 +25,7 @@ import prisma from '../config/database';
 import { PRODUCT_DISPLAY_NAME } from '../config/productIdentity';
 import { SmsService } from './sms.service';
 import { accountingService } from './accounting.service';
+import { NotificationService, NotificationType } from './notification.service';
 import logger from '../utils/logger';
 
 // ─── Configurable via environment variables ───────────────────────────────────
@@ -179,7 +180,7 @@ export class LibraryAutomationService {
                 book:   { select: { title: true } },
                 member: {
                     include: {
-                        user:  { select: { firstName: true, phone: true } },
+                        user:  { select: { id: true, firstName: true, phone: true } },
                         fines: {
                             where:  { status: FineStatus.UNPAID },
                             select: { amount: true }
@@ -241,6 +242,26 @@ export class LibraryAutomationService {
             } catch (err) {
                 failed++;
                 logger.error({ err, memberId: member.id }, '[LibraryAutomation] SMS failed');
+            }
+
+            // ── In-app notification ──
+            try {
+                await NotificationService.createNotification({
+                    userId: member.userId,
+                    title: 'Library Books Overdue',
+                    message: `You have ${loans.length} overdue book(s) at ${schoolName}: ${bookList}.${fineText} Please return them to avoid further fines (KES ${FINE_RATE_PER_DAY}/day).`,
+                    type: NotificationType.WARNING,
+                    link: '/app/library',
+                    metadata: {
+                        module: 'LIBRARY',
+                        event: 'BOOKS_OVERDUE_BATCH',
+                        bookCount: loans.length,
+                        bookTitles: loans.map(l => l.book.title),
+                        totalFine,
+                    },
+                });
+            } catch (appErr: any) {
+                logger.warn({ err: appErr, memberId: member.id }, '[LibraryAutomation] In-app notification failed');
             }
         }
 

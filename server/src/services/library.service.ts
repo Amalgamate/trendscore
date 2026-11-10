@@ -19,6 +19,7 @@ import { ApiError } from '../utils/error.util';
 import prisma from '../config/database';
 import { accountingService } from './accounting.service';
 import { SmsService } from './sms.service';
+import { NotificationService, NotificationType } from './notification.service';
 
 export class LibraryService {
     /**
@@ -814,6 +815,26 @@ export class LibraryService {
             } catch (error) {
                 console.error(`Failed to send overdue SMS for loan ${loan.id}:`, error);
             }
+
+            // ── In-app notification ──
+            try {
+                await NotificationService.createNotification({
+                    userId: loan.member.userId,
+                    title: 'Library Book Overdue',
+                    message: `The book "${loan.book.title}" is overdue since ${loan.dueDate.toLocaleDateString()}. Please return it as soon as possible. Fines apply.`,
+                    type: NotificationType.WARNING,
+                    link: '/app/library',
+                    metadata: {
+                        module: 'LIBRARY',
+                        event: 'BOOK_OVERDUE',
+                        bookTitle: loan.book.title,
+                        loanId: loan.id,
+                        dueDate: loan.dueDate.toISOString(),
+                    },
+                });
+            } catch (appErr: any) {
+                console.error(`Failed to send overdue in-app notification for loan ${loan.id}:`, appErr?.message);
+            }
         }
 
         return sentCount;
@@ -975,7 +996,7 @@ export class LibraryService {
             include: {
                 member: {
                     include: {
-                        user: { select: { phone: true, firstName: true } }
+                        user: { select: { id: true, phone: true, firstName: true } }
                     }
                 }
             },
@@ -987,7 +1008,7 @@ export class LibraryService {
             return;
         }
 
-        const { phone, firstName } = candidateLoan.member.user;
+        const { phone, firstName, id: userId } = candidateLoan.member.user;
         const school = await prisma.school.findFirst({ select: { name: true } });
         const schoolName = school?.name || 'The Library';
 
@@ -995,6 +1016,25 @@ export class LibraryService {
 
         await SmsService.sendSms(phone, message);
         console.log(`[Library] Reservation SMS sent to ${phone} for book "${book.title}"`);
+
+        // ── In-app notification ──
+        try {
+            await NotificationService.createNotification({
+                userId,
+                title: 'Book Available for Collection',
+                message: `"${book.title}" is now available for collection from the ${schoolName} library. Please collect it within 2 days.`,
+                type: NotificationType.SUCCESS,
+                link: '/app/library',
+                metadata: {
+                    module: 'LIBRARY',
+                    event: 'BOOK_AVAILABLE',
+                    bookTitle: book.title,
+                    bookId,
+                },
+            });
+        } catch (appErr: any) {
+            console.error(`[Library] Failed to send reservation in-app notification:`, appErr?.message);
+        }
     }
 
     /**

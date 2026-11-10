@@ -32,6 +32,7 @@ import { EmailService } from '../services/email.service';
 import { calculateLearnerInvoice } from '../services/learnerFeeConfiguration.service';
 import { parentAccessService } from '../services/parent-access.service';
 import { getInstitutionType } from '../utils/institutionNormalizer';
+import { SchoolNotificationTriggerService } from '../services/school-notification-trigger.service';
 
 import logger from '../utils/logger';
 function normalizeEnumValue(value?: string): string | undefined {
@@ -1325,6 +1326,9 @@ export class FeeController {
         const contactPhone = learner.primaryContactPhone || learner.guardianPhone;
         const newStatus: string = result.invoice.status;
 
+        const school = await prisma.school.findFirst({ select: { name: true } });
+        const schoolName = school?.name || PRODUCT_DISPLAY_NAME;
+
         if (contactPhone) {
           let smsMessage: string;
           if (newStatus === 'PAID') {
@@ -1334,9 +1338,6 @@ export class FeeController {
           } else {
             smsMessage = `Payment of KES ${amount.toLocaleString()} received for ${learner.firstName}. Outstanding balance: KES ${Number(result.invoice.balance).toLocaleString()}. Thank you.`;
           }
-
-          const school = await prisma.school.findFirst({ select: { name: true } });
-          const schoolName = school?.name || PRODUCT_DISPLAY_NAME;
 
           await Promise.allSettled([
             SmsService.sendSms(contactPhone, smsMessage),
@@ -1352,6 +1353,24 @@ export class FeeController {
             })
           ]);
         }
+
+        // ── In-app notification (Notification Center + bell) ──────────────
+        // SMS and WhatsApp only reach parents who have a phone on file.
+        // This trigger also creates an in-app notification for parents who
+        // have a User account, and notifies admin/accountant roles.
+        SchoolNotificationTriggerService.onFeePaymentRecorded({
+          learnerId: result.invoice.learner.id,
+          invoiceId: result.invoice.id,
+          invoiceNumber: result.invoice.invoiceNumber,
+          amount,
+          receiptNumber: result.payment.receiptNumber,
+          balance: Number(result.invoice.balance),
+          invoiceStatus: newStatus,
+          paymentMethod,
+          schoolName: schoolName,
+        }).catch((err) =>
+          logger.warn('[FeeController] In-app notification trigger failed:', err?.message),
+        );
       } catch (err) {
         logger.error('Post-payment error:', err);
       }

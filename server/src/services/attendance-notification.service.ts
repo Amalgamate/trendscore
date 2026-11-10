@@ -25,6 +25,7 @@
 import prisma from '../config/database';
 import { SmsService } from './sms.service';
 import { whatsAppBusinessService, isWabaConfigured } from '../domains/communication/whatsapp-business.service';
+import { NotificationService, NotificationType } from './notification.service';
 import logger from '../utils/logger';
 
 // ---------------------------------------------------------------------------
@@ -290,6 +291,41 @@ export class AttendanceNotificationService {
       } catch (waErr: any) {
         // WhatsApp failure never blocks SMS — already logged above
         logger.warn('[AttendanceNotification] WhatsApp exception', { learnerId, error: waErr.message });
+      }
+    }
+
+    // ── In-app notification (Notification Center + bell) ──────────────────
+    // SMS and WhatsApp only reach parents who have a phone on file.
+    // This creates an in-app notification for parents who have a User account,
+    // so the event also appears in the Notification Center and triggers the
+    // real-time bell/socket/push pipeline.
+    if (learner.parentId) {
+      try {
+        const notificationTitle =
+          type === 'GATE_ENTRY'    ? 'Child Arrived at School' :
+          type === 'GATE_EXIT'     ? 'Child Left School' :
+          type === 'MANUAL_ABSENT' ? 'Absence Notification' :
+          type === 'BUS_BOARDED'   ? 'Child Boarded School Bus' :
+          type === 'BUS_ALIGHTED'  ? 'Child Alighted from School Bus' :
+          'Attendance Update';
+
+        await NotificationService.createNotification({
+          userId: learner.parentId,
+          title: notificationTitle,
+          message,
+          type: type === 'MANUAL_ABSENT' ? NotificationType.WARNING : NotificationType.INFO,
+          link: '/app/parent-portal-attendance',
+          showAsPopup: type === 'MANUAL_ABSENT',
+          metadata: {
+            module: 'ATTENDANCE',
+            event: type,
+            learnerId,
+            timestamp: timestamp.toISOString(),
+          },
+        });
+        logger.debug('[AttendanceNotification] In-app notification sent', { learnerId, parentId: learner.parentId });
+      } catch (appErr: any) {
+        logger.warn('[AttendanceNotification] In-app notification failed', { learnerId, error: appErr?.message });
       }
     }
   }
