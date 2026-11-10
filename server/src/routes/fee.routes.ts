@@ -368,6 +368,14 @@ router.post(
   asyncHandler(feeController.markInvoicePaid.bind(feeController))
 );
 
+// Approve a mark-paid request created by an accountant.
+router.post(
+  '/invoices/:id/mark-paid/approve',
+  requireRole(['ADMIN', 'SUPER_ADMIN']),
+  auditLog('APPROVE_MARK_PAID'),
+  asyncHandler(feeController.approveMarkPaid.bind(feeController))
+);
+
 /**
  * @route   PATCH /api/fees/invoices/:id
  * @desc    Edit dueDate or totalAmount before any payment is recorded.

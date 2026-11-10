@@ -754,6 +754,7 @@ model Learner {
   primaryContactName     String?
   primaryContactPhone    String?
   primaryContactEmail    String?
+  feeReminderOptOut      Boolean                        @default(false)
   institutionType        InstitutionType                @default(PRIMARY_CBC)
   pathwayId              String?
   upiNumber              String?                        @unique
@@ -5238,6 +5239,7 @@ model ReportEngineAuditLog {
 enum ComplianceStatus {
   PENDING
   SYNCED
+  NOT_SYNCED
   FAILED
   EXEMPT
 }

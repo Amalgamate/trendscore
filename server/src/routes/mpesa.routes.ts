@@ -4,14 +4,16 @@ import * as mpesaController from '../controllers/mpesa.controller';
 import { authenticate } from '../middleware/auth.middleware';
 import { requirePermission } from '../middleware/permissions.middleware';
 import { verifyDarajaCallback } from '../middleware/daraja-verify.middleware';
+import { verifyDarajaIP } from '../middleware/daraja-ip-allowlist.middleware';
 
 const router = Router();
 
 // ── Public — Safaricom Daraja Callbacks ─────────────────────────────────────
-// Daraja cannot authenticate, so these endpoints are public — but we verify
-// the HMAC-SHA256 signature Daraja sends in the Authorization header to reject
-// forged payloads. A route-level express.json() with a `verify` hook captures
-// the raw body needed for HMAC computation (the global parser doesn't).
+// Daraja cannot authenticate, so these endpoints are public. We apply two
+// layers of verification:
+//   1. IP allowlist (verifyDarajaIP) — rejects calls from non-Safaricom IPs
+//   2. HMAC signature (verifyDarajaCallback) — verifies the payload integrity
+// Both must pass for a callback to be processed.
 
 // STK Push callback (collections)
 router.post(
@@ -20,6 +22,7 @@ router.post(
         limit: '2mb',
         verify: (req, _res, buf) => { (req as any).rawBody = buf; },
     }),
+    verifyDarajaIP,
     verifyDarajaCallback,
     mpesaController.handleCallback,
 );
@@ -31,6 +34,7 @@ router.post(
         limit: '2mb',
         verify: (req, _res, buf) => { (req as any).rawBody = buf; },
     }),
+    verifyDarajaIP,
     verifyDarajaCallback,
     mpesaController.handleC2bConfirmation,
 );
@@ -42,6 +46,7 @@ router.post(
         limit: '2mb',
         verify: (req, _res, buf) => { (req as any).rawBody = buf; },
     }),
+    verifyDarajaIP,
     verifyDarajaCallback,
     mpesaController.handleC2bValidation,
 );
@@ -53,6 +58,7 @@ router.post(
         limit: '2mb',
         verify: (req, _res, buf) => { (req as any).rawBody = buf; },
     }),
+    verifyDarajaIP,
     verifyDarajaCallback,
     mpesaController.handleB2cResult,
 );
@@ -64,6 +70,7 @@ router.post(
         limit: '2mb',
         verify: (req, _res, buf) => { (req as any).rawBody = buf; },
     }),
+    verifyDarajaIP,
     verifyDarajaCallback,
     mpesaController.handleB2cTimeout,
 );

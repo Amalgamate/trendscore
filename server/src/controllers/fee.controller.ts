@@ -583,6 +583,14 @@ export class FeeController {
       }
     });
     if (!invoice) throw new ApiError(404, 'Invoice not found');
+
+    // Ownership check: parents can only view their own children's invoices.
+    if (req.user!.role === 'PARENT') {
+      if (!(await parentAccessService.canAccessLearner(req.user!.userId, invoice.learnerId))) {
+        throw new ApiError(403, 'You can only view invoices for your own children');
+      }
+    }
+
     res.json({ success: true, data: invoice });
   }
 
@@ -964,8 +972,30 @@ export class FeeController {
     const { id } = req.params;
     const { paymentDate, paymentMethod = 'OTHER', referenceNumber, notes } = req.body;
     const userId = req.user!.userId;
+    const role = req.user!.role;
     const paidAt = this.parseMarkPaidDate(paymentDate);
     const finalNotes = notes || 'Marked as paid manually from fee invoice list';
+
+    // Maker-checker: ACCOUNTANT users cannot mark paid with method 'OTHER'
+    // (no verifiable money trail). They must use CASH, BANK_TRANSFER, or CHEQUE
+    // — all of which leave a receipt that can be audited. Only ADMIN/SUPER_ADMIN
+    // can use 'OTHER', and even then it's logged for audit.
+    if (role === 'ACCOUNTANT' && paymentMethod === 'OTHER') {
+      throw new ApiError(
+        403,
+        'Accountants cannot mark invoices as paid with method "OTHER". Use CASH, BANK_TRANSFER, or CHEQUE — or ask an admin to approve.'
+      );
+    }
+
+    // Require a reference number for all manual mark-paid entries.
+    // Without a reference, there is no way to trace the payment to a bank
+    // statement or receipt.
+    if (!referenceNumber || referenceNumber.trim().length < 3) {
+      throw new ApiError(
+        400,
+        'A reference number (at least 3 characters) is required for manual mark-paid entries.'
+      );
+    }
 
     let result: any;
     let lastPaymentError: any;
@@ -1035,12 +1065,79 @@ export class FeeController {
     });
   }
 
+  /**
+   * POST /fees/invoices/:id/mark-paid/approve
+   *
+   * Approves a mark-paid entry that was created by an accountant. This is the
+   * checker side of the maker-checker: the accountant creates the payment, and
+   * an admin/super_admin verifies it by adding their approval stamp.
+   *
+   * The approval adds the approver's ID and timestamp to the payment's notes
+   * and logs the action. The payment is already applied — this is a
+   * post-hoc verification, not a gate.
+   */
+  async approveMarkPaid(req: AuthRequest, res: Response) {
+    const { id } = req.params;
+    const { paymentId } = req.body;
+    const approverId = req.user!.userId;
+    const approverRole = req.user!.role;
+
+    if (!paymentId) {
+      throw new ApiError(400, 'paymentId is required');
+    }
+
+    const payment = await prisma.feePayment.findFirst({
+      where: { id: paymentId, invoiceId: id, archived: false },
+      include: { invoice: true }
+    });
+
+    if (!payment) {
+      throw new ApiError(404, 'Payment not found for this invoice');
+    }
+
+    // Check if already approved
+    if (payment.notes?.includes('[Approved by:')) {
+      throw new ApiError(400, 'This payment has already been approved');
+    }
+
+    const approvalStamp = `[Approved by: ${approverId} (${approverRole}) at ${new Date().toISOString()}]`;
+    const updatedPayment = await prisma.feePayment.update({
+      where: { id: paymentId },
+      data: {
+        notes: `${payment.notes || ''} ${approvalStamp}`,
+      },
+    });
+
+    logger.info(`[FeeController] Mark-paid ${paymentId} approved by ${approverId} (${approverRole})`);
+
+    res.json({
+      success: true,
+      data: { payment: updatedPayment },
+      message: 'Mark-paid entry approved'
+    });
+  }
+
   async bulkMarkInvoicesPaid(req: AuthRequest, res: Response) {
     const { invoiceIds, paymentDate, paymentMethod = 'OTHER', referenceNumber, notes } = req.body;
     const userId = req.user!.userId;
+    const role = req.user!.role;
     const paidAt = this.parseMarkPaidDate(paymentDate);
     const uniqueInvoiceIds = Array.from(new Set((invoiceIds || []).map((id: string) => String(id)))) as string[];
     const finalNotes = notes || 'Marked as paid manually from bulk fee invoice action';
+
+    // Maker-checker: same guard as single mark-paid.
+    if (role === 'ACCOUNTANT' && paymentMethod === 'OTHER') {
+      throw new ApiError(
+        403,
+        'Accountants cannot bulk mark invoices as paid with method "OTHER". Use CASH, BANK_TRANSFER, or CHEQUE.'
+      );
+    }
+    if (!referenceNumber || referenceNumber.trim().length < 3) {
+      throw new ApiError(
+        400,
+        'A reference number (at least 3 characters) is required for bulk mark-paid entries.'
+      );
+    }
 
     let result: any;
     let lastPaymentError: any;
@@ -1534,6 +1631,19 @@ export class FeeController {
     });
 
     logger.info(`[FeeController] Payment ${payment.receiptNumber} reversed by ${userId}. Reason: ${reason}`);
+
+    // Post a ledger reversal so the books stay balanced.
+    // The original payment debited Bank/Cash and credited AR — this entry
+    // reverses it: Dr AR, Cr Bank/Cash. Without this, the ledger would show
+    // money that no longer exists.
+    try {
+      await accountingService.postPaymentReversalToLedger(
+        { id: payment.id, amount, receiptNumber: payment.receiptNumber },
+        payment.paymentMethod
+      );
+    } catch (ledgerErr: any) {
+      logger.error('[FeeController] Ledger reversal error:', ledgerErr?.message ?? ledgerErr);
+    }
 
     res.json({
       success: true,
