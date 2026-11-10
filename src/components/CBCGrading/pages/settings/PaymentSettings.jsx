@@ -1,9 +1,12 @@
 import React, { useCallback, useState, useEffect } from 'react';
-import { DollarSign, Save, Loader, CreditCard, Shield, Globe, Terminal } from 'lucide-react';
+import { DollarSign, Save, Loader, CreditCard, Shield, Globe } from 'lucide-react';
 import { communicationAPI } from '../../../../services/api';
 import { useNotifications } from '../../hooks/useNotifications';
 import { PRODUCT_DISPLAY_NAME } from '../../../../config/productIdentity';
 import MpesaOnboardingChecklist from '../../../payments/MpesaOnboardingChecklist';
+
+// Safaricom Daraja is the only supported M-Pesa provider.
+const PROVIDER = 'daraja';
 
 const PaymentSettings = () => {
     const [loading, setLoading] = useState(false);
@@ -13,16 +16,13 @@ const PaymentSettings = () => {
 
     const [mpesaSettings, setMpesaSettings] = useState({
         enabled: false,
-        provider: 'daraja',
-        publicKey: '', // Consumer Key (Daraja) / Client ID (Kopo Kopo)
-        secretKey: '', // Consumer Secret (Daraja) / Client Secret (Kopo Kopo)
-        apiKey: '',    // API Key (Kopo Kopo specific)
-        shortcode: '', // Shortcode (Daraja) / Till Number (Kopo Kopo)
-        passkey: '',   // Passkey (Daraja specific)
+        publicKey: '', // Consumer Key
+        secretKey: '', // Consumer Secret
+        shortcode: '', // Business Shortcode (Paybill or Till)
+        passkey: '',   // Lipa Na M-Pesa Passkey
         sandbox: false,
         hasPublicKey: false,
         hasSecretKey: false,
-        hasApiKey: false,
         hasPasskey: false
     });
 
@@ -38,16 +38,13 @@ const PaymentSettings = () => {
 
             setMpesaSettings({
                 enabled: config.enabled || false,
-                provider: config.provider || 'daraja',
                 publicKey: config.publicKey || '',
                 secretKey: '',
-                apiKey: '',
                 passkey: '',
                 shortcode: config.businessNumber || '',
                 sandbox: config.sandbox || false,
                 hasPublicKey: !!config.publicKey,
                 hasSecretKey: !!config.hasSecretKey,
-                hasApiKey: !!config.hasApiKey,
                 hasPasskey: !!config.hasPasskey
             });
             setOnboardingChecklist(config.onboardingChecklist || {});
@@ -57,6 +54,17 @@ const PaymentSettings = () => {
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleReadinessChange = useCallback(({ ready }) => setOnboardingReady(ready), []);
+    const credentialReadiness = {
+        provider_account: Boolean(PROVIDER),
+        credentials: Boolean(
+            mpesaSettings.shortcode &&
+            (mpesaSettings.publicKey || mpesaSettings.hasPublicKey) &&
+            (mpesaSettings.secretKey || mpesaSettings.hasSecretKey) &&
+            (mpesaSettings.passkey || mpesaSettings.hasPasskey)
+        )
     };
 
     const handleSave = async () => {
@@ -70,11 +78,10 @@ const PaymentSettings = () => {
             const payload = {
                 mpesa: {
                     enabled: mpesaSettings.enabled,
-                    provider: mpesaSettings.provider,
+                    provider: PROVIDER,
                     publicKey: mpesaSettings.publicKey,
                     businessNumber: mpesaSettings.shortcode,
                     secretKey: mpesaSettings.secretKey || undefined,
-                    apiKey: mpesaSettings.apiKey || undefined,
                     passkey: mpesaSettings.passkey || undefined,
                     sandbox: mpesaSettings.sandbox,
                     onboardingChecklist: {
@@ -97,20 +104,6 @@ const PaymentSettings = () => {
         }
     };
 
-    const isKopoKopo = mpesaSettings.provider === 'kopokopo';
-    const handleReadinessChange = useCallback(({ ready }) => setOnboardingReady(ready), []);
-    const credentialReadiness = {
-        provider_account: Boolean(mpesaSettings.provider),
-        credentials: Boolean(
-            mpesaSettings.shortcode &&
-            (mpesaSettings.publicKey || mpesaSettings.hasPublicKey) &&
-            (mpesaSettings.secretKey || mpesaSettings.hasSecretKey) &&
-            (isKopoKopo
-                ? (mpesaSettings.apiKey || mpesaSettings.hasApiKey)
-                : (mpesaSettings.passkey || mpesaSettings.hasPasskey))
-        )
-    };
-
     return (
         <div className="space-y-6">
             <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100">
@@ -121,7 +114,7 @@ const PaymentSettings = () => {
                         </div>
                         <div>
                             <h2 className="text-3xl font-semibold tracking-tight">Payment Gateway</h2>
-                            <p className="text-green-50 opacity-90">Manage M-Pesa collections and bulk payouts</p>
+                            <p className="text-green-50 opacity-90">Manage M-Pesa collections</p>
                         </div>
                     </div>
                 </div>
@@ -136,51 +129,23 @@ const PaymentSettings = () => {
                             onChange={setOnboardingChecklist}
                         />
                     </div>
-                    {/* Provider Selection */}
+
+                    {/* Provider */}
                     <div className="mb-10">
                         <label className="block text-sm font-medium text-gray-700 mb-4 flex items-center gap-2">
-                            <Globe size={18} className="text-green-600"/> Select M-Pesa Provider
+                            <Globe size={18} className="text-green-600"/> M-Pesa Provider
                         </label>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <button
-                                onClick={() => setMpesaSettings({...mpesaSettings, provider: 'daraja'})}
-                                className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all ${
-                                    mpesaSettings.provider === 'daraja' 
-                                    ? 'border-green-600 bg-green-50 text-green-900' 
-                                    : 'border-gray-200 hover:border-gray-300 bg-white text-gray-600'
-                                }`}
-                            >
-                                <div className="flex items-center gap-3">
-                                    <div className={`p-2 rounded-lg ${mpesaSettings.provider === 'daraja' ? 'bg-green-600 text-white' : 'bg-gray-100'}`}>
-                                        <Shield size={20} />
-                                    </div>
-                                    <div className="text-left">
-                                        <p className="font-medium">Safaricom Daraja</p>
-                                        <p className="text-xs opacity-70">Direct integration via Safaricom</p>
-                                    </div>
+                        <div className="flex items-center justify-between p-4 rounded-xl border-2 border-green-600 bg-green-50 text-green-900">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-green-600 text-white">
+                                    <Shield size={20} />
                                 </div>
-                                {mpesaSettings.provider === 'daraja' && <div className="w-4 h-4 bg-green-600 rounded-full border-2 border-white shadow-sm"/>}
-                            </button>
-
-                            <button
-                                onClick={() => setMpesaSettings({...mpesaSettings, provider: 'kopokopo'})}
-                                className={`flex items-center justify-between p-4 rounded-xl border-2 transition-all ${
-                                    mpesaSettings.provider === 'kopokopo' 
-                                    ? 'border-green-600 bg-green-50 text-green-900' 
-                                    : 'border-gray-200 hover:border-gray-300 bg-white text-gray-600'
-                                }`}
-                            >
-                                <div className="flex items-center gap-3">
-                                    <div className={`p-2 rounded-lg ${mpesaSettings.provider === 'kopokopo' ? 'bg-green-600 text-white' : 'bg-gray-100'}`}>
-                                        <Terminal size={20} />
-                                    </div>
-                                    <div className="text-left">
-                                        <p className="font-medium">Kopo Kopo</p>
-                                        <p className="text-xs opacity-70">Unified collection & bulk payouts</p>
-                                    </div>
+                                <div className="text-left">
+                                    <p className="font-medium">Safaricom Daraja</p>
+                                    <p className="text-xs opacity-70">Direct integration via Safaricom</p>
                                 </div>
-                                {mpesaSettings.provider === 'kopokopo' && <div className="w-4 h-4 bg-green-600 rounded-full border-2 border-white shadow-sm"/>}
-                            </button>
+                            </div>
+                            <div className="w-4 h-4 bg-green-600 rounded-full border-2 border-white shadow-sm"/>
                         </div>
                     </div>
 
@@ -198,31 +163,26 @@ const PaymentSettings = () => {
                                     </div>
                                     <div>
                                         <h3 className={`text-lg font-medium ${mpesaSettings.sandbox ? 'text-orange-900' : 'text-blue-900'}`}>
-                                            {isKopoKopo ? 'Kopo Kopo Integration' : 'Daraja API Configuration'}
+                                            Daraja API Configuration
                                             {mpesaSettings.sandbox && <span className="ml-3 px-2 py-0.5 bg-orange-200 text-orange-800 text-xs rounded-full uppercase tracking-wider">Sandbox Mode</span>}
                                         </h3>
                                         <p className={`text-sm ${mpesaSettings.sandbox ? 'text-orange-700' : 'text-blue-700'} opacity-80`}>
-                                            {isKopoKopo 
-                                                ? 'Utilize Kopo Kopo for automated fee collection and bulk payroll disbursements.' 
-                                                : 'Directly connect to Safaricom Daraja for Lipa Na M-Pesa Online collections.'
-                                            }
+                                            Directly connect to Safaricom Daraja for Lipa Na M-Pesa Online collections.
                                         </p>
                                     </div>
                                 </div>
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                {/* Shortcode / Till Number */}
+                                {/* Shortcode */}
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        {isKopoKopo ? 'Till Number / Shortcode' : 'Business Shortcode'}
-                                    </label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Business Shortcode</label>
                                     <input
                                         type="text"
                                         value={mpesaSettings.shortcode}
                                         onChange={(e) => setMpesaSettings({ ...mpesaSettings, shortcode: e.target.value })}
                                         className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:bg-white transition-all outline-none"
-                                        placeholder={isKopoKopo ? 'e.g. 123456' : 'e.g. 174379'}
+                                        placeholder="e.g. 174379"
                                     />
                                     <p className="text-xs text-gray-500 mt-2 font-medium">Your primary target identifier for payments</p>
                                 </div>
@@ -246,18 +206,16 @@ const PaymentSettings = () => {
                             </div>
 
                             <div className="space-y-6 border-t pt-6">
-                                {/* Public Key / Consumer Key */}
+                                {/* Consumer Key */}
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        {isKopoKopo ? 'Application ID' : 'Consumer Key'}
-                                    </label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Consumer Key</label>
                                     <div className="relative">
                                         <input
                                             type="text"
                                             value={mpesaSettings.publicKey}
                                             onChange={(e) => setMpesaSettings({ ...mpesaSettings, publicKey: e.target.value })}
                                             className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:bg-white transition-all outline-none"
-                                            placeholder={mpesaSettings.hasPublicKey ? '****************' : `Enter ${isKopoKopo ? 'Application ID' : 'Consumer Key'}...`}
+                                            placeholder={mpesaSettings.hasPublicKey ? '****************' : 'Enter Consumer Key...'}
                                         />
                                         {mpesaSettings.hasPublicKey && !mpesaSettings.publicKey && (
                                             <span className="absolute right-3 top-3 text-[10px] text-emerald-700 font-medium bg-emerald-100 px-2 py-1 rounded-lg uppercase tracking-wider">Saved</span>
@@ -265,18 +223,16 @@ const PaymentSettings = () => {
                                     </div>
                                 </div>
 
-                                {/* Secret Key / Consumer Secret */}
+                                {/* Consumer Secret */}
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        {isKopoKopo ? 'Application Secret' : 'Consumer Secret'}
-                                    </label>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Consumer Secret</label>
                                     <div className="relative">
                                         <input
                                             type="password"
                                             value={mpesaSettings.secretKey}
                                             onChange={(e) => setMpesaSettings({ ...mpesaSettings, secretKey: e.target.value })}
                                             className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:bg-white transition-all outline-none"
-                                            placeholder={mpesaSettings.hasSecretKey ? '****************' : `Enter ${isKopoKopo ? 'Application Secret' : 'Consumer Secret'}...`}
+                                            placeholder={mpesaSettings.hasSecretKey ? '****************' : 'Enter Consumer Secret...'}
                                         />
                                         {mpesaSettings.hasSecretKey && !mpesaSettings.secretKey && (
                                             <span className="absolute right-3 top-3 text-[10px] text-emerald-700 font-medium bg-emerald-100 px-2 py-1 rounded-lg uppercase tracking-wider">Saved</span>
@@ -284,42 +240,22 @@ const PaymentSettings = () => {
                                     </div>
                                 </div>
 
-                                {isKopoKopo ? (
-                                    /* Kopo Kopo API Key */
-                                    <div className="animate-in slide-in-from-top-2 duration-300">
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">API Key</label>
-                                        <div className="relative">
-                                            <input
-                                                type="password"
-                                                value={mpesaSettings.apiKey}
-                                                onChange={(e) => setMpesaSettings({ ...mpesaSettings, apiKey: e.target.value })}
-                                                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:bg-white transition-all outline-none"
-                                                placeholder={mpesaSettings.hasApiKey ? '****************' : 'Enter Kopo Kopo API Key...'}
-                                            />
-                                            {mpesaSettings.hasApiKey && !mpesaSettings.apiKey && (
-                                                <span className="absolute right-3 top-3 text-[10px] text-emerald-700 font-medium bg-emerald-100 px-2 py-1 rounded-lg uppercase tracking-wider">Saved</span>
-                                            )}
-                                        </div>
-                                        <p className="text-xs text-gray-500 mt-2">Required for validating webhooks and status inquiries</p>
+                                {/* Daraja Passkey */}
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-2">Daraja Passkey</label>
+                                    <div className="relative">
+                                        <input
+                                            type="password"
+                                            value={mpesaSettings.passkey}
+                                            onChange={(e) => setMpesaSettings({ ...mpesaSettings, passkey: e.target.value })}
+                                            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:bg-white transition-all outline-none"
+                                            placeholder={mpesaSettings.hasPasskey ? '****************' : 'Enter Lipa Na M-Pesa Passkey...'}
+                                        />
+                                        {mpesaSettings.hasPasskey && !mpesaSettings.passkey && (
+                                            <span className="absolute right-3 top-3 text-[10px] text-emerald-700 font-medium bg-emerald-100 px-2 py-1 rounded-lg uppercase tracking-wider">Saved</span>
+                                        )}
                                     </div>
-                                ) : (
-                                    /* Daraja Passkey */
-                                    <div className="animate-in slide-in-from-top-2 duration-300">
-                                        <label className="block text-sm font-medium text-gray-700 mb-2">Daraja Passkey</label>
-                                        <div className="relative">
-                                            <input
-                                                type="password"
-                                                value={mpesaSettings.passkey}
-                                                onChange={(e) => setMpesaSettings({ ...mpesaSettings, passkey: e.target.value })}
-                                                className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:bg-white transition-all outline-none"
-                                                placeholder={mpesaSettings.hasPasskey ? '****************' : 'Enter Lipa Na M-Pesa Passkey...'}
-                                            />
-                                            {mpesaSettings.hasPasskey && !mpesaSettings.passkey && (
-                                                <span className="absolute right-3 top-3 text-[10px] text-emerald-700 font-medium bg-emerald-100 px-2 py-1 rounded-lg uppercase tracking-wider">Saved</span>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
+                                </div>
                             </div>
 
                             <div className="pt-8 border-t flex flex-col md:flex-row items-center justify-between gap-6">

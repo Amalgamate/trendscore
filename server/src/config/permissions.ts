@@ -171,6 +171,16 @@ export const PERMISSIONS = {
   FINANCIAL_REPORTS: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'],
   SEND_FEE_REMINDERS: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'],
 
+  // M-Pesa money actions — previously any authenticated user could do these.
+  // INITIATE_PAYOUT: trigger bulk salary disbursement via M-Pesa B2C.
+  INITIATE_PAYOUT: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'],
+  // RELEASE_UNMATCHED: resolve or dismiss unmatched M-Pesa payments
+  // (assigning an unmatched payment to a learner reduces that learner's
+  // balance, so it must be restricted to finance staff).
+  RELEASE_UNMATCHED: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'],
+  // VIEW_UNMATCHED_PAYMENTS: browse the unmatched payment queue.
+  VIEW_UNMATCHED_PAYMENTS: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST'],
+
   // ============================================
   // AUDIT & LOGS
   // ============================================

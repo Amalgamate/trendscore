@@ -1,22 +1,15 @@
-import prisma from '../config/database';
 import { darajaService } from './daraja.service';
-import { kopokopoService } from './kopokopo.service';
-import { IntaSendService } from './intasend.service';
 
+/**
+ * M-Pesa service — Safaricom Daraja is the only supported provider.
+ *
+ * Kopo Kopo and IntaSend were removed (no school used them). Keep this class as
+ * the single entry point so callers (fees, LMS marketplace, payroll) do not need
+ * to know which provider sits behind it.
+ */
 class MpesaService {
     /**
-     * Determine the active provider from configuration
-     */
-    async getProvider() {
-        const config = await prisma.communicationConfig.findFirst();
-        // Priority to Kopo Kopo if enabled or explicitly set
-        if (config?.mpesaProvider === 'kopokopo') return 'kopokopo';
-        if (config?.mpesaProvider === 'intasend') return 'intasend';
-        return config?.mpesaProvider || 'kopokopo'; // Default to Kopo Kopo as per user request
-    }
-
-    /**
-     * Initiate STK Push (Unified Interface)
+     * Initiate STK Push
      */
     async initiateStkPush(params: {
         phoneNumber: string;
@@ -26,87 +19,47 @@ class MpesaService {
         firstName?: string;
         lastName?: string;
     }) {
-        const provider = await this.getProvider();
-
-        if (provider === 'kopokopo') {
-            return kopokopoService.initiateStkPush(params);
-        } else if (provider === 'intasend') {
-            const identifier = `PAY-${params.invoiceId || 'GEN'}-${Date.now()}`;
-            const result = await IntaSendService.initiateStkPush(params.phoneNumber, params.amount, identifier);
-            return {
-                success: true,
-                checkoutRequestId: result.invoice.invoice_id,
-                message: 'STK Push initiated'
-            };
-        } else {
-            // Default to Daraja
-            return darajaService.initiateStkPush(params);
-        }
+        return darajaService.initiateStkPush(params);
     }
 
     /**
      * Initiate Payout (B2C)
+     *
+     * Not built yet: Daraja B2C has not been implemented. The old payout path
+     * was Kopo Kopo only and has been removed with it.
      */
-    async initiatePayout(params: {
+    async initiatePayout(_params: {
         phoneNumber: string;
         amount: number;
         staffId?: string;
         payrollRecordId?: string;
         reason?: string;
-    }) {
-        const provider = await this.getProvider();
-
-        if (provider === 'kopokopo') {
-            return kopokopoService.initiatePayout(params);
-        } else {
-            throw new Error(`Payouts are not yet supported for provider: ${provider}`);
-        }
+    }): Promise<{ success: boolean; message?: string }> {
+        throw new Error('M-Pesa payouts are not available yet. Daraja B2C has not been built.');
     }
 
     /**
-     * Query Transaction Status (Unified Response)
+     * Query STK Push status.
+     *
+     * Daraja's STK query confirms the outcome only; it does not return the
+     * amount, receipt number or phone. Those arrive on the callback, so callers
+     * must not record a payment from this result alone.
      */
-    async queryStatus(transactionId: string) {
-        const provider = await this.getProvider();
-        
-        if (provider === 'daraja') {
-            const result = await darajaService.queryStkStatus(transactionId);
-            return {
-                success: true,
-                state: result.ResultCode === '0' ? 'COMPLETE' : (result.ResultCode === '1032' ? 'FAILED' : 'PENDING'),
-                raw: result
-            };
-        }
-
-        if (provider === 'intasend') {
-            const result: any = await IntaSendService.checkStatus(transactionId);
-            return {
-                success: true,
-                state: result.invoice?.state || 'PENDING',
-                amount: Number(result.invoice?.net_amount || 0),
-                receipt: result.invoice?.invoice_id,
-                phone: result.invoice?.account,
-                raw: result
-            };
-        }
-
-        if (provider === 'kopokopo') {
-            const result = await kopokopoService.queryStkStatus(transactionId);
-            const k2status = result.data?.attributes?.status || 'Pending';
-            const resource = result.data?.attributes?.event?.resource;
-            
-            return {
-                success: true,
-                state: k2status.toUpperCase() === 'SUCCESS' ? 'COMPLETE' : 
-                       (['FAILED', 'CANCELLED'].includes(k2status.toUpperCase()) ? 'FAILED' : 'PENDING'),
-                amount: Number(resource?.amount || 0),
-                receipt: resource?.reference,
-                phone: resource?.sender_phone_number || resource?.destination_reference,
-                raw: result
-            };
-        }
-        
-        throw new Error(`Inquiry not fully implemented for ${provider}`);
+    async queryStatus(checkoutRequestId: string): Promise<{
+        success: boolean;
+        state: 'COMPLETE' | 'FAILED' | 'PENDING';
+        amount?: number;
+        receipt?: string;
+        phone?: string;
+        raw: any;
+    }> {
+        const result = await darajaService.queryStkStatus(checkoutRequestId);
+        const code = String(result.ResultCode);
+        return {
+            success: true,
+            state: code === '0' ? 'COMPLETE' : (code === '1032' ? 'FAILED' : 'PENDING'),
+            raw: result
+        };
     }
 }
 

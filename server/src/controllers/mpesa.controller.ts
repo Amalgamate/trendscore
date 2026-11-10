@@ -5,6 +5,7 @@ import messageService from '../services/message.service';
 import { resolveOrganicPayment, applyToSpecificInvoice, normalizePhone, applyAmountToInvoiceFields, resolveInvoiceStatus } from '../services/payment-resolver.service';
 import { PRODUCT_DISPLAY_NAME } from '../config/productIdentity';
 import { LMSMarketplaceService } from '../services/lms-marketplace.service';
+import { accountingService } from '../services/accounting.service';
 
 import logger from '../utils/logger';
 export const initiatePayment = async (req: Request, res: Response) => {
@@ -42,6 +43,17 @@ export const queryStatus = async (req: Request, res: Response) => {
     try {
         const result = await mpesaService.queryStatus(checkoutRequestId);
         const { state, amount, receipt, phone } = result;
+
+        // Daraja's status query confirms the outcome only; it returns no amount or
+        // receipt. The payment is recorded when the callback arrives, so never
+        // apply a payment from this result (it would create a KES 0 record).
+        if (state === 'COMPLETE' && (!receipt || !Number(amount))) {
+            return res.json({
+                success: true,
+                status: 'COMPLETE',
+                message: 'Payment confirmed by M-Pesa. It will be recorded when the callback arrives.'
+            });
+        }
 
         if (state === 'COMPLETE') {
             // Check if already recorded
@@ -94,31 +106,26 @@ export const queryStatus = async (req: Request, res: Response) => {
 
 /**
  * Handle M-Pesa Callback (Public Endpoint)
- * Handles both:
- *  1. STK Push callbacks (Daraja + Kopo Kopo) — transaction pre-exists in DB
- *  2. Organic Buy Goods till payments (Kopo Kopo) — no pre-existing transaction
+ *  Handles Daraja STK Push callbacks only; the transaction pre-exists in the DB.
+ *  Organic paybill/till payments (Daraja C2B) are not built yet.
  */
 export const handleCallback = async (req: Request, res: Response) => {
-    let provider = 'daraja';
-    let checkoutRequestId: string | null = null;
-    let externalId: string | null = null;
-
-    if (req.body.Body?.stkCallback) {
-        provider = 'daraja';
-        checkoutRequestId = req.body.Body.stkCallback.CheckoutRequestID;
-    } else if (req.body.data?.attributes?.event?.type) {
-        provider = 'kopokopo';
-        externalId = req.body.data.id;
+    const stkCallback = req.body?.Body?.stkCallback;
+    if (!stkCallback || typeof stkCallback.CheckoutRequestID !== 'string' || !stkCallback.CheckoutRequestID) {
+        // Daraja STK callbacks are the only payload this endpoint understands.
+        // A missing CheckoutRequestID must never reach the lookup below: Prisma
+        // drops an undefined filter and would return an arbitrary transaction.
+        logger.warn('[MpesaCallback] Ignored payload that is not a valid Daraja STK callback');
+        return res.json({ success: true });
     }
+    const checkoutRequestId: string = stkCallback.CheckoutRequestID;
 
-    logger.info(`[MpesaCallback] Provider: ${provider} | ID: ${checkoutRequestId || externalId}`);
+    logger.info(`[MpesaCallback] Daraja STK callback | ID: ${checkoutRequestId}`);
 
     try {
-        // ── 1. Try to find a pre-existing (STK-initiated) transaction ───────────
+        // ── 1. Find the STK-initiated transaction ──────────────────────────────
         const transaction = await prisma.mpesaTransaction.findFirst({
-            where: provider === 'daraja'
-                ? { checkoutRequestId: checkoutRequestId as string }
-                : { externalId: externalId as string }
+            where: { checkoutRequestId }
         });
 
         // ── 2. Parse payload ────────────────────────────────────────────────────
@@ -129,31 +136,15 @@ export const handleCallback = async (req: Request, res: Response) => {
         let resultCode: any = null;
         let resultDesc: any = null;
 
-        if (provider === 'daraja') {
-            const callbackData = req.body.Body.stkCallback;
-            resultCode = callbackData.ResultCode;
-            resultDesc = callbackData.ResultDesc;
-            isSuccess = resultCode === 0;
+        resultCode = stkCallback.ResultCode;
+        resultDesc = stkCallback.ResultDesc;
+        isSuccess = resultCode === 0;
 
-            if (isSuccess && callbackData.CallbackMetadata) {
-                const metadata = callbackData.CallbackMetadata.Item;
-                amount = Number(metadata.find((i: any) => i.Name === 'Amount')?.Value ?? 0);
-                receipt = metadata.find((i: any) => i.Name === 'MpesaReceiptNumber')?.Value ?? '';
-                phone = String(metadata.find((i: any) => i.Name === 'PhoneNumber')?.Value ?? '');
-            }
-        } else {
-            // Kopo Kopo
-            const attributes = req.body.data.attributes;
-            isSuccess = attributes.status === 'Success';
-            resultCode = isSuccess ? 0 : 1;
-            resultDesc = attributes.status;
-
-            if (isSuccess && attributes.event?.resource) {
-                const resource = attributes.event.resource;
-                amount = Number(resource.amount ?? 0);
-                receipt = resource.reference ?? '';
-                phone = String(resource.sender_phone_number || resource.destination_reference || '');
-            }
+        if (isSuccess && stkCallback.CallbackMetadata) {
+            const metadata = stkCallback.CallbackMetadata.Item;
+            amount = Number(metadata.find((i: any) => i.Name === 'Amount')?.Value ?? 0);
+            receipt = metadata.find((i: any) => i.Name === 'MpesaReceiptNumber')?.Value ?? '';
+            phone = String(metadata.find((i: any) => i.Name === 'PhoneNumber')?.Value ?? '');
         }
 
         // ── 3. STK-initiated flow (transaction exists) ────────────────────────
@@ -181,9 +172,11 @@ export const handleCallback = async (req: Request, res: Response) => {
                     const systemUser = await prisma.user.findFirst({ where: { role: 'SUPER_ADMIN' } });
 
                     let updatedInvoice: any;
+                    let createdPaymentId: string | null = null;
+                    let isDuplicate = false;
                     try {
                         await prisma.$transaction(async (tx) => {
-                            await tx.feePayment.create({
+                            const createdPayment = await tx.feePayment.create({
                                 data: {
                                     invoiceId: transaction.invoiceId!,
                                     amount,
@@ -191,9 +184,11 @@ export const handleCallback = async (req: Request, res: Response) => {
                                     receiptNumber: `MPESA-${receipt}`,
                                     referenceNumber: receipt,
                                     notes: `M-Pesa STK Push via ${phone}`,
-                                    recordedBy: systemUser?.id || ''
+                                    recordedBy: systemUser?.id || '',
+                                    paymentDate: new Date()
                                 }
                             });
+                            createdPaymentId = createdPayment.id;
 
                             await applyAmountToInvoiceFields(tx, transaction.invoiceId!, amount);
 
@@ -209,9 +204,31 @@ export const handleCallback = async (req: Request, res: Response) => {
                     } catch (err: any) {
                         if (err?.code === 'P2002') {
                             logger.warn(`[MpesaCallback] Duplicate receipt ${receipt} — already recorded.`);
+                            isDuplicate = true;
                             updatedInvoice = await prisma.feeInvoice.findUnique({ where: { id: transaction.invoiceId! } });
                         } else {
                             throw err;
+                        }
+                    }
+
+                    // ── Post M-Pesa payment to the accounting ledger ──────────────
+                    // Manual payments in fee.controller.ts call this, but M-Pesa
+                    // callbacks never did — meaning M-Pesa money showed on the
+                    // learner's invoice but not in the school's books. Post only
+                    // for non-duplicate payments so we don't double-post.
+                    if (!isDuplicate && createdPaymentId) {
+                        try {
+                            await accountingService.postFeePaymentToLedger(
+                                {
+                                    id: createdPaymentId,
+                                    amount,
+                                    receiptNumber: `MPESA-${receipt}`,
+                                    paymentDate: new Date()
+                                },
+                                'MPESA'
+                            );
+                        } catch (ledgerErr: any) {
+                            logger.error('[MpesaCallback] Ledger posting error:', ledgerErr?.message ?? ledgerErr);
                         }
                     }
 
@@ -269,19 +286,13 @@ export const handleCallback = async (req: Request, res: Response) => {
             return res.json({ success: true });
         }
 
-        // ── 4. Organic Buy Goods payment (no pre-existing transaction) ────────
-        if (isSuccess && phone && amount > 0 && receipt) {
-            logger.info(`[MpesaCallback] Organic Buy Goods payment detected: ${phone} → KES ${amount} (${receipt})`);
-
-            const { outcome, detail } = await resolveOrganicPayment({
-                rawPhone: phone,
-                amount,
-                receipt,
-                rawPayload: req.body
-            });
-
-            logger.info(`[MpesaCallback] Organic resolution: ${outcome} — ${detail}`);
-        }
+        // ── 4. No matching STK transaction ─────────────────────────────────────
+        // Kopo Kopo's organic Buy Goods webhook used to be resolved here. With it
+        // removed, an STK callback we did not initiate is never applied to a
+        // learner's invoice: anyone could post a forged "Success" payload.
+        // Organic (paybill/till) payments will return through a verified Daraja
+        // C2B confirmation endpoint, which has not been built yet.
+        logger.warn(`[MpesaCallback] No STK transaction found for ${checkoutRequestId}; ignored`);
 
         return res.json({ success: true });
 
@@ -347,10 +358,19 @@ export const resolveUnmatchedPayment = async (req: Request, res: Response) => {
 
         const systemUser = await prisma.user.findFirst({ where: { role: 'SUPER_ADMIN' } });
 
+        // Use the original payment date, not the resolution date.
+        // Previously the FeePayment defaulted to new Date(), which meant a
+        // payment received on the 1st and resolved on the 15th appeared in
+        // reports as if it arrived on the 15th — distorting monthly collection
+        // figures and bank reconciliation.
+        const originalPaymentDate = unmatched.transactionDate || unmatched.createdAt;
+
         let updated: any;
+        let createdPaymentId: string | null = null;
+        let isDuplicate = false;
         try {
             await prisma.$transaction(async (tx) => {
-                await tx.feePayment.create({
+                const createdPayment = await tx.feePayment.create({
                     data: {
                         invoiceId,
                         amount: unmatched.amount,
@@ -358,9 +378,11 @@ export const resolveUnmatchedPayment = async (req: Request, res: Response) => {
                         receiptNumber: `MPESA-${unmatched.receiptNo}`,
                         referenceNumber: unmatched.receiptNo,
                         notes: `Manually assigned from unmatched payment queue (phone: ${unmatched.phone})`,
-                        recordedBy: systemUser?.id || userId || ''
+                        recordedBy: systemUser?.id || userId || '',
+                        paymentDate: originalPaymentDate
                     }
                 });
+                createdPaymentId = createdPayment.id;
 
                 await applyAmountToInvoiceFields(tx, invoiceId, Number(unmatched.amount));
 
@@ -376,9 +398,27 @@ export const resolveUnmatchedPayment = async (req: Request, res: Response) => {
         } catch (err: any) {
             if (err?.code === 'P2002') {
                 logger.warn(`[ResolveUnmatched] Duplicate receipt ${unmatched.receiptNo} — already recorded.`);
+                isDuplicate = true;
                 updated = await prisma.feeInvoice.findUnique({ where: { id: invoiceId } });
             } else {
                 throw err;
+            }
+        }
+
+        // Post the resolved M-Pesa payment to the accounting ledger.
+        if (!isDuplicate && createdPaymentId) {
+            try {
+                await accountingService.postFeePaymentToLedger(
+                    {
+                        id: createdPaymentId,
+                        amount: Number(unmatched.amount),
+                        receiptNumber: `MPESA-${unmatched.receiptNo}`,
+                        paymentDate: originalPaymentDate
+                    },
+                    'MPESA'
+                );
+            } catch (ledgerErr: any) {
+                logger.error('[ResolveUnmatched] Ledger posting error:', ledgerErr?.message ?? ledgerErr);
             }
         }
 
