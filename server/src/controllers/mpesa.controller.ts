@@ -3,6 +3,7 @@ import { mpesaService } from '../services/mpesa.service';
 import prisma from '../config/database';
 import messageService from '../services/message.service';
 import { resolveOrganicPayment, applyToSpecificInvoice, normalizePhone, applyAmountToInvoiceFields, resolveInvoiceStatus } from '../services/payment-resolver.service';
+import { admissionMatchService } from '../services/admission-match.service';
 import { PRODUCT_DISPLAY_NAME } from '../config/productIdentity';
 import { LMSMarketplaceService } from '../services/lms-marketplace.service';
 import { accountingService } from '../services/accounting.service';
@@ -569,13 +570,251 @@ export const initiateBulkPayout = async (req: Request, res: Response) => {
                 amount: Number(record.netSalary),
                 staffId: record.userId,
                 payrollRecordId: record.id,
-                reason: `Salary ${record.month}/${record.year}`
+                reason: `Salary ${record.month}/${record.year}`,
+                commandId: 'SalaryPayment',
             });
 
             results.push({ id: record.id, ...payoutResult });
         }
 
         res.json({ success: true, results });
+    } catch (error: any) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// ─── C2B Confirmation Handler ───────────────────────────────────────────────
+/**
+ * Handle Daraja C2B Confirmation (organic paybill/till payments).
+ *
+ * When a parent pays via M-Pesa paybill, Daraja posts the completed transaction
+ * to this endpoint. The payload contains:
+ *  - TransactionType (PayBill or BuyGoods)
+ *  - TransID (M-Pesa receipt)
+ *  - TransAmount
+ *  - MSISDN (payer phone)
+ *  - BillRefNumber (the AccountReference — admission number entered by parent)
+ *  - TransTime
+ *
+ * The handler uses admissionMatchService to match the BillRefNumber to a
+ * learner and auto-apply the payment. If no match is found, the payment is
+ * parked in the unmatched queue.
+ */
+export const handleC2bConfirmation = async (req: Request, res: Response) => {
+    const body = req.body;
+
+    // Daraja C2B confirmation payloads are flat (not nested like STK callbacks)
+    const receipt = body?.TransID || body?.transID || '';
+    const amount = Number(body?.TransAmount || body?.transAmount || 0);
+    const phone = String(body?.MSISDN || body?.msisdn || '');
+    const billRefNumber = String(body?.BillRefNumber || body?.billRefNumber || '');
+    const transTime = body?.TransTime || body?.transTime;
+    const transactionType = body?.TransactionType || body?.transactionType || '';
+
+    if (!receipt || !amount) {
+        logger.warn('[C2BConfirm] Ignored invalid C2B confirmation payload:', body);
+        return res.json({ success: true });
+    }
+
+    logger.info(`[C2BConfirm] Receipt: ${receipt} | Amount: ${amount} | Phone: ${phone} | BillRef: ${billRefNumber}`);
+
+    try {
+        // Parse Daraja transaction time format (yyyyMMddHHmmss)
+        let transactionDate: Date | undefined;
+        if (transTime && typeof transTime === 'string') {
+            // Daraja format: 20260110143000
+            const t = transTime;
+            if (t.length === 14) {
+                transactionDate = new Date(
+                    Number(t.slice(0, 4)),
+                    Number(t.slice(4, 6)) - 1,
+                    Number(t.slice(6, 8)),
+                    Number(t.slice(8, 10)),
+                    Number(t.slice(10, 12)),
+                    Number(t.slice(12, 14))
+                );
+            }
+        }
+
+        const result = await admissionMatchService.matchAndApply({
+            accountReference: billRefNumber,
+            rawPhone: phone,
+            amount,
+            receipt,
+            transactionDate,
+            rawPayload: body,
+        });
+
+        logger.info(`[C2BConfirm] Result: ${result.outcome} — ${result.detail || ''}`);
+    } catch (error: any) {
+        logger.error('[C2BConfirm] Error:', error.message);
+        // Still return 200 to Daraja — failing to respond causes retries
+    }
+
+    // Always respond 200 to Daraja
+    res.json({ success: true });
+};
+
+// ─── C2B Validation Handler ────────────────────────────────────────────────
+/**
+ * Handle Daraja C2B Validation (real-time account reference check).
+ *
+ * Daraja calls this BEFORE the payment is completed, giving us a chance to
+ * validate the AccountReference (admission number). If we return
+ * ResultCode = 0, the payment proceeds. If ResultCode = 1 (with a
+ * ResultDesc), the payment is rejected and the parent sees the message.
+ *
+ * We accept all payments here (ResultCode = 0) because:
+ *  1. Rejecting at validation means the parent's money never leaves — but they
+ *     already entered the PIN and may panic if it fails.
+ *  2. Even if the admission number doesn't match, we park the payment as
+ *     unmatched and finance staff resolve it. This is better than rejecting
+ *     and losing the payment entirely.
+ *
+ * The validation endpoint is still useful for logging — it records the
+ * attempted payment before it completes, giving us an early warning of
+ * payments that will need manual resolution.
+ */
+export const handleC2bValidation = async (req: Request, res: Response) => {
+    const body = req.body;
+
+    const billRefNumber = String(body?.BillRefNumber || body?.billRefNumber || '');
+    const amount = Number(body?.TransAmount || body?.transAmount || 0);
+    const phone = String(body?.MSISDN || body?.msisdn || '');
+
+    logger.info(`[C2BValidate] Phone: ${phone} | Amount: ${amount} | BillRef: ${billRefNumber}`);
+
+    // Accept all payments — unmatched ones are parked for manual resolution
+    res.json({
+        ResultCode: 0,
+        ResultDesc: 'Accepted',
+    });
+};
+
+// ─── B2C Result Handler ─────────────────────────────────────────────────────
+/**
+ * Handle Daraja B2C Result callback.
+ *
+ * When a B2C payout (salary or refund) completes, Daraja posts the result to
+ * this endpoint. The payload contains:
+ *  - Result.ResultType (0 = completed, 1 = failed)
+ *  - Result.ResultCode (0 = success, other = failure)
+ *  - Result.ResultDesc
+ *  - Result.ConversationID
+ *  - Result.OriginatorConversationID
+ *  - Result.TransactionID (M-Pesa receipt for the B2C)
+ *
+ * The handler matches the ConversationID to the originating MpesaTransaction
+ * record and updates its status. For refund disbursements, it marks the refund
+ * as completed.
+ */
+export const handleB2cResult = async (req: Request, res: Response) => {
+    const result = req.body?.Result;
+
+    if (!result) {
+        logger.warn('[B2CResult] Ignored payload without Result body');
+        return res.json({ success: true });
+    }
+
+    const resultCode = result.ResultCode;
+    const resultDesc = result.ResultDesc;
+    const conversationId = result.ConversationID;
+    const originatorConversationId = result.OriginatorConversationID;
+    const transactionId = result.TransactionID;
+
+    logger.info(`[B2CResult] ConvID: ${conversationId} | Code: ${resultCode} | Desc: ${resultDesc}`);
+
+    try {
+        // Find the originating MpesaTransaction by conversationId in metadata.
+        // We fetch recent PENDING PAYOUT transactions and match by conversationId
+        // stored in the metadata JSON field. Prisma's JSON filtering varies by
+        // database, so we fetch a small window and match in code.
+        const pendingPayouts = await prisma.mpesaTransaction.findMany({
+            where: {
+                type: 'PAYOUT' as any,
+                status: 'PENDING',
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 50, // reasonable window — payouts older than this are likely stuck
+        });
+
+        // Match by conversationId stored in metadata
+        let matchingTx = null;
+        for (const tx of pendingPayouts) {
+            const meta = tx.metadata as any;
+            if (meta?.conversationId === conversationId) {
+                matchingTx = tx;
+                break;
+            }
+        }
+
+        if (matchingTx) {
+            const isSuccess = resultCode === 0;
+            await prisma.mpesaTransaction.update({
+                where: { id: matchingTx.id },
+                data: {
+                    status: isSuccess ? 'SUCCESS' : 'FAILED',
+                    resultCode,
+                    resultDesc,
+                    transactionId: transactionId || null,
+                },
+            });
+
+            // If this was a refund payout, mark the refund as completed
+            const refundId = (matchingTx.metadata as any)?.refundId;
+            if (refundId && isSuccess) {
+                // The refund model doesn't exist yet (Step 4 will add it).
+                // When it does, this is where we'd mark it as DISBURSED.
+                logger.info(`[B2CResult] Refund ${refundId} disbursement completed`);
+            }
+
+            // If this was a payroll payout, log it for finance staff to verify
+            if (matchingTx.payrollRecordId && isSuccess) {
+                logger.info(`[B2CResult] Payroll payout completed for record ${matchingTx.payrollRecordId} — receipt ${transactionId}`);
+            }
+
+            logger.info(`[B2CResult] Updated MpesaTransaction ${matchingTx.id} → ${isSuccess ? 'SUCCESS' : 'FAILED'}`);
+        } else {
+            logger.warn(`[B2CResult] No matching PENDING payout for conversation ${conversationId}`);
+        }
+    } catch (error: any) {
+        logger.error('[B2CResult] Error:', error.message);
+    }
+
+    // Always 200 to Daraja
+    res.json({ success: true });
+};
+
+// ─── B2C Timeout Handler ────────────────────────────────────────────────────
+/**
+ * Handle Daraja B2C Queue Timeout.
+ *
+ * If a B2C request sits in Daraja's queue too long without being processed,
+ * a timeout notification is posted here. The originating payout remains in
+ * PENDING status — finance staff should investigate and decide whether to
+ * retry or cancel.
+ */
+export const handleB2cTimeout = async (req: Request, res: Response) => {
+    logger.warn('[B2CTimeout] B2C request timed out:', req.body);
+
+    // No automatic action — staff should investigate PENDING payouts that
+    // have been stuck for too long.
+    res.json({ success: true });
+};
+
+// ─── Register C2B URLs (admin setup) ────────────────────────────────────────
+/**
+ * Register C2B confirmation and validation URLs with Daraja.
+ *
+ * This is a one-time setup call that tells Daraja where to post organic
+ * paybill payments. Only SUPER_ADMIN can trigger it. The endpoint is also
+ * called automatically on first deploy if C2B URLs are not yet registered.
+ */
+export const registerC2bUrls = async (req: Request, res: Response) => {
+    try {
+        const { darajaService } = await import('../services/daraja.service');
+        const result = await darajaService.registerC2bUrls();
+        res.json(result);
     } catch (error: any) {
         res.status(500).json({ success: false, message: error.message });
     }
