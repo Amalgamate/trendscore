@@ -25,7 +25,7 @@ jobs:
       school_name: ${{ steps.target.outputs.school_name }}
       github_environment: ${{ steps.target.outputs.github_environment }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Validate school target
         id: target
         run: |
@@ -40,7 +40,7 @@ jobs:
     needs: validate
     environment: ${{ needs.validate.outputs.github_environment }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Configure SSH
         env:
