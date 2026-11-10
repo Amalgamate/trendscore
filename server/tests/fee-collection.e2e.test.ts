@@ -209,8 +209,14 @@ describe('Fee collection end-to-end', () => {
       await prisma.learner.deleteMany({ where: { id: learnerId } });
     }
     if (parentId) {
+      await prisma.userNotification.deleteMany({ where: { userId: parentId } }).catch(() => {});
       await prisma.user.deleteMany({ where: { id: parentId } });
     } else {
+      // Find the user by email first so we can clean up notifications
+      const userByEmail = await prisma.user.findFirst({ where: { email: guardianEmail }, select: { id: true } });
+      if (userByEmail) {
+        await prisma.userNotification.deleteMany({ where: { userId: userByEmail.id } }).catch(() => {});
+      }
       await prisma.user.deleteMany({ where: { email: guardianEmail } });
     }
     if (updatedFeeStructureId) {
