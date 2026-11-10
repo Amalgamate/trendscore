@@ -192,6 +192,11 @@ export const PERMISSIONS = {
   SUBMIT_REFUND: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'],
   APPROVE_REFUND: ['SUPER_ADMIN'],
 
+  // Mark-paid maker-checker: ACCOUNTANT can submit, only ADMIN/SUPER_ADMIN
+  // can approve. This prevents creating receipts without money or oversight.
+  MARK_INVOICE_PAID: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'],
+  APPROVE_MARK_PAID: ['SUPER_ADMIN', 'ADMIN'],
+
   // Bank reconciliation — finance staff can import M-Pesa statements and
   // match them against recorded payments. Only SUPER_ADMIN can finalise
   // (mark as reconciled) to prevent single-person errors going undetected.

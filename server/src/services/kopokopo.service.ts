@@ -89,7 +89,7 @@ class KopoKopoService {
                 system: PRODUCT_DISPLAY_NAME
             },
             _links: {
-                callback_url: process.env.KOPOKOPO_WEBHOOK_URL || 'https://yourdomain.com/api/mpesa/callback'
+                callback_url: process.env.KOPOKOPO_WEBHOOK_URL || 'https://zawadi.trendscore.co.ke/api/mpesa/callback'
             }
         };
 
@@ -165,7 +165,7 @@ class KopoKopoService {
                 reason: params.reason || 'Salary Payment'
             },
             _links: {
-                callback_url: process.env.KOPOKOPO_WEBHOOK_URL || 'https://yourdomain.com/api/mpesa/callback'
+                callback_url: process.env.KOPOKOPO_WEBHOOK_URL || 'https://zawadi.trendscore.co.ke/api/mpesa/callback'
             }
         };
 

@@ -853,6 +853,56 @@ export class AccountingService {
      *
      * For cash refunds, Cr Cash in Hand 1200 instead.
      */
+    /**
+     * Post a payment reversal to the ledger when a payment is reversed
+     * (archived) outside the refund workflow.
+     *
+     * This mirrors the original payment entry in reverse:
+     *   Dr AR 1100  (restores the receivable that was settled)
+     *   Cr Bank/Cash (reverses the asset that was debited)
+     *
+     * This ensures the ledger stays balanced even when a payment is reversed
+     * directly rather than through the refund approval flow.
+     */
+    async postPaymentReversalToLedger(payment: any, method: string): Promise<void> {
+        const { amount, receiptNumber } = payment;
+
+        const bankMethods = new Set(['BANK_TRANSFER', 'MPESA', 'CARD', 'CHEQUE']);
+        const isBank = bankMethods.has(String(method).toUpperCase());
+        const assetCode = isBank ? '1210' : '1200';
+        const journalCode = isBank ? 'BNK1' : 'CSH1';
+
+        let assetAccount = await this.getAccountByCode(assetCode);
+        let arAccount = await this.getAccountByCode('1100');
+        let journal = await this.getJournalByCode(journalCode);
+
+        if (!assetAccount || !arAccount || !journal) {
+            await this.ensureDefaultAccountingSetup();
+            this.clearCache();
+            assetAccount = await this.getAccountByCode(assetCode);
+            arAccount = await this.getAccountByCode('1100');
+            journal = await this.getJournalByCode(journalCode);
+        }
+
+        if (!assetAccount || !arAccount || !journal) {
+            console.warn('[Accounting] Missing accounts/journal for payment reversal — skipping');
+            return;
+        }
+
+        const reference = `REVERSAL/${receiptNumber}/${payment.id.slice(0, 8)}`;
+        const entry = await this.createJournalEntry({
+            journalId: journal.id,
+            reference,
+            date: new Date(),
+            items: [
+                { accountId: arAccount.id, debit: Number(amount), label: `Payment reversal: ${receiptNumber}` },
+                { accountId: assetAccount.id, credit: Number(amount), label: `Reversal: ${receiptNumber}` },
+            ],
+        });
+
+        await this.postJournalEntry(entry.id);
+    }
+
     async postRefundToLedger(refund: any, originalMethod: string): Promise<void> {
         const { amount, receiptNumber } = refund;
 

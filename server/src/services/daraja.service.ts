@@ -44,29 +44,29 @@ class DarajaService {
     }
 
     private get callbackUrl() {
-        return process.env.MPESA_CALLBACK_URL || 'https://yourdomain.com/api/tertiary/mpesa/callback';
+        return process.env.MPESA_CALLBACK_URL || 'https://zawadi.trendscore.co.ke/api/mpesa/callback';
     }
 
     // B2C result + timeout URLs — these differ from the STK callback URL.
     // Daraja posts the B2C result to the ResultURL and a timeout notification
     // to the QueueTimeOutURL.
     private get b2cResultUrl() {
-        return process.env.MPESA_B2C_RESULT_URL || 'https://yourdomain.com/api/tertiary/mpesa/b2c/result';
+        return process.env.MPESA_B2C_RESULT_URL || 'https://zawadi.trendscore.co.ke/api/mpesa/b2c/result';
     }
 
     private get b2cTimeoutUrl() {
-        return process.env.MPESA_B2C_TIMEOUT_URL || 'https://yourdomain.com/api/tertiary/mpesa/b2c/timeout';
+        return process.env.MPESA_B2C_TIMEOUT_URL || 'https://zawadi.trendscore.co.ke/api/mpesa/b2c/timeout';
     }
 
     // C2B confirmation + validation URLs. Daraja posts C2B (paybill/till)
     // transactions to the ConfirmationURL for completed payments and the
     // ValidationURL for real-time account reference validation.
     private get c2bConfirmationUrl() {
-        return process.env.MPESA_C2B_CONFIRMATION_URL || 'https://yourdomain.com/api/tertiary/mpesa/c2b/confirmation';
+        return process.env.MPESA_C2B_CONFIRMATION_URL || 'https://zawadi.trendscore.co.ke/api/mpesa/c2b/confirmation';
     }
 
     private get c2bValidationUrl() {
-        return process.env.MPESA_C2B_VALIDATION_URL || 'https://yourdomain.com/api/tertiary/mpesa/c2b/validation';
+        return process.env.MPESA_C2B_VALIDATION_URL || 'https://zawadi.trendscore.co.ke/api/mpesa/c2b/validation';
     }
 
     async getAccessToken() {

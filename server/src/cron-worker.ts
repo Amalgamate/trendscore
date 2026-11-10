@@ -21,6 +21,7 @@ import { runBiometricLogRetryWorker } from './domains/biometrics/biometric-log-r
 import { runExeatOverdueWorker } from './domains/boarding/exeat-overdue.worker';
 import { earlyWarningService } from './domains/presence/early-warning.service';
 import { resolveStudentUserIdsForLearners } from './services/student-account-link.service';
+import { feeReminderService } from './services/fee-reminder.service';
 
 /**
  * Query all PUBLISHED assignments whose dueDate falls on tomorrow (in UTC),
@@ -133,8 +134,18 @@ async function startCronWorker() {
             });
         });
 
+        // ── Fee Reminders ─────────────────────────────────────────────────────
+        // Daily at 10:00 AM EAT (07:00 UTC) — send overdue fee SMS reminders
+        // Cadence: 7, 14, 30 days past dueDate (configurable via CommunicationConfig)
+        cron.schedule('0 7 * * *', () => {
+            logger.info('[CRON] Running daily fee reminder batch');
+            feeReminderService.runReminderBatch().catch(err => {
+                logger.error('[CRON] Fee reminder batch error:', err);
+            });
+        });
+
         // ── Library Automation ────────────────────────────────────────────────
-        
+
         // 1. Auto-assess late fines: 00:05 EAT (21:05 UTC prev day)
         cron.schedule('5 21 * * *', () => {
             logger.info('[CRON] Running library late fine assessment');
