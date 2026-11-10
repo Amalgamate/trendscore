@@ -105,6 +105,49 @@ async function scoreRelockHandler(request: ApprovalRequest): Promise<void> {
 // No-op stub for future modules
 const noopHandler = async (_request: ApprovalRequest): Promise<void> => {};
 
+/**
+ * PAYMENT_REVERSAL approval hook.
+ * Fires when an approval engine request of type PAYMENT_REVERSAL transitions
+ * to APPROVED. Delegates to refundService.approveRefund() to perform the
+ * actual refund processing (invoice correction, ledger reversal, B2C payout).
+ *
+ * Uses a dynamic import to avoid a circular dependency:
+ * refund.service.ts imports approvalEngineService at module load time.
+ */
+async function paymentReversalApprovalHandler(request: ApprovalRequest, approverId?: string): Promise<void> {
+  if (!approverId) {
+    console.warn('[ApprovalEngine] PAYMENT_REVERSAL hook called without an approverId — skipping');
+    return;
+  }
+
+  const meta = request.metadata as Record<string, any>;
+  const refundId = meta?.refundId;
+  if (!refundId) {
+    console.error(`[ApprovalEngine] PAYMENT_REVERSAL request ${request.id} has no refundId in metadata`);
+    return;
+  }
+
+  // Fetch the approver's role for the permission guard inside refundService
+  const approver = await prisma.user.findUnique({
+    where: { id: approverId },
+    select: { role: true },
+  });
+  if (!approver) {
+    console.error(`[ApprovalEngine] Approver ${approverId} not found for PAYMENT_REVERSAL hook`);
+    return;
+  }
+
+  const { refundService } = await import('./refund.service');
+  const result = await refundService.approveRefund({
+    refundId,
+    approverId,
+    approverRole: approver.role,
+    comment: `Approved via approval engine — request ${request.id}`,
+  });
+
+  console.info(`[ApprovalEngine] PAYMENT_REVERSAL hook completed for refund ${refundId}: ${result.message}`);
+}
+
 export const APPROVAL_HOOKS: Record<ApprovalRequestType, (request: ApprovalRequest, approverId?: string) => Promise<void>> = {
   SCORE_UNLOCK: scoreUnlockApprovalHandler,
   ATTENDANCE_UNLOCK: noopHandler,
@@ -112,7 +155,7 @@ export const APPROVAL_HOOKS: Record<ApprovalRequestType, (request: ApprovalReque
   FEE_WAIVER: noopHandler,
   EXPENSE_APPROVAL: noopHandler,
   BUDGET_APPROVAL: noopHandler,
-  PAYMENT_REVERSAL: noopHandler,
+  PAYMENT_REVERSAL: paymentReversalApprovalHandler,
   ROLE_CHANGE: noopHandler,
   LEAVE_APPROVAL: noopHandler,
   REPORT_PUBLISHING: noopHandler,

@@ -153,6 +153,10 @@ model User {
   counsellingSessionsHeld    CounsellingSession[]        @relation("CounsellingSessionCounsellor")
   pathwayInterventions       PathwayIntervention[]       @relation("PathwayInterventionCounsellor")
 
+  // ── Refund workflow ──────────────────────────────────────────────────────────
+  refundSubmissions          Refund[]                    @relation("RefundSubmitter")
+  refundApprovals            Refund[]                    @relation("RefundApprover")
+
   // ── Performance indexes ─────────────────────────────────────────────────────────────────
   @@index([role, archived, status])
   @@index([archived])
@@ -795,6 +799,7 @@ model Learner {
   savedCareers           LearnerCareerSave[]
   pathwayProfile         LearnerPathwayProfile?
   pathwayConversation    PathwayConversationMessage[]
+  refunds                Refund[]
 
   @@index([admissionNumber])
   @@index([parentId])
@@ -1617,6 +1622,7 @@ model FeeInvoice {
   pledges      FeePledge[]
   waivers      FeeWaiver[]
   revisions    FeeInvoiceRevision[]
+  refunds      Refund[]
 
   @@index([learnerId])
   @@index([term, academicYear])
@@ -1712,6 +1718,7 @@ model FeePayment {
 
   invoice  FeeInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   recorder User       @relation("RecordedPayments", fields: [recordedBy], references: [id], onDelete: SetNull)
+  refunds  Refund[]
 
   @@index([invoiceId])
   @@index([paymentDate])
@@ -5007,6 +5014,71 @@ model UnmatchedPayment {
   @@index([status])
   @@index([phone])
   @@map("unmatched_payments")
+}
+
+// ============================================================================
+// REFUNDS — Fee payment refund workflow
+// Finance staff submit, only school owner (SUPER_ADMIN) approves.
+// Approval triggers: invoice correction + ledger reversal + B2C return.
+// ============================================================================
+
+enum RefundStatus {
+  PENDING       // Submitted by finance staff, awaiting owner approval
+  APPROVED      // Owner approved — disbursement in progress
+  REJECTED      // Owner rejected
+  DISBURSED     // B2C return completed successfully
+  FAILED        // B2C return failed
+  MANUAL        // B2C not available — refund processed manually (cash/cheque)
+}
+
+enum RefundMethod {
+  B2C           // Daraja B2C disbursement to parent's M-Pesa
+  CASH          // Cash refund (manual)
+  CHEQUE        // Cheque refund (manual)
+  BANK_TRANSFER // Bank transfer (manual)
+}
+
+model Refund {
+  id              String       @id @default(uuid())
+  paymentId       String       // The FeePayment being refunded
+  invoiceId       String       // The invoice the payment was applied to
+  learnerId       String?      // The learner (for quick lookup)
+  amount          Decimal      @db.Decimal(10, 2)
+  reason          String
+  status          RefundStatus @default(PENDING)
+  method          RefundMethod @default(B2C)
+
+  // Workflow participants
+  submittedById   String       // Finance staff who submitted
+  approvedById    String?      // School owner who approved
+  submittedAt     DateTime     @default(now())
+  approvedAt      DateTime?
+  disbursedAt     DateTime?
+
+  // B2C disbursement tracking
+  b2cConversationId     String? // Daraja ConversationID for the B2C return
+  b2cTransactionId      String? // M-Pesa receipt for the B2C disbursement
+  b2cFailureReason      String? // Error description if B2C failed
+
+  // Approval request linkage
+  approvalRequestId String? // Linked ApprovalRequest ID
+
+  notes            String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  // ── Relations ────────────────────────────────────────────────────────────
+  payment          FeePayment   @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  invoice          FeeInvoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  learner          Learner?     @relation(fields: [learnerId], references: [id], onDelete: SetNull)
+  submittedBy      User         @relation("RefundSubmitter", fields: [submittedById], references: [id])
+  approvedBy       User?        @relation("RefundApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([invoiceId])
+  @@index([learnerId])
+  @@index([submittedById])
+  @@map("refunds")
 }
 
 // ============================================================================

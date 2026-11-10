@@ -192,6 +192,13 @@ export const PERMISSIONS = {
   SUBMIT_REFUND: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'],
   APPROVE_REFUND: ['SUPER_ADMIN'],
 
+  // Bank reconciliation — finance staff can import M-Pesa statements and
+  // match them against recorded payments. Only SUPER_ADMIN can finalise
+  // (mark as reconciled) to prevent single-person errors going undetected.
+  IMPORT_MPESA_STATEMENT: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'],
+  RECONCILE_MPESA_STATEMENT: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'],
+  VIEW_BANK_RECONCILIATION: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'],
+
   // ============================================
   // AUDIT & LOGS
   // ============================================

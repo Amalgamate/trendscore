@@ -55,4 +55,56 @@ export async function seedApprovalWorkflows(): Promise<void> {
   }
 
   console.log(`  ✓ Approval workflow seeded: ${workflow.name} (id: ${workflow.id})`);
+
+  // ── PAYMENT_REVERSAL workflow (refund approval) ──────────────────────────
+  // Finance staff submit refund requests; only the school owner (SUPER_ADMIN)
+  // can approve. This ensures the approval engine routes refund requests
+  // correctly and the paymentReversalApprovalHandler fires on approval.
+  const refundWorkflow = await prisma.approvalWorkflow.upsert({
+    where: {
+      module_requestType: {
+        module: 'FEES',
+        requestType: 'PAYMENT_REVERSAL',
+      },
+    },
+    update: {
+      // Preserve admin customizations on update
+    },
+    create: {
+      name: 'Refund Approval',
+      module: 'FEES',
+      requestType: 'PAYMENT_REVERSAL',
+      description: 'Finance staff submit refund requests. Only the school owner (SUPER_ADMIN) can approve. Triggers invoice correction, ledger reversal, and B2C disbursement.',
+      active: true,
+      approvalMode: 'SINGLE',
+      minApprovals: 1,
+    },
+  });
+
+  const existingRefundStep = await prisma.approvalStep.findUnique({
+    where: {
+      workflowId_stepNumber: {
+        workflowId: refundWorkflow.id,
+        stepNumber: 1,
+      },
+    },
+  });
+
+  if (!existingRefundStep) {
+    await prisma.approvalStep.create({
+      data: {
+        workflowId: refundWorkflow.id,
+        stepNumber: 1,
+        approverType: 'ROLE',
+        approverRoles: ['SUPER_ADMIN'],
+        approverUserIds: [],
+        minApprovals: 1,
+      },
+    });
+    console.log('    ✓ Created PAYMENT_REVERSAL workflow step 1 (SUPER_ADMIN only)');
+  } else {
+    console.log('    ✓ PAYMENT_REVERSAL workflow step 1 already exists');
+  }
+
+  console.log(`  ✓ Approval workflow seeded: ${refundWorkflow.name} (id: ${refundWorkflow.id})`);
 }
