@@ -298,8 +298,8 @@ const ClockInStatusWidget: React.FC<WidgetProps> = ({ user, variant = 'default' 
     return (
       <div className="flex shrink-0 items-center gap-2">
         <div className="hidden min-w-0 text-right sm:block">
-          <p className="text-[10px] font-bold text-slate-700">{isClockedIn ? `Clocked in${compactTime ? ` · ${compactTime}` : ''}` : dayComplete ? 'Day complete' : 'Use school Wi-Fi'}</p>
-          {message && <p className={`max-w-44 truncate text-[10px] ${feedbackTone === 'denied' ? 'text-rose-800' : 'text-slate-600'}`}>{message}</p>}
+          <p className="text-[10px] font-bold text-slate-700">{isClockedIn ? `Clocked in${compactTime ? ` · ${compactTime}` : ''}` : dayComplete ? 'Day complete' : statusLabel}</p>
+          {message && <p className={`max-w-44 truncate text-[10px] ${feedbackTone === 'denied' ? 'text-rose-800' : 'text-slate-600'}`}>{isIpDenied ? 'Use only the allowed WIFI to clock in' : message}</p>}
         </div>
         <button
           type="button"
@@ -389,7 +389,7 @@ const ClockInStatusWidget: React.FC<WidgetProps> = ({ user, variant = 'default' 
                 : feedbackTone === 'success'
                   ? 'text-emerald-900'
                   : 'text-sky-900'
-            }`}>{message}</p>
+            }`}>{isIpDenied ? 'Use only the allowed WIFI to clock in' : message}</p>
             {reasonCode && feedbackTone === 'denied' && (
               <p className="text-[10px] text-slate-500 mt-0.5 font-mono">Code: {reasonCode}</p>
             )}
