@@ -17,7 +17,7 @@ import InvoiceA5 from '../shared/InvoiceA5';
 import ThermalReceipt from '../shared/ThermalReceipt';
 import api from '../../../services/api';
 
-const RecordPaymentPage = ({ invoice, initialMode }) => {
+const RecordPaymentPage = ({ invoice, initialMode, returnPage }) => {
   const navigateTo = usePageNavigation();
   const { showSuccess, showError, showToast, toastMessage, toastType, hideNotification } = useNotifications();
   const [loading, setLoading] = useState(false);
@@ -55,9 +55,9 @@ const RecordPaymentPage = ({ invoice, initialMode }) => {
   if (!invoice) {
     return (
       <div className="flex flex-col items-center justify-center h-64 text-gray-500 space-y-4">
-        <p className="text-lg font-semibold">No invoice selected.</p>
+        <p className="text-lg font-semibold">Choose an invoice before recording a payment.</p>
         <button
-          onClick={() => navigateTo('fees-collection')}
+          onClick={() => navigateTo(returnPage || 'fees-collection')}
           className="flex items-center gap-2 px-4 py-2 bg-[#002C60] text-white rounded-lg font-semibold hover:bg-[#003a7a] transition"
         >
           <ArrowLeft size={16} /> Back to Invoices
@@ -146,7 +146,7 @@ const RecordPaymentPage = ({ invoice, initialMode }) => {
 
           <div className="flex flex-col items-center gap-3 mt-6">
             <button
-              onClick={() => navigateTo('fees-collection')}
+              onClick={() => navigateTo(returnPage || 'fees-collection')}
               className="text-[#002C60] font-medium text-sm hover:underline"
             >
               Done & Return to List

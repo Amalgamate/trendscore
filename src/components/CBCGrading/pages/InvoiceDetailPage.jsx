@@ -18,6 +18,7 @@ import {
 import usePageNavigation from '../../../hooks/usePageNavigation';
 import { generateDocument } from '../../../utils/simplePdfGenerator';
 import { useNotifications } from '../hooks/useNotifications';
+import { usePermissions } from '../../../hooks/usePermissions';
 import DownloadReportButton from '../shared/DownloadReportButton';
 import FeeWaiverModal from '../shared/FeeWaiverModal';
 import ThermalReceipt from '../shared/ThermalReceipt';
@@ -58,6 +59,8 @@ function timeAgo(dateStr) {
 const InvoiceDetailPage = ({ invoice }) => {
   const navigateTo = usePageNavigation();
   const { showSuccess, showError, showToast, toastMessage, toastType, hideNotification } = useNotifications();
+  const { can } = usePermissions();
+  const canRequestRefund = can('SUBMIT_REFUND');
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [printingInvoice, setPrintingInvoice] = useState(null);
@@ -112,6 +115,7 @@ const InvoiceDetailPage = ({ invoice }) => {
     notes: ''
   });
   const [savingPledge, setSavingPledge] = useState(false);
+  const [requestingRefundId, setRequestingRefundId] = useState('');
 
   // Waiver modal
   const [showWaiverModal, setShowWaiverModal] = useState(false);
@@ -306,9 +310,24 @@ const InvoiceDetailPage = ({ invoice }) => {
       setReversingPaymentId(null);
     }
   };
+
+  const handleRequestRefund = async (payment) => {
+    const reason = window.prompt('Why should the school review this payment for a refund?');
+    if (!reason || reason.trim().length < 5) {
+      if (reason !== null) showError('Please add a reason with at least 5 characters.');
+      return;
+    }
+    setRequestingRefundId(payment.id);
+    try {
+      await api.finance.submitRefund({ paymentId: payment.id, reason: reason.trim() });
+      showSuccess('Refund request sent to school leadership for review.');
+    } catch (error) {
+      showError(error?.message || 'Could not send the refund request. Please try again.');
+    } finally { setRequestingRefundId(''); }
+  };
   const handleCancelInvoice = async () => {
-    if (!cancelReason.trim()) {
-      showError('Please enter a reason for cancellation');
+    if (cancelReason.trim().length < 5) {
+      showError('Please enter a cancellation reason of at least 5 characters');
       return;
     }
     setCancelling(true);
@@ -639,6 +658,17 @@ const InvoiceDetailPage = ({ invoice }) => {
                         </td>
                       )}
                       <td className="px-6 py-3 text-center">
+                        {!p.archived && canRequestRefund && (
+                          <button
+                            onClick={() => handleRequestRefund(p)}
+                            disabled={requestingRefundId === p.id}
+                            className="mr-2 inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-[10px] font-semibold text-blue-800 transition-all hover:bg-blue-100 disabled:opacity-50"
+                            title={`Request a review for ${p.receiptNumber || 'this payment'}`}
+                          >
+                            {requestingRefundId === p.id ? <Loader2 size={11} className="animate-spin" /> : <RotateCcw size={11} />}
+                            Request refund
+                          </button>
+                        )}
                         {!p.archived && (
                           <button
                             onClick={() => handleReversePayment(p)}
@@ -941,6 +971,7 @@ const InvoiceDetailPage = ({ invoice }) => {
                   placeholder="e.g. Wrong fee structure applied, duplicate invoice..."
                   className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl text-sm focus:border-red-400 focus:ring-2 focus:ring-red-100 outline-none resize-none transition-all"
                 />
+                <p className="text-xs text-gray-500">Enter at least 5 characters so the audit history explains this cancellation.</p>
               </div>
               <div className="flex gap-3 pt-1">
                 <button
@@ -951,7 +982,7 @@ const InvoiceDetailPage = ({ invoice }) => {
                 </button>
                 <button
                   onClick={handleCancelInvoice}
-                  disabled={cancelling || !cancelReason.trim()}
+                  disabled={cancelling || cancelReason.trim().length < 5}
                   className="flex-1 py-3 px-4 rounded-xl font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
                 >
                   {cancelling ? <Loader2 size={16} className="animate-spin" /> : <Ban size={16} />}

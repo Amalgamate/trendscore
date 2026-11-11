@@ -1,5 +1,10 @@
 import prisma from '../config/database';
 import logger from '../utils/logger';
+import { Prisma } from '@prisma/client';
+
+export class ReconciliationInputError extends Error {
+    statusCode = 400;
+}
 
 /**
  * Bank Reconciliation Service — M-Pesa Statement Import + Matching
@@ -46,24 +51,24 @@ class ReconciliationService {
         const { rows, importedById, statementDate, startingBalance, endingBalance } = params;
 
         if (!rows || rows.length === 0) {
-            throw new Error('No rows to import — the statement appears to be empty');
+            throw new ReconciliationInputError('No rows to import — the statement appears to be empty');
+        }
+        if (!importedById?.trim()) throw new ReconciliationInputError('Your user session is missing; sign in again before importing.');
+
+        // Validate the complete file before creating a statement header, so a
+        // malformed row can never leave a partial import behind.
+        const normalizedRows = rows.map((row, index) => this.validateImportRow(row, index));
+        const openingBalance = startingBalance ?? 0;
+        const closingBalance = endingBalance ?? 0;
+        if (!Number.isFinite(openingBalance) || !Number.isFinite(closingBalance)) {
+            throw new ReconciliationInputError('Opening and closing balances must be valid numbers.');
         }
 
         logger.info(`[Reconciliation] Importing ${rows.length} M-Pesa statement rows`);
-
-        // Create a BankStatement record to group this import
-        const statement = await prisma.bankStatement.create({
-            data: {
-                accountId: await this.getMpesaBankAccountId(),
-                dateRange: statementDate || new Date().toISOString().slice(0, 10),
-                startingBalance: startingBalance || 0,
-                endingBalance: endingBalance || 0,
-                status: 'IMPORTED',
-            },
-        });
+        const accountId = await this.getMpesaBankAccountId();
 
         const results: ImportResult = {
-            statementId: statement.id,
+            statementId: '',
             totalRows: rows.length,
             autoMatched: 0,
             unmatched: 0,
@@ -71,18 +76,71 @@ class ReconciliationService {
             details: [],
         };
 
-        for (const row of rows) {
-            const detail = await this.processRow(row, statement.id, importedById);
+        const statementId = await prisma.$transaction(async (tx) => {
+            const references = [...new Set(normalizedRows.map(row => row.receiptNo).filter((value): value is string => Boolean(value)))];
+            const existing = references.length
+                ? await tx.bankStatementLine.findMany({ where: { reference: { in: references } }, select: { reference: true } })
+                : [];
+            const existingReferences = new Set(existing.map(line => line.reference).filter((value): value is string => Boolean(value)));
+            const seenInBatch = new Set<string>();
+            const duplicateAt = normalizedRows.map((row) => {
+                const duplicate = Boolean(row.receiptNo && (existingReferences.has(row.receiptNo) || seenInBatch.has(row.receiptNo)));
+                if (row.receiptNo) seenInBatch.add(row.receiptNo);
+                return duplicate;
+            });
+            const hasNewRows = duplicateAt.some(isDuplicate => !isDuplicate);
+            if (!hasNewRows) return null;
 
-            if (detail.status === 'DUPLICATE') {
-                results.duplicates++;
-            } else if (detail.status === 'RECONCILED') {
-                results.autoMatched++;
-            } else {
-                results.unmatched++;
+            const statement = await tx.bankStatement.create({
+                data: {
+                    accountId,
+                    dateRange: statementDate || new Date().toISOString().slice(0, 10),
+                    startingBalance: openingBalance,
+                    endingBalance: closingBalance,
+                    status: 'IMPORTED',
+                },
+            });
+            results.statementId = statement.id;
+
+            for (let index = 0; index < normalizedRows.length; index++) {
+                const row = normalizedRows[index];
+                if (duplicateAt[index]) {
+                    results.duplicates++;
+                    results.details.push({
+                        receiptNo: row.receiptNo,
+                        amount: row.amount,
+                        date: row.date.toISOString(),
+                        status: 'DUPLICATE',
+                        matchType: null,
+                        matchedTo: null,
+                        message: 'This receipt was already imported; no duplicate line was added.',
+                    });
+                    continue;
+                }
+                const detail = await this.processRow(tx, row, statement.id, importedById);
+                if (detail.status === 'RECONCILED') results.autoMatched++;
+                else results.unmatched++;
+                results.details.push(detail);
             }
 
-            results.details.push(detail);
+            return statement.id;
+        }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+
+        // All rows were already present; report duplicates without creating an
+        // empty statement header on a repeated file upload.
+        if (!statementId) {
+            for (const row of normalizedRows) {
+                results.duplicates++;
+                results.details.push({
+                    receiptNo: row.receiptNo,
+                    amount: row.amount,
+                    date: row.date.toISOString(),
+                    status: 'DUPLICATE',
+                    matchType: null,
+                    matchedTo: null,
+                    message: 'This receipt was already imported; no duplicate line was added.',
+                });
+            }
         }
 
         logger.info(
@@ -97,44 +155,51 @@ class ReconciliationService {
      * Process a single statement row — attempt auto-match against
      * MpesaTransaction and FeePayment records.
      */
+    private validateImportRow(row: MpesaStatementRowInput, index: number): NormalizedStatementRow {
+        const rowNumber = index + 1;
+        if (!row || typeof row !== 'object' || Array.isArray(row)) {
+            throw new ReconciliationInputError(`Row ${rowNumber} is invalid.`);
+        }
+        const amountIn = row.amount === undefined || row.amount === null || row.amount === '' ? 0 : Number(row.amount);
+        const amountOut = row.paidOut === undefined || row.paidOut === null || row.paidOut === '' ? 0 : Number(row.paidOut);
+        if (!Number.isFinite(amountIn) || !Number.isFinite(amountOut) || amountOut < 0 || (amountIn !== 0 && amountOut > 0)) {
+            throw new ReconciliationInputError(`Row ${rowNumber} must have one valid positive amount in or amount out.`);
+        }
+        const amount = amountOut > 0 ? -amountOut : amountIn;
+        if (!Number.isFinite(amount) || amount === 0 || Math.abs(amount) > 9_999_999_999_999.99 || Math.round(Math.abs(amount) * 100) !== Math.abs(amount) * 100) {
+            throw new ReconciliationInputError(`Row ${rowNumber} must have a non-zero amount with no more than two decimal places.`);
+        }
+        const date = row.date ? new Date(row.date) : null;
+        if (!date || Number.isNaN(date.getTime())) throw new ReconciliationInputError(`Row ${rowNumber} needs a valid transaction date.`);
+        if (row.description !== undefined && typeof row.description !== 'string') {
+            throw new ReconciliationInputError(`Row ${rowNumber} description must be text.`);
+        }
+        const description = (row.description || '').trim();
+        if (description.length > 2000) throw new ReconciliationInputError(`Row ${rowNumber} description is too long.`);
+        const rawReference = row.receiptNo?.trim();
+        if (rawReference && rawReference.length > 100) throw new ReconciliationInputError(`Row ${rowNumber} reference is too long.`);
+        return {
+            receiptNo: rawReference ? rawReference.toUpperCase() : null,
+            amount,
+            date,
+            description,
+        };
+    }
+
     private async processRow(
-        row: MpesaStatementRowInput,
+        tx: Prisma.TransactionClient,
+        row: NormalizedStatementRow,
         statementId: string,
         importedById: string,
     ): Promise<RowDetail> {
-        const receiptNo = row.receiptNo?.trim().toUpperCase();
-        const amount = Number(row.amount) || 0;
-        const isPayout = row.paidOut && Number(row.paidOut) > 0;
-        const transactionAmount = isPayout ? Number(row.paidOut) : amount;
-
-        // Check for duplicate import (same receipt + statement already imported)
-        if (receiptNo) {
-            const existing = await prisma.bankStatementLine.findFirst({
-                where: {
-                    reference: receiptNo,
-                    description: { contains: row.description || '' },
-                },
-            });
-
-            if (existing) {
-                return {
-                    receiptNo,
-                    amount: transactionAmount,
-                    date: row.date,
-                    status: 'DUPLICATE',
-                    matchType: null,
-                    matchedTo: null,
-                    message: 'This receipt was already imported in a previous statement',
-                };
-            }
-        }
+        const { receiptNo, amount: transactionAmount, date, description } = row;
 
         // Create the statement line
-        const line = await prisma.bankStatementLine.create({
+        const line = await tx.bankStatementLine.create({
             data: {
                 statementId,
-                date: row.date ? new Date(row.date) : new Date(),
-                description: row.description || '',
+                date,
+                description,
                 amount: transactionAmount,
                 reference: receiptNo || null,
                 status: 'UNRECONCILED',
@@ -147,7 +212,7 @@ class ReconciliationService {
             return {
                 receiptNo: null,
                 amount: transactionAmount,
-                date: row.date,
+                date: date.toISOString(),
                 status: 'UNRECONCILED',
                 matchType: null,
                 matchedTo: null,
@@ -157,7 +222,7 @@ class ReconciliationService {
         }
 
         // Try matching against MpesaTransaction
-        const mpesaTx = await prisma.mpesaTransaction.findFirst({
+        const mpesaTx = await tx.mpesaTransaction.findFirst({
             where: {
                 OR: [
                     { transactionId: receiptNo },
@@ -168,27 +233,24 @@ class ReconciliationService {
 
         if (mpesaTx) {
             const matchAmount = Number(mpesaTx.amount);
-            if (Math.abs(matchAmount - transactionAmount) < 0.01) {
-                await prisma.bankStatementLine.update({
-                    where: { id: line.id },
-                    data: { status: 'RECONCILED' },
-                });
-
+            const expectedType = transactionAmount < 0 ? 'PAYOUT' : 'COLLECTION';
+            if (mpesaTx.status === 'SUCCESS' && mpesaTx.type === expectedType && Math.abs(matchAmount - Math.abs(transactionAmount)) < 0.01) {
+                const matched = await this.recordMatch(tx, line.id, 'MPESA_TRANSACTION', mpesaTx.id, importedById);
                 return {
                     receiptNo,
                     amount: transactionAmount,
-                    date: row.date,
-                    status: 'RECONCILED',
-                    matchType: 'MPESA_TRANSACTION',
-                    matchedTo: mpesaTx.id,
+                    date: date.toISOString(),
+                    status: matched ? 'RECONCILED' : 'UNRECONCILED',
+                    matchType: matched ? 'MPESA_TRANSACTION' : null,
+                    matchedTo: matched ? mpesaTx.id : null,
                     statementLineId: line.id,
-                    message: `Matched to M-Pesa transaction (${mpesaTx.type}, ${mpesaTx.status})`,
+                    message: matched ? `Matched to M-Pesa transaction (${mpesaTx.type}, ${mpesaTx.status})` : 'This transaction is already matched to another statement line.',
                 };
             } else {
                 return {
                     receiptNo,
                     amount: transactionAmount,
-                    date: row.date,
+                    date: date.toISOString(),
                     status: 'UNRECONCILED',
                     matchType: null,
                     matchedTo: null,
@@ -199,39 +261,36 @@ class ReconciliationService {
         }
 
         // Try matching against FeePayment (referenceNumber = raw receipt)
-        const feePayment = await prisma.feePayment.findFirst({
+        const feePayment = transactionAmount > 0 ? await tx.feePayment.findFirst({
             where: {
+                archived: false,
                 OR: [
                     { referenceNumber: receiptNo },
                     { receiptNumber: `MPESA-${receiptNo}` },
                     { receiptNumber: receiptNo },
                 ],
             },
-        });
+        }) : null;
 
         if (feePayment) {
             const payAmount = Number(feePayment.amount);
             if (Math.abs(payAmount - transactionAmount) < 0.01) {
-                await prisma.bankStatementLine.update({
-                    where: { id: line.id },
-                    data: { status: 'RECONCILED' },
-                });
-
+                const matched = await this.recordMatch(tx, line.id, 'FEE_PAYMENT', feePayment.id, importedById);
                 return {
                     receiptNo,
                     amount: transactionAmount,
-                    date: row.date,
-                    status: 'RECONCILED',
-                    matchType: 'FEE_PAYMENT',
-                    matchedTo: feePayment.id,
+                    date: date.toISOString(),
+                    status: matched ? 'RECONCILED' : 'UNRECONCILED',
+                    matchType: matched ? 'FEE_PAYMENT' : null,
+                    matchedTo: matched ? feePayment.id : null,
                     statementLineId: line.id,
-                    message: `Matched to fee payment (receipt ${feePayment.receiptNumber})`,
+                    message: matched ? `Matched to fee payment (receipt ${feePayment.receiptNumber})` : 'This payment is already matched to another statement line.',
                 };
             } else {
                 return {
                     receiptNo,
                     amount: transactionAmount,
-                    date: row.date,
+                    date: date.toISOString(),
                     status: 'UNRECONCILED',
                     matchType: null,
                     matchedTo: null,
@@ -242,27 +301,21 @@ class ReconciliationService {
         }
 
         // Try matching against UnmatchedPayment (organic paybill payments)
-        const unmatchedPay = await prisma.unmatchedPayment.findFirst({
-            where: { receiptNo },
-        });
+        const unmatchedPay = transactionAmount > 0 ? await tx.unmatchedPayment.findFirst({ where: { receiptNo, status: 'PENDING' } }) : null;
 
         if (unmatchedPay) {
             const unmatchedAmount = Number(unmatchedPay.amount);
             if (Math.abs(unmatchedAmount - transactionAmount) < 0.01) {
-                await prisma.bankStatementLine.update({
-                    where: { id: line.id },
-                    data: { status: 'RECONCILED' },
-                });
-
+                const matched = await this.recordMatch(tx, line.id, 'UNMATCHED_PAYMENT', unmatchedPay.id, importedById);
                 return {
                     receiptNo,
                     amount: transactionAmount,
-                    date: row.date,
-                    status: 'RECONCILED',
-                    matchType: 'UNMATCHED_PAYMENT',
-                    matchedTo: unmatchedPay.id,
+                    date: date.toISOString(),
+                    status: matched ? 'RECONCILED' : 'UNRECONCILED',
+                    matchType: matched ? 'UNMATCHED_PAYMENT' : null,
+                    matchedTo: matched ? unmatchedPay.id : null,
                     statementLineId: line.id,
-                    message: `Matched to unmatched payment (status: ${unmatchedPay.status})`,
+                    message: matched ? `Matched to unmatched payment (status: ${unmatchedPay.status})` : 'This unmatched payment is already linked to another statement line.',
                 };
             }
         }
@@ -270,13 +323,37 @@ class ReconciliationService {
         return {
             receiptNo,
             amount: transactionAmount,
-            date: row.date,
+            date: date.toISOString(),
             status: 'UNRECONCILED',
             matchType: null,
             matchedTo: null,
             statementLineId: line.id,
             message: 'No matching record found — manual reconciliation required',
         };
+    }
+
+    private async recordMatch(
+        tx: Prisma.TransactionClient,
+        statementLineId: string,
+        matchType: string,
+        matchedId: string,
+        actorId: string,
+        note?: string,
+    ): Promise<boolean> {
+        const existing = await tx.bankStatementLine.findFirst({ where: { matchType, matchedId } });
+        if (existing) return false;
+
+        const reconciledAt = new Date();
+        const claimed = await tx.bankStatementLine.updateMany({
+            where: { id: statementLineId, status: 'UNRECONCILED' },
+            data: { status: 'RECONCILED', matchType, matchedId, reconciledById: actorId, reconciledAt, reconciliationNote: note || null },
+        });
+        if (claimed.count !== 1) throw new ReconciliationInputError('This statement line was reconciled by another user. Refresh and try again.');
+
+        await tx.bankStatementMatchEvent.create({
+            data: { statementLineId, action: 'MATCH', matchType, matchedId, actorId, note: note || null },
+        });
+        return true;
     }
 
     /**
@@ -437,48 +514,80 @@ class ReconciliationService {
      */
     async manualReconcile(params: {
         statementLineId: string;
-        matchType: 'MPESA_TRANSACTION' | 'FEE_PAYMENT' | 'UNMATCHED_PAYMENT' | 'MANUAL';
+        matchType: 'MPESA_TRANSACTION' | 'FEE_PAYMENT' | 'UNMATCHED_PAYMENT' | 'JOURNAL_ITEM' | 'MANUAL';
         matchedId?: string;
         note?: string;
         reconciledBy: string;
     }): Promise<{ success: boolean; message: string }> {
         const { statementLineId, matchType, matchedId, note, reconciledBy } = params;
-
-        const line = await prisma.bankStatementLine.findUnique({
-            where: { id: statementLineId },
-        });
-
-        if (!line) throw new Error('Statement line not found');
-
-        if (line.status === 'RECONCILED') {
-            throw new Error('This line is already reconciled');
+        const supportedTypes = ['MPESA_TRANSACTION', 'FEE_PAYMENT', 'UNMATCHED_PAYMENT', 'JOURNAL_ITEM', 'MANUAL'];
+        if (!supportedTypes.includes(matchType)) throw new ReconciliationInputError('Choose a supported match type.');
+        if (matchType === 'MANUAL') {
+            if (matchedId) throw new ReconciliationInputError('Manual reconciliation does not accept a target ID.');
+            if (!note?.trim()) throw new ReconciliationInputError('Add a note explaining the manual match.');
+        } else if (!matchedId?.trim()) {
+            throw new ReconciliationInputError('Select a target record for this match type.');
         }
+        if (!reconciledBy?.trim()) throw new ReconciliationInputError('Your user session is missing; sign in again.');
+        if (note && note.length > 1000) throw new ReconciliationInputError('Reconciliation note is too long.');
 
-        // Verify the matched record exists (for non-MANUAL types)
-        if (matchType !== 'MANUAL' && matchedId) {
-            let exists = false;
+        await prisma.$transaction(async (tx) => {
+            const line = await tx.bankStatementLine.findUnique({ where: { id: statementLineId }, include: { statement: { select: { accountId: true } } } });
+            if (!line) throw new ReconciliationInputError('Statement line not found');
+            if (line.status !== 'UNRECONCILED') throw new ReconciliationInputError('This line is already reconciled');
+
+            let targetAmount: number | null = null;
             if (matchType === 'MPESA_TRANSACTION') {
-                exists = !!(await prisma.mpesaTransaction.findUnique({ where: { id: matchedId } }));
+                const target = await tx.mpesaTransaction.findUnique({ where: { id: matchedId } });
+                if (!target) throw new ReconciliationInputError(`Referenced ${matchType} record not found.`);
+                const expectedType = Number(line.amount) < 0 ? 'PAYOUT' : 'COLLECTION';
+                if (target.status !== 'SUCCESS' || target.type !== expectedType) {
+                    throw new ReconciliationInputError('Choose a successful M-Pesa transaction with the same direction as this statement line.');
+                }
+                targetAmount = Number(target.amount);
             } else if (matchType === 'FEE_PAYMENT') {
-                exists = !!(await prisma.feePayment.findUnique({ where: { id: matchedId } }));
+                const target = await tx.feePayment.findUnique({ where: { id: matchedId } });
+                if (!target || target.archived) throw new ReconciliationInputError('Fee payment was not found or is no longer active.');
+                if (Number(line.amount) <= 0) throw new ReconciliationInputError('A fee payment can only match money received into the account.');
+                targetAmount = Number(target.amount);
             } else if (matchType === 'UNMATCHED_PAYMENT') {
-                exists = !!(await prisma.unmatchedPayment.findUnique({ where: { id: matchedId } }));
+                const target = await tx.unmatchedPayment.findUnique({ where: { id: matchedId } });
+                if (!target || target.status !== 'PENDING') throw new ReconciliationInputError('Choose an unresolved M-Pesa payment.');
+                if (Number(line.amount) <= 0) throw new ReconciliationInputError('An unmatched payment can only match money received into the account.');
+                targetAmount = Number(target.amount);
+            } else if (matchType === 'JOURNAL_ITEM') {
+                const target = await tx.journalItem.findUnique({ where: { id: matchedId }, include: { entry: true } });
+                if (!target || target.entry.status !== 'POSTED') throw new ReconciliationInputError('Choose a journal item from a posted entry.');
+                if (target.accountId !== line.statement.accountId) throw new ReconciliationInputError('Choose a journal item from this statement’s bank account.');
+                targetAmount = Math.max(Number(target.debit), Number(target.credit));
             }
 
-            if (!exists) {
-                throw new Error(`Referenced ${matchType} record not found (ID: ${matchedId})`);
+            if (targetAmount !== null && (!Number.isFinite(targetAmount) || Math.abs(targetAmount - Math.abs(Number(line.amount))) >= 0.01)) {
+                throw new ReconciliationInputError('The target amount does not match this statement line.');
             }
-        }
 
-        await prisma.bankStatementLine.update({
-            where: { id: statementLineId },
-            data: {
-                status: 'RECONCILED',
-                description: note
-                    ? `${line.description} | Reconciled: ${note}`
-                    : `${line.description} | Manually reconciled by ${reconciledBy}`,
-            },
-        });
+            if (matchedId) {
+                const alreadyUsed = await tx.bankStatementLine.findFirst({ where: { matchType, matchedId } });
+                if (alreadyUsed) throw new ReconciliationInputError('That target is already matched to another statement line.');
+            }
+
+            const claimed = await tx.bankStatementLine.updateMany({
+                where: { id: statementLineId, status: 'UNRECONCILED' },
+                data: {
+                    status: 'RECONCILED',
+                    matchType,
+                    matchedId: matchedId || null,
+                    reconciledById: reconciledBy,
+                    reconciledAt: new Date(),
+                    reconciliationNote: note?.trim() || null,
+                    journalItemId: matchType === 'JOURNAL_ITEM' ? matchedId : null,
+                },
+            });
+            if (claimed.count !== 1) throw new ReconciliationInputError('This statement line was reconciled by another user. Refresh and try again.');
+            await tx.bankStatementMatchEvent.create({
+                data: { statementLineId, action: 'MATCH', matchType, matchedId: matchedId || null, actorId: reconciledBy, note: note?.trim() || null },
+            });
+        }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
         logger.info(
             `[Reconciliation] Line ${statementLineId} manually reconciled ` +
@@ -492,19 +601,44 @@ class ReconciliationService {
      * Undo a reconciliation (un-reconcile a line).
      */
     async unreconcile(statementLineId: string, userId: string): Promise<{ success: boolean }> {
-        const line = await prisma.bankStatementLine.findUnique({
-            where: { id: statementLineId },
-        });
+        if (!userId?.trim()) throw new ReconciliationInputError('Your user session is missing; sign in again.');
+        await prisma.$transaction(async (tx) => {
+            const line = await tx.bankStatementLine.findUnique({ where: { id: statementLineId } });
+            if (!line) throw new ReconciliationInputError('Statement line not found');
+            if (line.status !== 'RECONCILED') throw new ReconciliationInputError('This line is not reconciled — nothing to undo');
+            if (!line.matchType || (line.matchType !== 'MANUAL' && !line.matchedId)) {
+                throw new ReconciliationInputError('This historical match has no recorded target and cannot be safely undone.');
+            }
 
-        if (!line) throw new Error('Statement line not found');
-        if (line.status !== 'RECONCILED') {
-            throw new Error('This line is not reconciled — nothing to undo');
-        }
-
-        await prisma.bankStatementLine.update({
-            where: { id: statementLineId },
-            data: { status: 'UNRECONCILED' },
-        });
+            const updated = await tx.bankStatementLine.updateMany({
+                where: {
+                    id: statementLineId,
+                    status: 'RECONCILED',
+                    matchType: line.matchType,
+                    matchedId: line.matchedId,
+                },
+                data: {
+                    status: 'UNRECONCILED',
+                    matchType: null,
+                    matchedId: null,
+                    reconciledById: null,
+                    reconciledAt: null,
+                    reconciliationNote: null,
+                    journalItemId: null,
+                },
+            });
+            if (updated.count !== 1) throw new ReconciliationInputError('This match changed while you were viewing it. Refresh and try again.');
+            await tx.bankStatementMatchEvent.create({
+                data: {
+                    statementLineId,
+                    action: 'UNMATCH',
+                    matchType: line.matchType,
+                    matchedId: line.matchedId,
+                    actorId: userId,
+                    note: line.reconciliationNote || undefined,
+                },
+            });
+        }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 
         logger.info(`[Reconciliation] Line ${statementLineId} un-reconciled by ${userId}`);
         return { success: true };
@@ -560,6 +694,7 @@ class ReconciliationService {
         });
 
         if (!line) throw new Error('Statement line not found');
+        if (line.status !== 'UNRECONCILED') throw new ReconciliationInputError('Only unmatched statement lines can be matched.');
 
         const amount = Math.abs(Number(line.amount));
         const lineDate = new Date(line.date);
@@ -575,11 +710,18 @@ class ReconciliationService {
             where: {
                 amount: { gte: amount - 1, lte: amount + 1 },
                 createdAt: { gte: startDate, lte: endDate },
+                status: 'SUCCESS',
+                type: Number(line.amount) < 0 ? 'PAYOUT' : 'COLLECTION',
             },
             take: 5,
         });
 
         for (const tx of mpesaTxs) {
+            const alreadyMatched = await prisma.bankStatementLine.findFirst({
+                where: { matchType: 'MPESA_TRANSACTION', matchedId: tx.id },
+                select: { id: true },
+            });
+            if (alreadyMatched) continue;
             suggestions.push({
                 matchType: 'MPESA_TRANSACTION',
                 matchedId: tx.id,
@@ -592,7 +734,7 @@ class ReconciliationService {
         }
 
         // Search FeePayment by amount + date
-        const payments = await prisma.feePayment.findMany({
+        const payments = Number(line.amount) > 0 ? await prisma.feePayment.findMany({
             where: {
                 amount: { gte: amount - 1, lte: amount + 1 },
                 paymentDate: { gte: startDate, lte: endDate },
@@ -602,9 +744,14 @@ class ReconciliationService {
                 invoice: { select: { invoiceNumber: true, learner: { select: { firstName: true, lastName: true, admissionNumber: true } } } },
             },
             take: 5,
-        });
+        }) : [];
 
         for (const p of payments) {
+            const alreadyMatched = await prisma.bankStatementLine.findFirst({
+                where: { matchType: 'FEE_PAYMENT', matchedId: p.id },
+                select: { id: true },
+            });
+            if (alreadyMatched) continue;
             suggestions.push({
                 matchType: 'FEE_PAYMENT',
                 matchedId: p.id,
@@ -613,6 +760,31 @@ class ReconciliationService {
                 date: p.paymentDate,
                 description: `Fee payment — ${p.invoice?.learner?.firstName} ${p.invoice?.learner?.lastName} (${p.invoice?.invoiceNumber})`,
                 confidence: this.calculateConfidence(amount, Number(p.amount), lineDate, p.paymentDate),
+            });
+        }
+
+        const unmatchedPayments = Number(line.amount) > 0 ? await prisma.unmatchedPayment.findMany({
+            where: {
+                amount: { gte: amount - 1, lte: amount + 1 },
+                transactionDate: { gte: startDate, lte: endDate },
+                status: 'PENDING',
+            },
+            take: 5,
+        }) : [];
+        for (const payment of unmatchedPayments) {
+            const alreadyMatched = await prisma.bankStatementLine.findFirst({
+                where: { matchType: 'UNMATCHED_PAYMENT', matchedId: payment.id },
+                select: { id: true },
+            });
+            if (alreadyMatched) continue;
+            suggestions.push({
+                matchType: 'UNMATCHED_PAYMENT',
+                matchedId: payment.id,
+                receiptNo: payment.receiptNo,
+                amount: Number(payment.amount),
+                date: payment.transactionDate,
+                description: `Unresolved M-Pesa payment from ${payment.phone}`,
+                confidence: this.calculateConfidence(amount, Number(payment.amount), lineDate, payment.transactionDate),
             });
         }
 
@@ -638,10 +810,17 @@ class ReconciliationService {
 export interface MpesaStatementRowInput {
     receiptNo?: string;
     date?: string;
-    amount?: number;
-    paidOut?: number;
+    amount?: number | string;
+    paidOut?: number | string;
     description?: string;
     balance?: number;
+}
+
+interface NormalizedStatementRow {
+    receiptNo: string | null;
+    date: Date;
+    amount: number;
+    description: string;
 }
 
 export interface RowDetail {

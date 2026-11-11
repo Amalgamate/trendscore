@@ -944,7 +944,8 @@ export class TransportController {
                     learnerId,
                     term: term as any,
                     academicYear: normalizedYear,
-                    archived: false
+                    archived: false,
+                    status: { not: 'CANCELLED' as any },
                 }
             });
 

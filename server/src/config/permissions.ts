@@ -58,7 +58,7 @@ export const PERMISSIONS = {
   CREATE_LEARNER: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER'],
   EDIT_LEARNER: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER'],
   DELETE_LEARNER: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'],
-  VIEW_ALL_LEARNERS: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER', 'ACCOUNTANT', 'RECEPTIONIST', 'LIBRARIAN', 'NURSE', 'SECURITY', 'DRIVER', 'COOK', 'CLEANER', 'GROUNDSKEEPER', 'IT_SUPPORT'],
+  VIEW_ALL_LEARNERS: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER', 'ACCOUNTANT', 'LIBRARIAN', 'NURSE', 'SECURITY', 'DRIVER', 'COOK', 'CLEANER', 'GROUNDSKEEPER', 'IT_SUPPORT'],
   VIEW_OWN_LEARNERS: ['TEACHER'], // Teachers see only assigned classes
   VIEW_OWN_CHILDREN: ['PARENT'],  // Parents see only their children
   PROMOTE_LEARNER: ['SUPER_ADMIN', 'ADMIN'],
@@ -162,10 +162,14 @@ export const PERMISSIONS = {
   // ============================================
   // FINANCE
   // ============================================
-  FEE_MANAGEMENT: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER', 'ACCOUNTANT', 'RECEPTIONIST', 'PARENT'],
+  // Finance-wide work is limited to finance leads. Parents use VIEW_OWN_BALANCE,
+  // while reception uses the scoped invoice/payment permissions below.
+  FEE_MANAGEMENT: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'ACCOUNTANT'],
+  VIEW_FEE_INVOICE: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'ACCOUNTANT'],
+  VIEW_ASSIGNED_FEE_INFO: ['TEACHER'],
   MANAGE_FEE_STRUCTURE: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'],
   RECORD_PAYMENT: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST'],
-  VIEW_ALL_BALANCES: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER', 'ACCOUNTANT', 'RECEPTIONIST'],
+  VIEW_ALL_BALANCES: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'ACCOUNTANT'],
   VIEW_OWN_BALANCE: ['PARENT'], // Parents see only their children's balances
   GENERATE_RECEIPTS: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'],
   FINANCIAL_REPORTS: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'],
@@ -179,18 +183,18 @@ export const PERMISSIONS = {
   // balance, so it must be restricted to finance staff).
   RELEASE_UNMATCHED: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'],
   // VIEW_UNMATCHED_PAYMENTS: browse the unmatched payment queue.
-  VIEW_UNMATCHED_PAYMENTS: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST'],
+  VIEW_UNMATCHED_PAYMENTS: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'],
 
   // Overpayment credit allocation — finance staff can move excess payments
   // (held in Tuition Deposits 2100) to sibling invoices.
   ALLOCATE_OVERPAYMENT_CREDIT: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'],
 
-  // Refund workflow — finance staff submit refund requests, but only the
-  // school owner (SUPER_ADMIN) can approve them. The submitter cannot
-  // self-approve. Approval triggers: invoice correction + ledger reversal +
-  // B2C return (where provider supports it).
-  SUBMIT_REFUND: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'],
-  APPROVE_REFUND: ['SUPER_ADMIN'],
+  // Refund requests may be submitted by finance staff or a linked parent;
+  // approval is reserved for school leadership and cannot be self-approved.
+  SUBMIT_REFUND: ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'PARENT'],
+  VIEW_REFUND_REQUESTS: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'ACCOUNTANT'],
+  APPROVE_REFUND: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'],
+  APPROVE_FEE_ADJUSTMENT: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'],
 
   // Mark-paid maker-checker: ACCOUNTANT can submit, only ADMIN/SUPER_ADMIN
   // can approve. This prevents creating receipts without money or oversight.

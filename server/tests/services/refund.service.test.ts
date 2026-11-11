@@ -9,7 +9,11 @@ const mockPrisma = {
         update: jest.fn(),
         findMany: jest.fn(),
         count: jest.fn(),
+        updateMany: jest.fn(),
     },
+    user: { findUnique: jest.fn() },
+    approvalRequest: { updateMany: jest.fn() },
+    approvalAction: { findFirst: jest.fn(), create: jest.fn() },
     feePayment: {
         findUnique: jest.fn(),
         update: jest.fn(),
@@ -37,6 +41,18 @@ jest.mock('../../src/services/mpesa.service', () => ({
     mpesaService: {
         initiatePayout: jest.fn(),
     },
+}));
+
+jest.mock('../../src/services/parent-access.service', () => ({
+    parentAccessService: { canAccessLearner: jest.fn<() => Promise<boolean>>().mockResolvedValue(false) },
+}));
+
+jest.mock('../../src/services/notification.service', () => ({
+    NotificationService: {
+        createNotification: jest.fn<() => Promise<any>>().mockResolvedValue({}),
+        notifyRoles: jest.fn<() => Promise<any[]>>().mockResolvedValue([]),
+    },
+    NotificationType: { APPROVAL: 'APPROVAL' },
 }));
 
 jest.mock('../../src/services/accounting.service', () => ({
@@ -82,16 +98,23 @@ describe('RefundService', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
+        (mockPrisma.user.findUnique as any).mockResolvedValue({ role: 'ACCOUNTANT' });
+        (mockPrisma.refund.update as any).mockResolvedValue({ submittedById: 'user-finance' });
+        (mockPrisma.refund.updateMany as any).mockResolvedValue({ count: 1 });
+        (mockPrisma.approvalRequest.updateMany as any).mockResolvedValue({ count: 1 });
+        (mockPrisma.approvalAction.findFirst as any).mockResolvedValue(null);
+        (mockPrisma.approvalAction.create as any).mockResolvedValue({});
     });
 
     // ── submitRefund ─────────────────────────────────────────────────────
     describe('submitRefund', () => {
 
-        it('should create a PENDING refund with B2C method by default', async () => {
+        it('should create a PENDING refund with Daraja B2C for an M-Pesa payment', async () => {
             const mockPayment = {
                 id: 'pay-1',
                 invoiceId: 'inv-1',
                 amount: 5000,
+                paymentMethod: 'MPESA',
                 archived: false,
                 invoice: {
                     id: 'inv-1',
@@ -125,6 +148,20 @@ describe('RefundService', () => {
             expect(createCall.data.submittedById).toBe('user-finance');
         });
 
+        it('does not route a cash refund request through Daraja B2C', async () => {
+            (mockPrisma.feePayment.findUnique as any).mockResolvedValue({
+                id: 'pay-cash', invoiceId: 'inv-1', amount: 2000, paymentMethod: 'CASH', archived: false,
+                invoice: { id: 'inv-1', learner: { id: 'learner-1' } },
+            });
+            (mockPrisma.refund.findFirst as any).mockResolvedValue(null);
+            (mockPrisma.refund.create as any).mockResolvedValue({ id: 'refund-cash', amount: 2000 });
+            (approvalEngineService.submitRequest as any).mockResolvedValue({ id: 'approval-cash' });
+            (mockPrisma.refund.update as any).mockResolvedValue({});
+
+            await refundService.submitRefund({ paymentId: 'pay-cash', reason: 'Cash payment duplicated', submittedById: 'user-finance', schoolId: 'school-1' });
+            expect((mockPrisma.refund.create as any).mock.calls[0][0].data.method).toBe('CASH');
+        });
+
         it('should reject if payment is already archived (reversed)', async () => {
             (mockPrisma.feePayment.findUnique as any).mockResolvedValue({
                 id: 'pay-1',
@@ -134,7 +171,7 @@ describe('RefundService', () => {
             await expect(
                 refundService.submitRefund({
                     paymentId: 'pay-1',
-                    reason: 'Test',
+                    reason: 'A test reason',
                     submittedById: 'user-1',
                     schoolId: 'school-1',
                 })
@@ -147,7 +184,7 @@ describe('RefundService', () => {
             await expect(
                 refundService.submitRefund({
                     paymentId: 'nonexistent',
-                    reason: 'Test',
+                    reason: 'A test reason',
                     submittedById: 'user-1',
                     schoolId: 'school-1',
                 })
@@ -170,7 +207,7 @@ describe('RefundService', () => {
             await expect(
                 refundService.submitRefund({
                     paymentId: 'pay-1',
-                    reason: 'Test',
+                    reason: 'A test reason',
                     submittedById: 'user-1',
                     schoolId: 'school-1',
                 })
@@ -193,7 +230,7 @@ describe('RefundService', () => {
 
             const result = await refundService.submitRefund({
                 paymentId: 'pay-1',
-                reason: 'Test',
+                reason: 'A test reason',
                 submittedById: 'user-1',
                 schoolId: 'school-1',
             });
@@ -234,14 +271,15 @@ describe('RefundService', () => {
             },
         };
 
-        it('should reject if approver is not SUPER_ADMIN', async () => {
+        it('should reject if approver is not school leadership', async () => {
+            (mockPrisma.refund.findUnique as any).mockResolvedValue(mockRefund);
             await expect(
                 refundService.approveRefund({
                     refundId: 'refund-1',
-                    approverId: 'user-admin',
-                    approverRole: 'ADMIN',
+                    approverId: 'user-finance-2',
+                    approverRole: 'ACCOUNTANT',
                 })
-            ).rejects.toThrow(/Only the school owner/);
+            ).rejects.toThrow(/Only the school admin or head teacher/);
         });
 
         it('should reject self-approval (submitter === approver)', async () => {
@@ -317,12 +355,45 @@ describe('RefundService', () => {
             expect(invoiceUpdate.data.paidAmount).toEqual({ decrement: 5000 });
 
             // Verify ledger reversal was posted
-            expect(accountingService.postRefundToLedger).toHaveBeenCalled();
+            expect(accountingService.postRefundToLedger).toHaveBeenCalledWith(
+                expect.objectContaining({ id: 'refund-1', amount: 5000, receiptNumber: 'MPESA-ABC123' }),
+                'MPESA',
+                mockPrisma,
+            );
 
             // Verify refund was marked APPROVED
-            const refundUpdate = (mockPrisma.refund.update as any).mock.calls[0][0];
+            const refundUpdate = (mockPrisma.refund.updateMany as any).mock.calls.find((call: any[]) => call[0].where?.id === 'refund-1')?.[0];
             expect(refundUpdate.data.status).toBe('APPROVED');
             expect(refundUpdate.data.approvedById).toBe('user-owner');
+        });
+
+        it('fails refund approval when ledger posting fails so the database transaction can roll back', async () => {
+            (mockPrisma.refund.findUnique as any).mockResolvedValue(mockRefund);
+            (mockPrisma.feeInvoice.findUnique as any).mockResolvedValue({
+                id: 'inv-1', totalAmount: 10000, paidAmount: 0, balance: 10000, status: 'PARTIAL',
+            });
+            (mockPrisma.feePayment.update as any).mockResolvedValue({});
+            (mockPrisma.feeInvoice.update as any).mockResolvedValue({});
+            (accountingService.postRefundToLedger as any).mockRejectedValue(new Error('ledger unavailable'));
+
+            await expect(refundService.approveRefund({
+                refundId: 'refund-1',
+                approverId: 'user-owner',
+                approverRole: 'SUPER_ADMIN',
+            })).rejects.toThrow('ledger unavailable');
+
+            expect(mockPrisma.$transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: 'Serializable' });
+            expect(mockPrisma.refund.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+                where: { id: 'refund-1', status: 'PENDING' },
+            }));
+            expect(accountingService.postRefundToLedger).toHaveBeenCalledWith(
+                expect.objectContaining({ id: 'refund-1' }),
+                'MPESA',
+                mockPrisma,
+            );
+            // External payout and post-commit approval side effects must not run.
+            expect(mpesaService.initiatePayout).not.toHaveBeenCalled();
+            expect(mockPrisma.approvalRequest.updateMany).not.toHaveBeenCalled();
         });
 
         it('should mark as MANUAL if B2C initiation fails', async () => {
@@ -381,7 +452,7 @@ describe('RefundService', () => {
     // ── rejectRefund ─────────────────────────────────────────────────────
     describe('rejectRefund', () => {
 
-        it('should reject if rejector is not SUPER_ADMIN', async () => {
+        it('should reject if rejector is not school leadership', async () => {
             await expect(
                 refundService.rejectRefund({
                     refundId: 'refund-1',
@@ -389,7 +460,7 @@ describe('RefundService', () => {
                     rejectorRole: 'ACCOUNTANT',
                     reason: 'Not valid',
                 })
-            ).rejects.toThrow(/Only the school owner/);
+            ).rejects.toThrow(/Only the school admin or head teacher/);
         });
 
         it('should mark refund as REJECTED with reason', async () => {
@@ -423,7 +494,7 @@ describe('RefundService', () => {
                     refundId: 'refund-1',
                     rejectorId: 'user-owner',
                     rejectorRole: 'SUPER_ADMIN',
-                    reason: 'Test',
+                    reason: 'A test reason',
                 })
             ).rejects.toThrow(/already DISBURSED/);
         });

@@ -73,6 +73,9 @@ const OperationsInsightsPage = lazy(() => import('../pages/OperationsInsightsPag
 const ApprovalsPage = lazy(() => import('../pages/ApprovalsPage'));
 const InvoiceDetailPage = lazy(() => import('../pages/InvoiceDetailPage'));
 const RecordPaymentPage = lazy(() => import('../pages/RecordPaymentPage'));
+const CashierPaymentPage = lazy(() => import('../pages/CashierPaymentPage'));
+const FeeRefundsPage = lazy(() => import('../pages/FeeRefundsPage'));
+const TeacherFeeInfoPage = lazy(() => import('../pages/TeacherFeeInfoPage'));
 const FeeTypesPage = lazy(() => import('../pages/FeeTypesPage'));
 const FeeStructurePage = lazy(() => import('../pages/FeeStructurePage'));
 const FeeReportsPage = lazy(() => import('../pages/FeeReportsPage'));
@@ -922,7 +925,10 @@ const PageRouter = ({
           case 'fees-followup': return <FeeCollectionPage learnerId={pageParams.learnerId} grade={pageParams.grade} initialTab="followup" />;
           case 'fees-insights': return <FeeCollectionPage learnerId={pageParams.learnerId} grade={pageParams.grade} initialTab="insights" />;
           case 'fees-invoice-detail': return <InvoiceDetailPage invoice={pageParams.invoice} />;
-          case 'fees-record-payment': return <RecordPaymentPage invoice={pageParams.invoice} initialMode={pageParams.initialMode} />;
+          case 'fees-cashier': return <CashierPaymentPage />;
+          case 'fees-refunds': return <FeeRefundsPage />;
+          case 'fees-assigned': return <TeacherFeeInfoPage />;
+          case 'fees-record-payment': return <RecordPaymentPage invoice={pageParams.invoice} initialMode={pageParams.initialMode} returnPage={pageParams.returnPage} />;
           case 'fees-waivers': return <FeeCollectionPage learnerId={pageParams.learnerId} grade={pageParams.grade} initialTab="waivers" />;
           case 'fees-reports': return <FeeReportsPage />;
           case 'fees-statements': return user?.role === 'PARENT'

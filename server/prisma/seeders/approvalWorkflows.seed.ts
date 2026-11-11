@@ -57,7 +57,7 @@ export async function seedApprovalWorkflows(): Promise<void> {
   console.log(`  ✓ Approval workflow seeded: ${workflow.name} (id: ${workflow.id})`);
 
   // ── PAYMENT_REVERSAL workflow (refund approval) ──────────────────────────
-  // Finance staff submit refund requests; only the school owner (SUPER_ADMIN)
+  // Finance staff submit refund requests; the school admin or head teacher
   // can approve. This ensures the approval engine routes refund requests
   // correctly and the paymentReversalApprovalHandler fires on approval.
   const refundWorkflow = await prisma.approvalWorkflow.upsert({
@@ -74,7 +74,7 @@ export async function seedApprovalWorkflows(): Promise<void> {
       name: 'Refund Approval',
       module: 'FEES',
       requestType: 'PAYMENT_REVERSAL',
-      description: 'Finance staff submit refund requests. Only the school owner (SUPER_ADMIN) can approve. Triggers invoice correction, ledger reversal, and B2C disbursement.',
+      description: 'Finance staff submit refund requests. The school admin or head teacher can approve. Triggers invoice correction, ledger reversal, and supported payout processing.',
       active: true,
       approvalMode: 'SINGLE',
       minApprovals: 1,
@@ -96,14 +96,18 @@ export async function seedApprovalWorkflows(): Promise<void> {
         workflowId: refundWorkflow.id,
         stepNumber: 1,
         approverType: 'ROLE',
-        approverRoles: ['SUPER_ADMIN'],
+        approverRoles: ['ADMIN', 'HEAD_TEACHER'],
         approverUserIds: [],
         minApprovals: 1,
       },
     });
-    console.log('    ✓ Created PAYMENT_REVERSAL workflow step 1 (SUPER_ADMIN only)');
+    console.log('    ✓ Created PAYMENT_REVERSAL workflow step 1 (ADMIN + HEAD_TEACHER)');
   } else {
-    console.log('    ✓ PAYMENT_REVERSAL workflow step 1 already exists');
+    await prisma.approvalStep.update({
+      where: { id: existingRefundStep.id },
+      data: { approverRoles: ['ADMIN', 'HEAD_TEACHER'] },
+    });
+    console.log('    ✓ Updated PAYMENT_REVERSAL workflow step 1 (ADMIN + HEAD_TEACHER)');
   }
 
   console.log(`  ✓ Approval workflow seeded: ${refundWorkflow.name} (id: ${refundWorkflow.id})`);

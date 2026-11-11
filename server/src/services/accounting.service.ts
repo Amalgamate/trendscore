@@ -153,7 +153,7 @@ export class AccountingService {
             credit?: number;
             label?: string;
         }[];
-    }) {
+    }, client: any = prisma) {
         const totalDebit = data.items.reduce((sum, item) => sum + (item.debit || 0), 0);
         const totalCredit = data.items.reduce((sum, item) => sum + (item.credit || 0), 0);
 
@@ -161,7 +161,7 @@ export class AccountingService {
             throw new Error(`Unbalanced Journal Entry: Debits (${totalDebit}) do not equal Credits (${totalCredit})`);
         }
 
-        return prisma.journalEntry.create({
+        return client.journalEntry.create({
             data: {
                 date: data.date || new Date(),
                 reference: data.reference,
@@ -180,8 +180,8 @@ export class AccountingService {
         });
     }
 
-    async postJournalEntry(entryId: string) {
-        const entry = await prisma.journalEntry.findUnique({
+    async postJournalEntry(entryId: string, client: any = prisma) {
+        const entry = await client.journalEntry.findUnique({
             where: { id: entryId },
             include: { items: true }
         });
@@ -189,13 +189,16 @@ export class AccountingService {
         if (!entry) throw new Error('Journal Entry not found');
         if (entry.status === 'POSTED') throw new Error('Entry already posted');
 
-        return prisma.journalEntry.update({
+        return client.journalEntry.update({
             where: { id: entryId },
             data: { status: 'POSTED' }
         });
     }
 
-    async getAccountByCode(code: string) {
+    async getAccountByCode(code: string, client: any = prisma) {
+        // Transaction-scoped reads must use the same connection/snapshot as the
+        // journal writes. Do not use the process cache for those reads.
+        if (client !== prisma) return client.account.findUnique({ where: { code } });
         if (this.accountByCodeCache.has(code)) {
             return this.accountByCodeCache.get(code);
         }
@@ -204,7 +207,8 @@ export class AccountingService {
         return account;
     }
 
-    async getJournalByCode(code: string) {
+    async getJournalByCode(code: string, client: any = prisma) {
+        if (client !== prisma) return client.journal.findUnique({ where: { code } });
         if (this.journalByCodeCache.has(code)) {
             return this.journalByCodeCache.get(code);
         }
@@ -295,37 +299,133 @@ export class AccountingService {
         return this.postJournalEntry(entry.id);
     }
 
-    async postFeeInvoiceRevisionToLedger(invoiceNumber: string, revisionNumber: number, delta: number) {
-        const amount = Math.abs(Number(delta || 0));
-        if (amount < 0.01) return;
-        let arAccount = await this.getAccountByCode('1100');
-        let revenueAccount = await this.getAccountByCode('4000');
-        let salesJournal = await this.getJournalByCode('INV');
-        if (!arAccount || !revenueAccount || !salesJournal) {
+    async postFeeInvoiceRevisionToLedger(
+        invoiceNumber: string,
+        revisionNumber: number,
+        delta: number,
+        client: any = prisma,
+        breakdown?: {
+            oldTotalAmount: number;
+            newTotalAmount: number;
+            oldTransportAmount: number;
+            newTransportAmount: number;
+        },
+    ) {
+        const roundCurrency = (value: number) => Number(Number(value || 0).toFixed(2));
+        const receivableDelta = roundCurrency(breakdown
+            ? breakdown.newTotalAmount - breakdown.oldTotalAmount
+            : delta);
+        const transportDelta = breakdown
+            ? roundCurrency(breakdown.newTransportAmount - breakdown.oldTransportAmount)
+            : 0;
+        const tuitionDelta = breakdown
+            ? roundCurrency(receivableDelta - transportDelta)
+            : receivableDelta;
+        if (Math.abs(receivableDelta) < 0.01
+            && Math.abs(transportDelta) < 0.01
+            && Math.abs(tuitionDelta) < 0.01) return;
+        if (Math.abs(receivableDelta - tuitionDelta - transportDelta) > 0.01) {
+            throw new Error('Invoice revision ledger split does not balance to the accounts receivable change.');
+        }
+        const reference = `${invoiceNumber}-REV-${revisionNumber}`;
+        // The deterministic reference makes retries idempotent. Serializing
+        // the enclosing invoice transaction also prevents concurrent reposts.
+        const existing = await client.journalEntry.findFirst({
+            where: { reference },
+            include: { items: true },
+        });
+        if (existing?.status === 'POSTED') return existing;
+        if (existing?.status === 'DRAFT') return this.postJournalEntry(existing.id, client);
+
+        let arAccount = await this.getAccountByCode('1100', client);
+        let revenueAccount = await this.getAccountByCode('4000', client);
+        let transportAccount = transportDelta ? await this.getAccountByCode('4100', client) : null;
+        let salesJournal = await this.getJournalByCode('INV', client);
+        if (!arAccount || !revenueAccount || (transportDelta && !transportAccount) || !salesJournal) {
+            // Never initialize accounting setup through global Prisma while a
+            // caller's transaction is open: that would escape atomicity.
+            if (client !== prisma) throw new Error('Accounting setup is missing; initialize the chart of accounts before revising invoices.');
             await this.ensureDefaultAccountingSetup();
             this.clearCache();
-            arAccount = await this.getAccountByCode('1100');
-            revenueAccount = await this.getAccountByCode('4000');
-            salesJournal = await this.getJournalByCode('INV');
+            arAccount = await this.getAccountByCode('1100', client);
+            revenueAccount = await this.getAccountByCode('4000', client);
+            transportAccount = transportDelta ? await this.getAccountByCode('4100', client) : null;
+            salesJournal = await this.getJournalByCode('INV', client);
         }
-        if (!arAccount || !revenueAccount || !salesJournal) return;
-        const increase = delta > 0;
-        const reference = `${invoiceNumber}-REV-${revisionNumber}`;
+        if (!arAccount || !revenueAccount || (transportDelta && !transportAccount) || !salesJournal) {
+            throw new Error('Required accounts receivable, fee revenue, transport revenue, or invoice journal could not be loaded.');
+        }
+        const items: { accountId: string; debit?: number; credit?: number; label: string }[] = [];
+        if (receivableDelta > 0) {
+            items.push({ accountId: arAccount.id, debit: receivableDelta, label: `Invoice revision increase: ${invoiceNumber}` });
+        } else if (receivableDelta < 0) {
+            items.push({ accountId: arAccount.id, credit: Math.abs(receivableDelta), label: `Invoice revision reduction: ${invoiceNumber}` });
+        }
+        if (tuitionDelta > 0) {
+            items.push({ accountId: revenueAccount.id, credit: tuitionDelta, label: `Tuition revenue revision: ${invoiceNumber}` });
+        } else if (tuitionDelta < 0) {
+            items.push({ accountId: revenueAccount.id, debit: Math.abs(tuitionDelta), label: `Tuition revenue reduction: ${invoiceNumber}` });
+        }
+        if (transportDelta > 0 && transportAccount) {
+            items.push({ accountId: transportAccount.id, credit: transportDelta, label: `Transport revenue revision: ${invoiceNumber}` });
+        } else if (transportDelta < 0 && transportAccount) {
+            items.push({ accountId: transportAccount.id, debit: Math.abs(transportDelta), label: `Transport revenue reduction: ${invoiceNumber}` });
+        }
         const entry = await this.createJournalEntry({
             journalId: salesJournal.id,
             reference,
             date: new Date(),
-            items: increase
-                ? [
-                    { accountId: arAccount.id, debit: amount, label: `Invoice revision increase: ${invoiceNumber}` },
-                    { accountId: revenueAccount.id, credit: amount, label: `Fee revenue revision: ${invoiceNumber}` },
-                ]
-                : [
-                    { accountId: revenueAccount.id, debit: amount, label: `Fee revenue reduction: ${invoiceNumber}` },
-                    { accountId: arAccount.id, credit: amount, label: `Invoice revision reduction: ${invoiceNumber}` },
-                ],
+            items,
+        }, client);
+        return this.postJournalEntry(entry.id, client);
+    }
+
+    /**
+     * Reverse the posted invoice and its posted revisions as one balanced
+     * cancellation entry. Pass an interactive transaction client when the
+     * caller is cancelling the invoice so ledger and invoice status commit
+     * atomically. The deterministic reference makes a repeated cancel safe.
+     */
+    async reverseFeeInvoiceLedger(invoiceNumber: string, client: any = prisma) {
+        const reference = `${invoiceNumber}-CANCEL`;
+        const existing = await client.journalEntry.findFirst({
+            where: { reference },
+            include: { items: true },
         });
-        return this.postJournalEntry(entry.id);
+        if (existing?.status === 'POSTED') return existing;
+        if (existing?.status === 'DRAFT') return this.postJournalEntry(existing.id, client);
+
+        const sourceEntries = await client.journalEntry.findMany({
+            where: {
+                status: 'POSTED',
+                OR: [
+                    { reference: invoiceNumber },
+                    { reference: { startsWith: `${invoiceNumber}-REV-` } },
+                ],
+            },
+            include: { items: true },
+            orderBy: { date: 'asc' },
+        });
+        if (!sourceEntries.length) return null;
+
+        const journalIds = [...new Set<string>(sourceEntries.map((entry: any) => String(entry.journalId)))];
+        if (journalIds.length !== 1) {
+            throw new Error(`Cannot cancel ${invoiceNumber}: its posted invoice entries span multiple journals.`);
+        }
+
+        const items = sourceEntries.flatMap((entry: any) => entry.items.map((item: any) => ({
+            accountId: item.accountId,
+            debit: Number(item.credit || 0),
+            credit: Number(item.debit || 0),
+            label: `Invoice cancellation reversal: ${invoiceNumber}`,
+        })));
+        const reversal = await this.createJournalEntry({
+            journalId: journalIds[0],
+            reference,
+            date: new Date(),
+            items,
+        }, client);
+        return this.postJournalEntry(reversal.id, client);
     }
 
     /**
@@ -345,8 +445,27 @@ export class AccountingService {
      *   CHEQUE        → 1210 Main Bank Account  / BNK1 journal
      *   OTHER         → 1200 Cash in Hand       / CSH1 journal
      */
-    async postFeePaymentToLedger(payment: any, method: string) {
+    async postFeePaymentToLedger(payment: any, method: string, client: any = prisma): Promise<any> {
         const { amount, receiptNumber } = payment;
+        const numericAmount = Number(amount);
+        if (!Number.isFinite(numericAmount) || numericAmount <= 0) throw new Error('Fee payment ledger amount must be positive.');
+        if (!String(receiptNumber || '').trim()) throw new Error('Fee payment receipt is required for ledger posting.');
+
+        if (client === prisma) {
+            const [asset, receivable, journal] = await Promise.all([
+                this.getAccountByCode(['BANK_TRANSFER', 'MPESA', 'CARD', 'CHEQUE'].includes(String(method).toUpperCase()) ? '1210' : '1200'),
+                this.getAccountByCode('1100'),
+                this.getJournalByCode(['BANK_TRANSFER', 'MPESA', 'CARD', 'CHEQUE'].includes(String(method).toUpperCase()) ? 'BNK1' : 'CSH1'),
+            ]);
+            if (!asset || !receivable || !journal) {
+                await this.ensureDefaultAccountingSetup();
+                this.clearCache();
+            }
+            return prisma.$transaction(
+                (tx) => this.postFeePaymentToLedger(payment, method, tx),
+                { isolationLevel: 'Serializable' },
+            );
+        }
 
         // FIX: MPESA, BANK_TRANSFER, CARD, and CHEQUE all go to the bank account.
         // Only CASH and OTHER go to Cash in Hand.
@@ -356,22 +475,26 @@ export class AccountingService {
         const assetCode = isBank ? '1210' : '1200';
         const journalCode = isBank ? 'BNK1' : 'CSH1';
 
-        let assetAccount = await this.getAccountByCode(assetCode);
-        let arAccount = await this.getAccountByCode('1100');
-        let journal = await this.getJournalByCode(journalCode);
+        const [assetAccount, arAccount, journal] = await Promise.all([
+            this.getAccountByCode(assetCode, client),
+            this.getAccountByCode('1100', client),
+            this.getJournalByCode(journalCode, client),
+        ]);
 
         if (!assetAccount || !arAccount || !journal) {
-            console.warn(`[Accounting] Missing setup for fee payment — initializing defaults.`);
-            await this.ensureDefaultAccountingSetup();
-            this.clearCache();
-            assetAccount = await this.getAccountByCode(assetCode);
-            arAccount = await this.getAccountByCode('1100');
-            journal = await this.getJournalByCode(journalCode);
+            throw new Error('Required fee payment accounts or journal are not configured; payment ledger posting was not completed.');
         }
 
-        if (!assetAccount || !arAccount || !journal) {
-            console.warn(`[Accounting] Still missing required accounts/journal. Skipping payment post.`);
-            return;
+        // Receipt numbers are unique payment references. Reuse a prior draft
+        // (for example after a process interruption) and never create a second
+        // ledger entry when a provider retries its callback.
+        const existingEntry = await client.journalEntry.findFirst({
+            where: { journalId: journal.id, reference: receiptNumber },
+            include: { items: true },
+        });
+        if (existingEntry) {
+            if (existingEntry.status === 'DRAFT') return this.postJournalEntry(existingEntry.id, client);
+            return existingEntry;
         }
 
         const entryDate = payment.paymentDate ? new Date(payment.paymentDate) : new Date();
@@ -380,12 +503,12 @@ export class AccountingService {
             reference: receiptNumber,
             date: entryDate,
             items: [
-                { accountId: assetAccount.id, debit: Number(amount), label: `Fee Payment Received: ${receiptNumber}` },
-                { accountId: arAccount.id, credit: Number(amount), label: `Settlement: ${receiptNumber}` }
+                { accountId: assetAccount.id, debit: numericAmount, label: `Fee Payment Received: ${receiptNumber}` },
+                { accountId: arAccount.id, credit: numericAmount, label: `Settlement: ${receiptNumber}` }
             ]
-        });
+        }, client);
 
-        return this.postJournalEntry(entry.id);
+        return this.postJournalEntry(entry.id, client);
     }
 
     /**
@@ -519,37 +642,80 @@ export class AccountingService {
         category: string;
         accountId: string;
         paymentAccountId: string;
+        paymentMethod?: 'CASH' | 'MPESA' | 'BANK_TRANSFER' | 'CHEQUE' | 'CARD' | 'OTHER';
         vendorId?: string;
         reference?: string;
     }) {
-        const expense = await prisma.expense.create({
-            data: {
-                date: data.date || new Date(),
-                amount: data.amount,
-                description: data.description,
-                category: data.category,
-                vendorId: data.vendorId,
-                accountId: data.accountId,
-                reference: data.reference,
-                status: 'PAID'
-            }
-        });
-
-        const journal = await this.getJournalByCode('MISC');
-        if (journal) {
-            const entry = await this.createJournalEntry({
-                journalId: journal.id,
-                reference: data.reference || `EXP-${expense.id.slice(0, 8)}`,
-                date: data.date || new Date(),
-                items: [
-                    { accountId: data.accountId, debit: Number(data.amount), label: `Expense: ${data.description}` },
-                    { accountId: data.paymentAccountId, credit: Number(data.amount), label: `Payment for: ${data.description}` }
-                ]
-            });
-            await this.postJournalEntry(entry.id);
+        const amount = Number(data.amount);
+        if (!Number.isFinite(amount) || amount <= 0) {
+            throw new Error('Expense amount must be greater than zero.');
+        }
+        if (!data.description?.trim() || !data.category?.trim()) {
+            throw new Error('Expense description and category are required.');
+        }
+        if (data.accountId === data.paymentAccountId) {
+            throw new Error('Choose a separate expense account and payment account.');
         }
 
-        return expense;
+        const paymentMethod = data.paymentMethod || 'CASH';
+        const expenseDate = data.date ? new Date(data.date) : new Date();
+        if (Number.isNaN(expenseDate.getTime())) throw new Error('Expense date is invalid.');
+
+        return prisma.$transaction(async (tx) => {
+            const [expenseAccount, paymentAccount, journal, vendor] = await Promise.all([
+                tx.account.findUnique({ where: { id: data.accountId } }),
+                tx.account.findUnique({ where: { id: data.paymentAccountId } }),
+                tx.journal.findUnique({ where: { code: 'MISC' } }),
+                data.vendorId ? tx.vendor.findUnique({ where: { id: data.vendorId } }) : Promise.resolve(null),
+            ]);
+
+            if (!expenseAccount || !expenseAccount.isActive || expenseAccount.type !== AccountType.EXPENSE) {
+                throw new Error('Choose an active expense account.');
+            }
+            if (!paymentAccount || !paymentAccount.isActive || paymentAccount.type !== AccountType.ASSET_CASH) {
+                throw new Error('Choose an active cash or bank account for the payment.');
+            }
+            if (!journal || !journal.isActive) {
+                throw new Error('The accounting journal is not configured. Initialize accounting and try again.');
+            }
+            if (data.vendorId && (!vendor || !vendor.isActive)) {
+                throw new Error('Choose an active vendor or clear the vendor selection.');
+            }
+
+            const expense = await tx.expense.create({
+                data: {
+                    date: expenseDate,
+                    amount,
+                    description: data.description.trim(),
+                    category: data.category.trim(),
+                    vendorId: data.vendorId,
+                    accountId: expenseAccount.id,
+                    paymentMethod,
+                    reference: data.reference?.trim() || null,
+                    status: 'PAID',
+                },
+                include: { account: true, vendor: true },
+            });
+
+            const reference = data.reference?.trim() || `EXP-${expense.id.slice(0, 8)}`;
+            const entry = await tx.journalEntry.create({
+                data: {
+                    journalId: journal.id,
+                    reference,
+                    date: expenseDate,
+                    status: 'POSTED',
+                    items: {
+                        create: [
+                            { accountId: expenseAccount.id, debit: amount, label: `Expense: ${data.description.trim()}` },
+                            { accountId: paymentAccount.id, credit: amount, label: `Payment for: ${data.description.trim()}` },
+                        ],
+                    },
+                },
+            });
+
+            if (!entry) throw new Error('Expense journal entry could not be posted.');
+            return expense;
+        });
     }
 
     async getBankStatements(accountId?: string) {
@@ -802,42 +968,55 @@ export class AccountingService {
      *   Dr: M-Pesa Transaction Charges 5500
      *   Cr: Main Bank Account 1210
      */
-    async postMpesaCharge(paymentAmount: number): Promise<void> {
+    async postMpesaCharge(paymentAmount: number, receiptNumber: string, client: any = prisma): Promise<void> {
         const charge = Number(process.env.MPESA_CHARGE_PER_TRANSACTION || 0);
         if (charge <= 0) return; // No charge configured — skip
+        if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) throw new Error('M-Pesa fee payment amount must be positive.');
+        if (!String(receiptNumber || '').trim()) throw new Error('M-Pesa receipt is required for charge posting.');
 
-        let chargeAccount = await this.getAccountByCode('5500');
-        let bankAccount   = await this.getAccountByCode('1210');
-        let journal       = await this.getJournalByCode('MISC');
-
-        if (!chargeAccount || !bankAccount || !journal) {
-            await this.ensureDefaultAccountingSetup();
-            this.clearCache();
-            chargeAccount = await this.getAccountByCode('5500');
-            bankAccount   = await this.getAccountByCode('1210');
-            journal       = await this.getJournalByCode('MISC');
-        }
-
-        if (!chargeAccount || !bankAccount || !journal) {
-            console.warn('[Accounting] Missing M-Pesa charge accounts — skipping charge post');
+        if (client === prisma) {
+            const [chargeAccount, bankAccount, journal] = await Promise.all([
+                this.getAccountByCode('5500'), this.getAccountByCode('1210'), this.getJournalByCode('MISC'),
+            ]);
+            if (!chargeAccount || !bankAccount || !journal) {
+                await this.ensureDefaultAccountingSetup();
+                this.clearCache();
+            }
+            await prisma.$transaction(
+                (tx) => this.postMpesaCharge(paymentAmount, receiptNumber, tx),
+                { isolationLevel: 'Serializable' },
+            );
             return;
         }
 
-        const reference = `MPESA-CHARGE/${new Date().toISOString().slice(0, 10)}/${paymentAmount.toFixed(0)}`;
-        try {
-            const entry = await this.createJournalEntry({
-                journalId: journal.id,
-                reference,
-                date: new Date(),
-                items: [
-                    { accountId: chargeAccount.id, debit: charge, label: `M-Pesa transaction charge for KES ${paymentAmount} payment` },
-                    { accountId: bankAccount.id, credit: charge, label: `Bank deduction: M-Pesa charge` },
-                ],
-            });
-            await this.postJournalEntry(entry.id);
-        } catch (err: any) {
-            console.warn(`[Accounting] M-Pesa charge post failed:`, err?.message);
+        const [chargeAccount, bankAccount, journal] = await Promise.all([
+            this.getAccountByCode('5500', client),
+            this.getAccountByCode('1210', client),
+            this.getJournalByCode('MISC', client),
+        ]);
+        if (!chargeAccount || !bankAccount || !journal) {
+            throw new Error('M-Pesa charge accounts or journal are not configured; charge posting was not completed.');
         }
+
+        const reference = `MPESA-CHARGE/${receiptNumber}`;
+        const existingEntry = await client.journalEntry.findFirst({
+            where: { journalId: journal.id, reference },
+            include: { items: true },
+        });
+        if (existingEntry) {
+            if (existingEntry.status === 'DRAFT') await this.postJournalEntry(existingEntry.id, client);
+            return;
+        }
+        const entry = await this.createJournalEntry({
+            journalId: journal.id,
+            reference,
+            date: new Date(),
+            items: [
+                { accountId: chargeAccount.id, debit: charge, label: `M-Pesa transaction charge for KES ${paymentAmount} payment` },
+                { accountId: bankAccount.id, credit: charge, label: 'Bank deduction: M-Pesa charge' },
+            ],
+        }, client);
+        await this.postJournalEntry(entry.id, client);
     }
 
     /**
@@ -903,43 +1082,66 @@ export class AccountingService {
         await this.postJournalEntry(entry.id);
     }
 
-    async postRefundToLedger(refund: any, originalMethod: string): Promise<void> {
+    async postRefundToLedger(refund: any, originalMethod: string, client: any = prisma): Promise<void> {
         const { amount, receiptNumber } = refund;
+        const numericAmount = Number(amount);
+        if (!Number.isFinite(numericAmount) || numericAmount <= 0) throw new Error('Refund ledger amount must be positive.');
+        if (!String(receiptNumber || '').trim() || !String(refund.id || '').trim()) {
+            throw new Error('Refund ID and payment receipt are required for ledger posting.');
+        }
+
+        if (client === prisma) {
+            const bankMethods = new Set(['BANK_TRANSFER', 'MPESA', 'CARD', 'CHEQUE']);
+            const isBank = bankMethods.has(String(originalMethod).toUpperCase());
+            const [assetAccount, arAccount, journal] = await Promise.all([
+                this.getAccountByCode(isBank ? '1210' : '1200'),
+                this.getAccountByCode('1100'),
+                this.getJournalByCode(isBank ? 'BNK1' : 'CSH1'),
+            ]);
+            if (!assetAccount || !arAccount || !journal) {
+                await this.ensureDefaultAccountingSetup();
+                this.clearCache();
+            }
+            await prisma.$transaction(
+                (tx) => this.postRefundToLedger(refund, originalMethod, tx),
+                { isolationLevel: 'Serializable' },
+            );
+            return;
+        }
 
         const bankMethods = new Set(['BANK_TRANSFER', 'MPESA', 'CARD', 'CHEQUE']);
         const isBank = bankMethods.has(String(originalMethod).toUpperCase());
         const assetCode = isBank ? '1210' : '1200';
         const journalCode = isBank ? 'BNK1' : 'CSH1';
 
-        let assetAccount = await this.getAccountByCode(assetCode);
-        let arAccount = await this.getAccountByCode('1100');
-        let journal = await this.getJournalByCode(journalCode);
+        const [assetAccount, arAccount, journal] = await Promise.all([
+            this.getAccountByCode(assetCode, client),
+            this.getAccountByCode('1100', client),
+            this.getJournalByCode(journalCode, client),
+        ]);
 
         if (!assetAccount || !arAccount || !journal) {
-            await this.ensureDefaultAccountingSetup();
-            this.clearCache();
-            assetAccount = await this.getAccountByCode(assetCode);
-            arAccount = await this.getAccountByCode('1100');
-            journal = await this.getJournalByCode(journalCode);
+            throw new Error('Refund accounts or journal are not configured; reversal posting was not completed.');
         }
 
-        if (!assetAccount || !arAccount || !journal) {
-            console.warn('[Accounting] Missing accounts/journal for refund reversal — skipping');
+        const reference = `REFUND/${receiptNumber}/${refund.id}`;
+        const existingEntry = await client.journalEntry.findFirst({ where: { reference }, include: { items: true } });
+        if (existingEntry?.status === 'POSTED') return;
+        if (existingEntry) {
+            await this.postJournalEntry(existingEntry.id, client);
             return;
         }
-
-        const reference = `REFUND/${receiptNumber}/${refund.id.slice(0, 8)}`;
         const entry = await this.createJournalEntry({
             journalId: journal.id,
             reference,
             date: new Date(),
             items: [
-                { accountId: arAccount.id, debit: Number(amount), label: `Refund reversal: ${receiptNumber}` },
-                { accountId: assetAccount.id, credit: Number(amount), label: `Bank refund: ${receiptNumber}` },
+                { accountId: arAccount.id, debit: numericAmount, label: `Refund reversal: ${receiptNumber}` },
+                { accountId: assetAccount.id, credit: numericAmount, label: `Bank refund: ${receiptNumber}` },
             ],
-        });
+        }, client);
 
-        await this.postJournalEntry(entry.id);
+        await this.postJournalEntry(entry.id, client);
     }
 }
 

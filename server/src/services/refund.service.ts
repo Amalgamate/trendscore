@@ -1,18 +1,28 @@
 import prisma from '../config/database';
 import { mpesaService } from './mpesa.service';
+import { parentAccessService } from './parent-access.service';
 import { accountingService } from './accounting.service';
 import { approvalEngineService } from './approvalEngine.service';
 import messageService from './message.service';
 import { PRODUCT_DISPLAY_NAME } from '../config/productIdentity';
 import logger from '../utils/logger';
 import { ApprovalModule, ApprovalRequestType } from '@prisma/client';
+import { NotificationService, NotificationType } from './notification.service';
+
+async function sendRefundNotice(userId: string, title: string, message: string, link = '/app/fees-refunds'): Promise<void> {
+    try {
+        await NotificationService.createNotification({ userId, title, message, type: NotificationType.APPROVAL, link });
+    } catch (error: any) {
+        logger.warn(`[Refund] Could not send in-app notice to ${userId}: ${error?.message}`);
+    }
+}
 
 /**
  * Refund Service
  *
  * Implements the refund workflow:
- *  1. Finance staff (ACCOUNTANT/ADMIN) submits a refund request
- *  2. Only school owner (SUPER_ADMIN) can approve
+ *  1. Finance staff or a parent linked to the learner submits a refund request
+ *  2. School ADMIN or HEAD_TEACHER can approve
  *  3. Submitter cannot self-approve (guard)
  *  4. On approval: invoice correction + ledger reversal + B2C return
  *  5. If B2C unavailable: mark as MANUAL for cash/cheque processing
@@ -31,7 +41,7 @@ class RefundService {
      * Submit a refund request.
      *
      * Creates a PENDING Refund record and a linked ApprovalRequest
-     * of type PAYMENT_REVERSAL routed to SUPER_ADMIN for approval.
+     * of type PAYMENT_REVERSAL for leadership approval.
      */
     async submitRefund(params: {
         paymentId: string;
@@ -42,7 +52,13 @@ class RefundService {
         notes?: string;
     }): Promise<{ refundId: string; approvalRequestId?: string }> {
         const { paymentId, reason, submittedById, schoolId, notes } = params;
-        const method = params.method || 'B2C';
+        const cleanReason = String(reason || '').trim();
+        if (cleanReason.length < 5 || cleanReason.length > 500) {
+            throw new Error('Add a refund reason between 5 and 500 characters.');
+        }
+        if (params.method && !['B2C', 'CASH', 'CHEQUE', 'BANK_TRANSFER'].includes(params.method)) {
+            throw new Error('Choose a supported refund method.');
+        }
 
         // ── 1. Validate the payment exists and is not archived ───────────────
         const payment = await prisma.feePayment.findUnique({
@@ -54,46 +70,51 @@ class RefundService {
             throw new Error('Payment not found');
         }
 
-        if (payment.archived) {
-            throw new Error('This payment has already been reversed — cannot refund');
+        // Default M-Pesa refunds to Daraja B2C, but never send cash, bank, or
+        // cheque payments through the B2C payout rail by accident.
+        const method = params.method || (String(payment.paymentMethod).toUpperCase() === 'MPESA' ? 'B2C' : 'CASH');
+
+        const submitter = await prisma.user.findUnique({ where: { id: submittedById }, select: { role: true } });
+        if (submitter?.role === 'PARENT' && !(await parentAccessService.canAccessLearner(submittedById, payment.invoice.learnerId))) {
+            throw new Error('You can request a refund only for a payment linked to your child.');
         }
 
-        // ── 2. Check for existing pending refund on this payment ─────────────
-        const existingRefund = await prisma.refund.findFirst({
-            where: {
-                paymentId,
-                status: { in: ['PENDING', 'APPROVED'] },
-            },
-        });
-
-        if (existingRefund) {
-            throw new Error(
-                `A ${existingRefund.status} refund already exists for this payment (ID: ${existingRefund.id})`
-            );
+        if (payment.archived) {
+            throw new Error('This payment has already been reversed — cannot refund');
         }
 
         const amount = Number(payment.amount);
         const invoice = payment.invoice;
         const learner = invoice?.learner;
+        if (!Number.isFinite(amount) || amount <= 0) throw new Error('This payment has no refundable amount.');
 
-        // ── 3. Create the Refund record ──────────────────────────────────────
-        const refund = await prisma.refund.create({
-            data: {
-                paymentId,
-                invoiceId: payment.invoiceId,
-                learnerId: learner?.id || null,
-                amount,
-                reason,
-                method: method as any,
-                status: 'PENDING',
-                submittedById,
-                submittedAt: new Date(),
-                notes: notes || null,
-            },
-        });
+        // Check and create in a serializable transaction to prevent two callers
+        // from opening duplicate active refund requests for the same payment.
+        const refund = await prisma.$transaction(async (tx) => {
+            const existingRefund = await tx.refund.findFirst({
+                where: { paymentId, status: { in: ['PENDING', 'APPROVED'] } },
+            });
+            if (existingRefund) {
+                throw new Error(`A ${existingRefund.status} refund already exists for this payment.`);
+            }
+            return tx.refund.create({
+                data: {
+                    paymentId,
+                    invoiceId: payment.invoiceId,
+                    learnerId: learner?.id || null,
+                    amount,
+                    reason: cleanReason,
+                    method: method as any,
+                    status: 'PENDING',
+                    submittedById,
+                    submittedAt: new Date(),
+                    notes: notes || null,
+                },
+            });
+        }, { isolationLevel: 'Serializable' });
 
         // ── 4. Create linked ApprovalRequest ────────────────────────────────
-        // The approval request routes to SUPER_ADMIN (school owner) only.
+        // The approval request routes to school leadership.
         // The approval hook will fire when it's approved.
         let approvalRequestId: string | undefined;
 
@@ -109,10 +130,10 @@ class RefundService {
                     invoiceId: payment.invoiceId,
                     learnerId: learner?.id,
                     amount,
-                    reason,
+                    reason: cleanReason,
                     method,
                 },
-                comments: reason,
+                comments: cleanReason,
             });
 
             approvalRequestId = approvalRequest.id;
@@ -130,7 +151,17 @@ class RefundService {
                 `[Refund] Approval engine submission failed for refund ${refund.id}: ${err?.message}. ` +
                 'Refund remains PENDING — can be approved directly via refund API.'
             );
+            NotificationService.notifyRoles(['ADMIN', 'HEAD_TEACHER'], {
+                title: 'Refund request needs review',
+                message: `A refund request for KES ${amount.toLocaleString()} is waiting for school review.`,
+                type: NotificationType.APPROVAL,
+                link: '/app/fees-refunds',
+                metadata: { refundId: refund.id, event: 'REFUND_PENDING_REVIEW' },
+            }).catch((notifyError: any) => logger.warn(`[Refund] Could not notify approvers: ${notifyError?.message}`));
         }
+
+        const submitterLink = submitter?.role === 'PARENT' ? '/app/parent-portal-fees' : '/app/fees-refunds';
+        await sendRefundNotice(submittedById, 'Refund request received', 'Your request has been sent for review. You can check its status from your fee information.', submitterLink);
 
         logger.info(
             `[Refund] Refund ${refund.id} submitted by ${submittedById} for KES ${amount} ` +
@@ -143,7 +174,7 @@ class RefundService {
     /**
      * Approve a refund request.
      *
-     * Only SUPER_ADMIN (school owner) can approve.
+     * Only the school admin or head teacher can approve.
      * The submitter cannot self-approve.
      *
      * On approval:
@@ -157,18 +188,20 @@ class RefundService {
         approverId: string;
         approverRole: string;
         comment?: string;
+        notifySubmitter?: boolean;
     }): Promise<{ success: boolean; b2cInitiated?: boolean; message: string }> {
         const { refundId, approverId, approverRole, comment } = params;
 
-        // ── 1. Permission guard: only SUPER_ADMIN ────────────────────────────
-        if (approverRole !== 'SUPER_ADMIN') {
-            throw new Error('Only the school owner (SUPER_ADMIN) can approve refunds');
+        // ── 1. Permission guard: school leadership only ──────────────────────
+        if (!['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'].includes(approverRole)) {
+            throw new Error('Only the school admin or head teacher can approve refunds');
         }
 
         const refund = await prisma.refund.findUnique({
             where: { id: refundId },
             include: {
                 payment: { include: { invoice: true } },
+                submittedBy: { select: { role: true } },
             },
         });
 
@@ -182,7 +215,7 @@ class RefundService {
 
         // ── 2. Submitter cannot self-approve ────────────────────────────────
         if (refund.submittedById === approverId) {
-            throw new Error('You cannot approve a refund you submitted — ask another owner');
+            throw new Error('You cannot approve a refund you submitted. Ask another approver.');
         }
 
         const payment = refund.payment;
@@ -193,8 +226,19 @@ class RefundService {
             throw new Error('Linked payment or invoice not found — data integrity error');
         }
 
-        // ── 3. Archive the FeePayment + correct invoice ─────────────────────
+        // ── 3. Archive the FeePayment, correct invoice, and claim the refund ─
         await prisma.$transaction(async (tx) => {
+            const claimed = await tx.refund.updateMany({
+                where: { id: refund.id, status: 'PENDING' },
+                data: {
+                    status: 'APPROVED',
+                    approvedById: approverId,
+                    approvedAt: new Date(),
+                    notes: comment ? `${refund.notes || ''} | Approved: ${comment}` : refund.notes,
+                },
+            });
+            if (claimed.count !== 1) throw new Error('This refund was already actioned. Refresh the request list.');
+
             // Archive the payment
             await tx.feePayment.update({
                 where: { id: payment.id },
@@ -234,32 +278,34 @@ class RefundService {
                     data: { status: newStatus },
                 });
             }
-        });
-
-        // ── 4. Post ledger reversal ──────────────────────────────────────────
-        try {
+            // Ledger posting belongs to this transaction. If it fails, the
+            // refund claim, payment archive, and invoice correction all roll
+            // back together instead of leaving financial state out of sync.
             await accountingService.postRefundToLedger({
                 id: refund.id,
                 amount,
                 receiptNumber: payment.receiptNumber,
                 paymentDate: payment.paymentDate,
-            }, payment.paymentMethod);
-        } catch (ledgerErr: any) {
-            logger.error(`[Refund] Ledger reversal failed for refund ${refund.id}:`, ledgerErr?.message);
-            // Don't block — the invoice is already corrected. Ledger can be
-            // reconciled manually if this fails.
+            }, payment.paymentMethod, tx);
+        }, { isolationLevel: 'Serializable' });
+
+        // Keep the approval inbox in sync even when this direct endpoint is used
+        // as a fallback. The approval-engine path already has an action record.
+        if (refund.approvalRequestId) {
+            await prisma.approvalRequest.updateMany({
+                where: { id: refund.approvalRequestId, status: 'PENDING' },
+                data: { status: 'APPROVED' },
+            });
+            const action = await prisma.approvalAction.findFirst({ where: { requestId: refund.approvalRequestId, approverId } });
+            if (!action) await prisma.approvalAction.create({
+                data: { requestId: refund.approvalRequestId, stepNumber: 1, approverId, action: 'APPROVE', comment: comment || 'Approved through refund review.' },
+            });
         }
 
-        // ── 5. Mark refund as APPROVED ──────────────────────────────────────
-        await prisma.refund.update({
-            where: { id: refundId },
-            data: {
-                status: 'APPROVED',
-                approvedById: approverId,
-                approvedAt: new Date(),
-                notes: comment ? `${refund.notes || ''} | Approved: ${comment}` : refund.notes,
-            },
-        });
+        if (params.notifySubmitter !== false) {
+            const link = refund.submittedBy?.role === 'PARENT' ? '/app/parent-portal-fees' : '/app/fees-refunds';
+            await sendRefundNotice(refund.submittedById, 'Refund approved', 'Your refund request was approved. The school will update its payment or payout status as processing continues.', link);
+        }
 
         logger.info(`[Refund] Refund ${refundId} approved by ${approverId}`);
 
@@ -307,7 +353,7 @@ class RefundService {
 
     /**
      * Reject a refund request.
-     * Only SUPER_ADMIN can reject.
+     * Only the school admin or head teacher can reject.
      */
     async rejectRefund(params: {
         refundId: string;
@@ -317,11 +363,11 @@ class RefundService {
     }): Promise<{ success: boolean }> {
         const { refundId, rejectorId, rejectorRole, reason } = params;
 
-        if (rejectorRole !== 'SUPER_ADMIN') {
-            throw new Error('Only the school owner (SUPER_ADMIN) can reject refunds');
+        if (!['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'].includes(rejectorRole)) {
+            throw new Error('Only the school admin or head teacher can reject refunds');
         }
 
-        const refund = await prisma.refund.findUnique({ where: { id: refundId } });
+        const refund = await prisma.refund.findUnique({ where: { id: refundId }, include: { submittedBy: { select: { role: true } } } });
 
         if (!refund) throw new Error('Refund not found');
         if (refund.status !== 'PENDING') {
@@ -337,6 +383,20 @@ class RefundService {
                 b2cFailureReason: reason,
             },
         });
+
+        if (refund.approvalRequestId) {
+            await prisma.approvalRequest.updateMany({
+                where: { id: refund.approvalRequestId, status: 'PENDING' },
+                data: { status: 'REJECTED' },
+            });
+            const action = await prisma.approvalAction.findFirst({ where: { requestId: refund.approvalRequestId, approverId: rejectorId } });
+            if (!action) await prisma.approvalAction.create({
+                data: { requestId: refund.approvalRequestId, stepNumber: 1, approverId: rejectorId, action: 'REJECT', comment: reason },
+            });
+        }
+
+        const link = refund.submittedBy?.role === 'PARENT' ? '/app/parent-portal-fees' : '/app/fees-refunds';
+        await sendRefundNotice(refund.submittedById, 'Refund request declined', `The school declined your refund request. Reason: ${reason}`, link);
 
         logger.info(`[Refund] Refund ${refundId} rejected by ${rejectorId}: ${reason}`);
         return { success: true };
@@ -426,14 +486,17 @@ class RefundService {
      * Mark a refund as DISBURSED (called by B2C result callback or manually).
      */
     async markDisbursed(refundId: string, b2cTransactionId?: string): Promise<void> {
-        await prisma.refund.update({
+        const refund = await prisma.refund.update({
             where: { id: refundId },
             data: {
                 status: 'DISBURSED' as any,
                 b2cTransactionId,
                 disbursedAt: new Date(),
             },
+            include: { submittedBy: { select: { role: true } } },
         });
+        const link = refund.submittedBy?.role === 'PARENT' ? '/app/parent-portal-fees' : '/app/fees-refunds';
+        await sendRefundNotice(refund.submittedById, 'Refund paid', 'The school has confirmed that your refund payout was completed.', link);
         logger.info(`[Refund] Refund ${refundId} disbursed. B2C receipt: ${b2cTransactionId || 'N/A'}`);
     }
 
@@ -441,13 +504,16 @@ class RefundService {
      * Mark a refund as FAILED (called by B2C result callback on failure).
      */
     async markFailed(refundId: string, failureReason: string): Promise<void> {
-        await prisma.refund.update({
+        const refund = await prisma.refund.update({
             where: { id: refundId },
             data: {
                 status: 'FAILED' as any,
                 b2cFailureReason: failureReason,
             },
+            include: { submittedBy: { select: { role: true } } },
         });
+        const link = refund.submittedBy?.role === 'PARENT' ? '/app/parent-portal-fees' : '/app/fees-refunds';
+        await sendRefundNotice(refund.submittedById, 'Refund payout needs attention', 'The M-Pesa refund payout did not complete. The school has been asked to review and follow up.', link);
         logger.warn(`[Refund] Refund ${refundId} B2C disbursement failed: ${failureReason}`);
     }
 
@@ -458,11 +524,13 @@ class RefundService {
         status?: string;
         page?: number;
         limit?: number;
+        learnerIds?: string[];
     }) {
-        const { status, page = 1, limit = 50 } = filters;
+        const { status, page = 1, limit = 50, learnerIds } = filters;
         const skip = (page - 1) * limit;
 
-        const where = status ? { status: status as any } : {};
+        const where: any = status ? { status: status as any } : {};
+        if (learnerIds) where.learnerId = { in: learnerIds };
 
         const [records, total] = await Promise.all([
             prisma.refund.findMany({
@@ -484,9 +552,9 @@ class RefundService {
     /**
      * Get a single refund by ID.
      */
-    async getRefund(refundId: string) {
+    async getRefund(refundId: string, learnerIds?: string[]) {
         return prisma.refund.findUnique({
-            where: { id: refundId },
+            where: { id: refundId, ...(learnerIds ? { learnerId: { in: learnerIds } } : {}) },
             include: {
                 payment: { select: { receiptNumber: true, paymentMethod: true, paymentDate: true, amount: true } },
                 invoice: { select: { invoiceNumber: true, learner: { select: { firstName: true, lastName: true, admissionNumber: true } } } },

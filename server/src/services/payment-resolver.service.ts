@@ -1,7 +1,7 @@
 /**
  * Payment Resolver Service
  * 
- * Handles "organic" Buy Goods Till payments received via Kopo Kopo webhook.
+ * Handles Daraja C2B payments and routes verified receipts to learner invoices.
  * Attempts to match the paying phone number to a registered learner/parent,
  * then auto-applies the payment to their oldest outstanding invoice.
  * 

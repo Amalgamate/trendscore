@@ -29,8 +29,9 @@ import { feeWaiverController } from '../controllers/feeWaiver.controller';
 import { feeCommentsController } from '../controllers/feeComments.controller';
 import { learnerFeeConfigurationController } from '../controllers/learnerFeeConfiguration.controller';
 import { authenticate } from '../middleware/auth.middleware';
-import { requireAnyPermission, requirePermission, requireRole, ResourceAccessControl, auditLog } from '../middleware/permissions.middleware';
+import { requireAnyPermission, requirePermission, requireRole, auditLog } from '../middleware/permissions.middleware';
 import { requireSchoolContext } from '../middleware/school.middleware';
+import { requireLearnerFeeAccess } from '../services/finance-access.service';
 import { asyncHandler } from '../utils/async.util';
 import { validate } from '../middleware/validation.middleware';
 import { rateLimit } from '../middleware/enhanced-rateLimit.middleware';
@@ -139,7 +140,7 @@ const rejectWaiverSchema = z.object({
 });
 
 const cancelInvoiceSchema = z.object({
-  reason: z.string().max(500).optional()
+  reason: z.string().trim().min(5).max(500)
 });
 
 const feeAdjustmentSchema = z.object({
@@ -182,6 +183,13 @@ const feeConfigurationSchema = feeConfigurationBaseSchema.superRefine((data, ctx
       message: 'scholarshipAmount is required when scholarshipType is PARTIAL_AMOUNT',
     });
   }
+});
+
+// PATCH edits only the draft values. Learner identity and approval state are
+// lifecycle-controlled and cannot be changed through the update endpoint.
+const updateFeeConfigurationSchema = feeConfigurationBaseSchema.partial().omit({
+  learnerId: true,
+  status: true,
 });
 
 // ─── Global Middleware ─────────────────────────────────────────────────────
@@ -246,14 +254,14 @@ router.post(
 router.patch(
   '/configurations/:id',
   requireRole(['ACCOUNTANT', 'ADMIN', 'SUPER_ADMIN']),
-  validate(feeConfigurationBaseSchema.partial()),
+  validate(updateFeeConfigurationSchema),
   auditLog('UPDATE_LEARNER_FEE_CONFIGURATION'),
   asyncHandler(learnerFeeConfigurationController.update.bind(learnerFeeConfigurationController))
 );
 
 router.patch(
   '/configurations/:id/approve',
-  requireRole(['ADMIN', 'SUPER_ADMIN']),
+  requirePermission('APPROVE_FEE_ADJUSTMENT'),
   auditLog('APPROVE_LEARNER_FEE_CONFIGURATION'),
   asyncHandler(learnerFeeConfigurationController.approve.bind(learnerFeeConfigurationController))
 );
@@ -285,38 +293,61 @@ router.post(
 
 router.get(
   '/invoices',
-  requirePermission('FEE_MANAGEMENT'),
+  requirePermission('VIEW_ALL_BALANCES'),
   rateLimit({ windowMs: 60_000, maxRequests: 100 }),
   asyncHandler(feeController.getAllInvoices.bind(feeController))
 );
 
 router.get(
   '/invoices/aggregates',
-  requirePermission('FEE_MANAGEMENT'),
+  requirePermission('VIEW_ALL_BALANCES'),
   rateLimit({ windowMs: 60_000, maxRequests: 100 }),
   asyncHandler(feeController.getInvoiceAggregates.bind(feeController))
 );
 
 router.get(
   '/invoices/export',
-  requirePermission('FEE_MANAGEMENT'),
+  requirePermission('VIEW_ALL_BALANCES'),
   rateLimit({ windowMs: 60_000, maxRequests: 20 }),
   auditLog('EXPORT_INVOICES'),
   asyncHandler(feeController.exportInvoices.bind(feeController))
 );
 
 router.get(
+  '/invoices/learner/:learnerId',
+  requireAnyPermission(['VIEW_FEE_INVOICE', 'VIEW_ASSIGNED_FEE_INFO', 'VIEW_OWN_BALANCE']),
+  requireLearnerFeeAccess,
+  rateLimit({ windowMs: 60_000, maxRequests: 100 }),
+  asyncHandler(feeController.getLearnerInvoices.bind(feeController))
+);
+
+router.get(
   '/invoices/:id',
-  requirePermission('FEE_MANAGEMENT'),
+  requireAnyPermission(['VIEW_FEE_INVOICE', 'VIEW_ASSIGNED_FEE_INFO', 'VIEW_OWN_BALANCE']),
   rateLimit({ windowMs: 60_000, maxRequests: 100 }),
   asyncHandler(feeController.getInvoiceById.bind(feeController))
 );
 
+// Purpose-scoped cashier lookup; does not grant the full learner directory.
 router.get(
-  '/invoices/learner/:learnerId',
-  requireAnyPermission(['FEE_MANAGEMENT', 'VIEW_OWN_BALANCE']),
-  ResourceAccessControl.canAccessLearner(),
-  rateLimit({ windowMs: 60_000, maxRequests: 100 }),
+  '/assigned-learners',
+  requirePermission('VIEW_ASSIGNED_FEE_INFO'),
+  rateLimit({ windowMs: 60_000, maxRequests: 60 }),
+  asyncHandler(feeController.getAssignedLearnerFeeSummaries.bind(feeController))
+);
+
+router.get(
+  '/cashier/learners',
+  requirePermission('RECORD_PAYMENT'),
+  rateLimit({ windowMs: 60_000, maxRequests: 60 }),
+  asyncHandler(feeController.searchCashierLearners.bind(feeController))
+);
+
+router.get(
+  '/cashier/learners/:learnerId/invoices',
+  requirePermission('RECORD_PAYMENT'),
+  requireLearnerFeeAccess,
+  rateLimit({ windowMs: 60_000, maxRequests: 60 }),
   asyncHandler(feeController.getLearnerInvoices.bind(feeController))
 );
 
@@ -549,7 +580,7 @@ router.patch(
 
 router.get(
   '/stats',
-  requirePermission('FEE_MANAGEMENT'),
+  requirePermission('VIEW_ALL_BALANCES'),
   rateLimit({ windowMs: 60_000, maxRequests: 50 }),
   asyncHandler(feeController.getPaymentStats.bind(feeController))
 );
@@ -581,7 +612,7 @@ router.get(
 
 router.patch(
   '/waivers/:id/approve',
-  requireRole(['ADMIN', 'SUPER_ADMIN']),
+  requirePermission('APPROVE_FEE_ADJUSTMENT'),
   rateLimit({ windowMs: 60_000, maxRequests: 20 }),
   auditLog('APPROVE_FEE_WAIVER'),
   asyncHandler(feeWaiverController.approveWaiver.bind(feeWaiverController))
@@ -589,7 +620,7 @@ router.patch(
 
 router.patch(
   '/waivers/:id/reject',
-  requireRole(['ADMIN', 'SUPER_ADMIN']),
+  requirePermission('APPROVE_FEE_ADJUSTMENT'),
   rateLimit({ windowMs: 60_000, maxRequests: 20 }),
   validate(rejectWaiverSchema),
   auditLog('REJECT_FEE_WAIVER'),

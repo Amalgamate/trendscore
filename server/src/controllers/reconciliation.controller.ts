@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { reconciliationService } from '../services/reconciliation.service';
+import { ReconciliationInputError, reconciliationService } from '../services/reconciliation.service';
 import logger from '../utils/logger';
 
 /**
@@ -96,10 +96,12 @@ function parseCsvLine(line: string): string[] {
 
 function parseAmount(val: string | undefined): number | undefined {
     if (!val) return undefined;
-    // Remove commas, spaces, currency symbols
-    const cleaned = val.replace(/[,\sKESKes]/g, '').replace(/[^0-9.\-]/g, '');
-    const num = parseFloat(cleaned);
-    return isNaN(num) ? undefined : num;
+    const trimmed = val.trim();
+    const negative = /^\(.*\)$/.test(trimmed);
+    const cleaned = trimmed.replace(/[,\s]/g, '').replace(/^(KES|KSH)/i, '').replace(/[^0-9.\-]/g, '');
+    if (!/^-?\d+(?:\.\d{1,2})?$/.test(cleaned)) return undefined;
+    const num = Number(cleaned);
+    return Number.isFinite(num) ? (negative ? -Math.abs(num) : num) : undefined;
 }
 
 // ── Controllers ─────────────────────────────────────────────────────────────
@@ -119,6 +121,9 @@ export const importStatement = async (req: Request, res: Response) => {
         // Check if a file was uploaded
         const file = (req as any).file;
         if (file) {
+            const isCsv = file.mimetype === 'text/csv' || file.mimetype === 'text/plain' ||
+                file.mimetype === 'application/vnd.ms-excel' || /\.csv$/i.test(file.originalname || '');
+            if (!isCsv) return res.status(400).json({ success: false, message: 'Choose a CSV statement file.' });
             const content = file.buffer.toString('utf-8');
             rows = parseMpesaCsv(content);
 
@@ -146,14 +151,14 @@ export const importStatement = async (req: Request, res: Response) => {
             endingBalance: req.body.endingBalance ? Number(req.body.endingBalance) : undefined,
         });
 
-        res.status(201).json({
+        res.status(result.statementId ? 201 : 200).json({
             success: true,
             message: `Imported ${result.totalRows} rows: ${result.autoMatched} matched, ${result.unmatched} unmatched, ${result.duplicates} duplicates`,
             data: result,
         });
     } catch (error: any) {
         logger.error('[Reconciliation] Import error:', error.message);
-        res.status(500).json({ success: false, message: error.message });
+        res.status(error instanceof ReconciliationInputError ? error.statusCode : 500).json({ success: false, message: error.message });
     }
 };
 
@@ -201,7 +206,7 @@ export const manualReconcile = async (req: Request, res: Response) => {
         if (!matchType) {
             return res.status(400).json({
                 success: false,
-                message: 'matchType is required (MPESA_TRANSACTION | FEE_PAYMENT | UNMATCHED_PAYMENT | MANUAL)',
+                message: 'Choose a match type and, except for manual matches, a target record.',
             });
         }
 
@@ -215,7 +220,7 @@ export const manualReconcile = async (req: Request, res: Response) => {
 
         res.json({ success: true, message: result.message });
     } catch (error: any) {
-        res.status(500).json({ success: false, message: error.message });
+        res.status(error instanceof ReconciliationInputError ? error.statusCode : 500).json({ success: false, message: error.message });
     }
 };
 
@@ -230,7 +235,7 @@ export const unreconcileLine = async (req: Request, res: Response) => {
         const result = await reconciliationService.unreconcile(id, userId);
         res.json({ success: true, message: 'Line un-reconciled', data: result });
     } catch (error: any) {
-        res.status(500).json({ success: false, message: error.message });
+        res.status(error instanceof ReconciliationInputError ? error.statusCode : 500).json({ success: false, message: error.message });
     }
 };
 
@@ -243,7 +248,7 @@ export const suggestMatches = async (req: Request, res: Response) => {
         const result = await reconciliationService.suggestMatches(id);
         res.json({ success: true, data: result });
     } catch (error: any) {
-        res.status(500).json({ success: false, message: error.message });
+        res.status(error instanceof ReconciliationInputError ? error.statusCode : 500).json({ success: false, message: error.message });
     }
 };
 

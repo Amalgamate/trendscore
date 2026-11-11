@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { accountingService } from '../services/accounting.service';
+import { reconciliationService } from '../services/reconciliation.service';
 import { ApiError } from '../utils/error.util';
 
 export class AccountingController {
@@ -137,21 +138,25 @@ export class AccountingController {
     }
 
     async importBankStatement(req: AuthRequest, res: Response) {
-        try {
-            const statement = await accountingService.importBankStatement(req.body);
-            res.status(201).json({ success: true, message: 'Bank statement imported', data: statement });
-        } catch (error: any) {
-            res.status(400).json({ success: false, message: error.message });
-        }
+        res.status(410).json({
+            success: false,
+            message: 'This legacy import endpoint is retired. Import a CSV through /api/reconciliation/import.',
+        });
     }
 
     async reconcileLine(req: AuthRequest, res: Response) {
         try {
             const { lineId, journalItemId } = req.body;
-            const reconciled = await accountingService.reconcileStatementLine(lineId, journalItemId);
-            res.json({ success: true, message: 'Line reconciled', data: reconciled });
+            const reconciled = await reconciliationService.manualReconcile({
+                statementLineId: lineId,
+                matchType: 'JOURNAL_ITEM',
+                matchedId: journalItemId,
+                note: req.body.note,
+                reconciledBy: req.user!.userId,
+            });
+            res.json({ success: true, message: reconciled.message });
         } catch (error: any) {
-            res.status(400).json({ success: false, message: error.message });
+            res.status(error.statusCode || 500).json({ success: false, message: error.message });
         }
     }
 

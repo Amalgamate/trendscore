@@ -19,7 +19,7 @@
  */
 
 import { Response } from 'express';
-import { PaymentStatus } from '@prisma/client';
+import { PaymentMethod, PaymentStatus } from '@prisma/client';
 import prisma from '../config/database';
 import { PRODUCT_DISPLAY_NAME } from '../config/productIdentity';
 import { ApiError } from '../utils/error.util';
@@ -34,6 +34,7 @@ import { calculateLearnerInvoice } from '../services/learnerFeeConfiguration.ser
 import { parentAccessService } from '../services/parent-access.service';
 import { getInstitutionType } from '../utils/institutionNormalizer';
 import { SchoolNotificationTriggerService } from '../services/school-notification-trigger.service';
+import { assertCanViewFeeRecord } from '../services/finance-access.service';
 
 import logger from '../utils/logger';
 function normalizeEnumValue(value?: string): string | undefined {
@@ -46,9 +47,20 @@ function normalizeEnumValue(value?: string): string | undefined {
 
 const INVOICE_NUMBER_RETRY_COUNT = 3;
 const RECEIPT_NUMBER_RETRY_COUNT = 3;
+const VALID_FEE_PAYMENT_METHODS = new Set(['CASH', 'MPESA', 'BANK_TRANSFER', 'CHEQUE', 'CARD', 'OTHER']);
 const BULK_INVOICE_CALCULATION_CONCURRENCY = Number(process.env.BULK_INVOICE_CALCULATION_CONCURRENCY || 10);
 const BULK_INVOICE_TRANSACTION_TIMEOUT_MS = Number(process.env.BULK_INVOICE_TRANSACTION_TIMEOUT_MS || 60000);
 const BULK_INVOICE_TRANSACTION_MAX_WAIT_MS = Number(process.env.BULK_INVOICE_TRANSACTION_MAX_WAIT_MS || 10000);
+
+function normalizeFeePaymentMethod(value: unknown): PaymentMethod {
+  const raw = String(value || '').trim().toUpperCase();
+  const normalizedInput = raw.replace(/[\s-]+/g, '_');
+  const normalized = normalizedInput === 'M_PESA' ? 'MPESA' : normalizedInput;
+  if (!VALID_FEE_PAYMENT_METHODS.has(normalized)) {
+    throw new ApiError(400, 'Choose cash, M-Pesa, bank transfer, cheque, card, or other payment.');
+  }
+  return normalized as PaymentMethod;
+}
 
 function getPreviousTermContext(termRaw: string, academicYearRaw: number): { term: string; academicYear: number } | null {
   const term = normalizeEnumValue(termRaw);
@@ -145,24 +157,71 @@ async function getNextInvoiceNumber(client: any, academicYear: number): Promise<
 }
 
 async function createInvoiceWithSafeNumber(client: any, invoiceData: any, include: any): Promise<any> {
-  let lastError: any;
-  for (let attempt = 1; attempt <= INVOICE_NUMBER_RETRY_COUNT; attempt++) {
-    const invoiceNumber = await getNextInvoiceNumber(client, invoiceData.academicYear);
-    try {
-      return await client.feeInvoice.create({
-        data: { ...invoiceData, invoiceNumber },
-        include
-      });
-    } catch (error: any) {
-      lastError = error;
-      if (error?.code === 'P2002' && attempt < INVOICE_NUMBER_RETRY_COUNT) continue;
-      throw error;
-    }
-  }
-  throw lastError;
+  const invoiceNumber = await getNextInvoiceNumber(client, invoiceData.academicYear);
+  return client.feeInvoice.create({
+    data: { ...invoiceData, invoiceNumber },
+    include
+  });
+}
+
+async function acquireInvoiceGenerationLock(client: any, academicYear: number): Promise<void> {
+  // Invoice numbers are sequential per academic year. A transaction-scoped
+  // advisory lock also makes the active-invoice check and insert atomic across
+  // concurrent single and bulk generation requests.
+  const lockKey = `trendscore:fee-invoice-generation:${academicYear}`;
+  // Cast the PostgreSQL void result so Prisma can deserialize the query row.
+  await client.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))::text AS lock_result`;
 }
 
 export class FeeController {
+  async getAssignedLearnerFeeSummaries(req: AuthRequest, res: Response) {
+    const teacherId = req.user?.userId;
+    if (!teacherId || req.user?.role !== 'TEACHER') throw new ApiError(403, 'This view is only available to teachers.');
+    const enrollments = await prisma.classEnrollment.findMany({
+      where: { active: true, archived: false, class: { active: true, archived: false, OR: [{ teacherId }, { teacherAssignments: { some: { teacherId } } }] } },
+      select: { learnerId: true },
+      distinct: ['learnerId'],
+    });
+    const learnerIds = enrollments.map((item) => item.learnerId);
+    const learners = await prisma.learner.findMany({
+      where: { id: { in: learnerIds }, archived: false, status: 'ACTIVE' },
+      select: {
+        id: true, firstName: true, lastName: true, admissionNumber: true, grade: true, stream: true,
+        feeInvoices: { where: { archived: false, status: { not: 'CANCELLED' } }, select: { id: true, balance: true, status: true, term: true, academicYear: true } },
+      },
+      orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+    });
+    return res.json({ success: true, data: learners.map(({ feeInvoices, ...learner }) => ({
+      ...learner,
+      balance: feeInvoices.reduce((total, invoice) => total + Number(invoice.balance || 0), 0),
+      openInvoiceCount: feeInvoices.filter((invoice) => Number(invoice.balance || 0) > 0).length,
+    })) });
+  }
+
+  async searchCashierLearners(req: AuthRequest, res: Response) {
+    const rawSearch = String(req.query.search || '').trim();
+    if (rawSearch.length < 2) {
+      return res.json({ success: true, data: [], message: 'Enter at least two characters to find a learner.' });
+    }
+    const institutionType = getInstitutionType(req);
+    const learners = await prisma.learner.findMany({
+      where: {
+        archived: false,
+        institutionType,
+        OR: [
+          { firstName: { contains: rawSearch, mode: 'insensitive' } },
+          { lastName: { contains: rawSearch, mode: 'insensitive' } },
+          { middleName: { contains: rawSearch, mode: 'insensitive' } },
+          { admissionNumber: { contains: rawSearch, mode: 'insensitive' } },
+        ],
+      },
+      select: { id: true, firstName: true, middleName: true, lastName: true, admissionNumber: true, grade: true, stream: true },
+      take: 20,
+      orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+    });
+    return res.json({ success: true, data: learners });
+  }
+
   // ─── Fee Structures ────────────────────────────────────────────────────────
 
   async getAllFeeStructures(req: AuthRequest, res: Response) {
@@ -584,31 +643,37 @@ export class FeeController {
     });
     if (!invoice) throw new ApiError(404, 'Invoice not found');
 
-    // Ownership check: parents can only view their own children's invoices.
-    if (req.user!.role === 'PARENT') {
-      if (!(await parentAccessService.canAccessLearner(req.user!.userId, invoice.learnerId))) {
-        throw new ApiError(403, 'You can only view invoices for your own children');
-      }
-    }
+    await assertCanViewFeeRecord(req, invoice);
 
-    res.json({ success: true, data: invoice });
+    const limitedFeeView = ['TEACHER', 'RECEPTIONIST'].includes(String(req.user?.role || '').toUpperCase());
+    const responseInvoice = limitedFeeView
+      ? {
+          ...invoice,
+          learner: {
+            id: invoice.learner.id,
+            firstName: invoice.learner.firstName,
+            lastName: invoice.learner.lastName,
+            admissionNumber: invoice.learner.admissionNumber,
+            grade: invoice.learner.grade,
+            stream: invoice.learner.stream,
+          },
+          payments: invoice.payments.map(({ amount, paymentDate, paymentMethod }) => ({ amount, paymentDate, paymentMethod })),
+        }
+      : invoice;
+    res.json({ success: true, data: responseInvoice });
   }
 
   async getLearnerInvoices(req: AuthRequest, res: Response) {
     const { learnerId } = req.params;
     const learner = await prisma.learner.findUnique({ where: { id: learnerId } });
     if (!learner) throw new ApiError(404, 'Learner not found');
-
-    if (req.user!.role === 'PARENT') {
-      if (!(await parentAccessService.canAccessLearner(req.user!.userId, learnerId))) {
-        throw new ApiError(403, 'You can only view invoices for your own children');
-      }
-    }
+    await assertCanViewFeeRecord(req, { id: '', learnerId });
 
     const invoices = await prisma.feeInvoice.findMany({
-      where: { learnerId },
+      where: { learnerId, archived: false },
       include: {
         feeStructure: true,
+        learner: { select: { id: true, firstName: true, lastName: true, admissionNumber: true, grade: true, stream: true } },
         payments: { orderBy: { paymentDate: 'desc' } },
         waivers: {
           where: { status: 'APPROVED', archived: false },
@@ -618,7 +683,14 @@ export class FeeController {
       orderBy: { createdAt: 'desc' }
     });
 
-    res.json({ success: true, data: invoices });
+    const limitedFeeView = ['TEACHER', 'RECEPTIONIST'].includes(String(req.user?.role || '').toUpperCase());
+    const responseInvoices = limitedFeeView
+      ? invoices.map((invoice) => ({
+          ...invoice,
+          payments: invoice.payments.map(({ amount, paymentDate, paymentMethod }) => ({ amount, paymentDate, paymentMethod })),
+        }))
+      : invoices;
+    res.json({ success: true, data: responseInvoices });
   }
 
   /**
@@ -690,42 +762,71 @@ export class FeeController {
         feeStructureId,
         term: normalizedTerm,
         academicYear: normalizedYear,
+        archived: false,
         status: { not: 'CANCELLED' as PaymentStatus }
       }
     });
     if (existing) throw new ApiError(400, 'An invoice for this period already exists for the student');
 
-    const invoice = await createInvoiceWithSafeNumber(
-      prisma,
-      {
-        learnerId,
-        feeStructureId,
-        term: normalizedTerm,
-        academicYear: normalizedYear,
-        dueDate: new Date(dueDate),
-        totalAmount: calculation.totalAmount,
-        paidAmount: 0,
-        balance: calculation.totalAmount,
-        transportBilled: calculation.transportAmount,
-        transportPaid: 0,
-        transportBalance: calculation.transportAmount,
-        grossAmount: calculation.grossAmount,
-        adjustmentAmount: calculation.adjustmentAmount,
-        sponsorAmount: calculation.sponsorAmount,
-        sponsorPaidAmount: 0,
-        sponsorBalance: calculation.sponsorAmount,
-        studentAmount: calculation.studentAmount,
-        carryForwardAmount: calculation.carryForwardAmount,
-        calculationSnapshot: calculation.calculationSnapshot,
-        feeConfigurationId: calculation.feeConfigurationId,
-        status: calculation.totalAmount === 0 && calculation.sponsorAmount === 0 ? 'PAID' : 'PENDING',
-        issuedBy: userId
-      },
-      {
-        learner: true,
-        feeStructure: { include: { feeItems: { include: { feeType: true } } } } as any
+    let invoice: any;
+    let invoiceCreationError: any;
+    for (let attempt = 1; attempt <= INVOICE_NUMBER_RETRY_COUNT; attempt++) {
+      try {
+        invoice = await prisma.$transaction(async (tx: any) => {
+          await acquireInvoiceGenerationLock(tx, normalizedYear);
+          const activeInvoice = await tx.feeInvoice.findFirst({
+            where: {
+              learnerId,
+              feeStructureId,
+              term: normalizedTerm,
+              academicYear: normalizedYear,
+              archived: false,
+              status: { not: 'CANCELLED' as PaymentStatus },
+            },
+            select: { id: true },
+          });
+          if (activeInvoice) throw new ApiError(400, 'An invoice for this period already exists for the student');
+
+          return createInvoiceWithSafeNumber(
+            tx,
+            {
+              learnerId,
+              feeStructureId,
+              term: normalizedTerm,
+              academicYear: normalizedYear,
+              dueDate: new Date(dueDate),
+              totalAmount: calculation.totalAmount,
+              paidAmount: 0,
+              balance: calculation.totalAmount,
+              transportBilled: calculation.transportAmount,
+              transportPaid: 0,
+              transportBalance: calculation.transportAmount,
+              grossAmount: calculation.grossAmount,
+              adjustmentAmount: calculation.adjustmentAmount,
+              sponsorAmount: calculation.sponsorAmount,
+              sponsorPaidAmount: 0,
+              sponsorBalance: calculation.sponsorAmount,
+              studentAmount: calculation.studentAmount,
+              carryForwardAmount: calculation.carryForwardAmount,
+              calculationSnapshot: calculation.calculationSnapshot,
+              feeConfigurationId: calculation.feeConfigurationId,
+              status: calculation.totalAmount === 0 && calculation.sponsorAmount === 0 ? 'PAID' : 'PENDING',
+              issuedBy: userId
+            },
+            {
+              learner: true,
+              feeStructure: { include: { feeItems: { include: { feeType: true } } } } as any
+            }
+          );
+        }, { isolationLevel: 'Serializable' });
+        break;
+      } catch (error: any) {
+        invoiceCreationError = error;
+        if (['P2002', 'P2034'].includes(error?.code) && attempt < INVOICE_NUMBER_RETRY_COUNT) continue;
+        throw error;
       }
-    );
+    }
+    if (!invoice) throw invoiceCreationError;
 
     setImmediate(async () => {
       try {
@@ -831,42 +932,44 @@ export class FeeController {
     const { id } = req.params;
     const reason = String(req.body.reason || '').trim();
     if (reason.length < 5) throw new ApiError(400, 'A revision reason is required');
-    const invoice = await prisma.feeInvoice.findUnique({
-      where: { id },
-      include: {
-        learner: true,
-        feeStructure: { include: { feeItems: { include: { feeType: true } } } } as any,
-      },
-    });
-    if (!invoice) throw new ApiError(404, 'Invoice not found');
-    if (invoice.status === 'CANCELLED') throw new ApiError(400, 'Cannot revise a cancelled invoice');
-    if (Number(invoice.paidAmount) > 0) {
-      throw new ApiError(400, 'Only unpaid invoices can be revised. Reverse recorded payments first.');
-    }
-
-    const calculation = await calculateLearnerInvoice({
-      learner: invoice.learner,
-      feeStructure: invoice.feeStructure,
-      term: invoice.term,
-      academicYear: invoice.academicYear,
-      includeTransport: Number(invoice.transportBilled) > 0 || invoice.learner.isTransportStudent,
-      carryForwardAmount: Number(invoice.carryForwardAmount || 0),
-    });
-    const revisionNumber = invoice.revisionNumber + 1;
-    const previousSnapshot = {
-      totalAmount: Number(invoice.totalAmount),
-      balance: Number(invoice.balance),
-      grossAmount: Number(invoice.grossAmount || invoice.totalAmount),
-      adjustmentAmount: Number(invoice.adjustmentAmount || 0),
-      sponsorAmount: Number(invoice.sponsorAmount || 0),
-      studentAmount: Number(invoice.studentAmount || invoice.totalAmount),
-      carryForwardAmount: Number(invoice.carryForwardAmount || 0),
-      calculationSnapshot: invoice.calculationSnapshot,
-      feeConfigurationId: invoice.feeConfigurationId,
-    };
-    const revisedSnapshot = { ...calculation, revisionNumber };
-
     const updated = await prisma.$transaction(async (tx) => {
+      const invoice = await tx.feeInvoice.findUnique({
+        where: { id },
+        include: {
+          learner: true,
+          feeStructure: { include: { feeItems: { include: { feeType: true } } } },
+        },
+      });
+      if (!invoice) throw new ApiError(404, 'Invoice not found');
+      if (invoice.archived) throw new ApiError(409, 'Archived invoices cannot be revised');
+      if (invoice.status === 'CANCELLED') throw new ApiError(400, 'Cannot revise a cancelled invoice');
+      if (Number(invoice.paidAmount) > 0 || Number(invoice.sponsorPaidAmount || 0) > 0) {
+        throw new ApiError(400, 'Only unpaid invoices can be revised. Reverse recorded payments first.');
+      }
+
+      const calculation = await calculateLearnerInvoice({
+        learner: invoice.learner,
+        feeStructure: invoice.feeStructure,
+        term: invoice.term,
+        academicYear: invoice.academicYear,
+        includeTransport: Number(invoice.transportBilled) > 0 || invoice.learner.isTransportStudent,
+        carryForwardAmount: Number(invoice.carryForwardAmount || 0),
+        client: tx,
+      });
+      const revisionNumber = invoice.revisionNumber + 1;
+      const previousSnapshot = {
+        totalAmount: Number(invoice.totalAmount),
+        balance: Number(invoice.balance),
+        grossAmount: Number(invoice.grossAmount || invoice.totalAmount),
+        adjustmentAmount: Number(invoice.adjustmentAmount || 0),
+        sponsorAmount: Number(invoice.sponsorAmount || 0),
+        studentAmount: Number(invoice.studentAmount || invoice.totalAmount),
+        carryForwardAmount: Number(invoice.carryForwardAmount || 0),
+        calculationSnapshot: invoice.calculationSnapshot,
+        feeConfigurationId: invoice.feeConfigurationId,
+      };
+      const revisedSnapshot = { ...calculation, revisionNumber };
+
       await tx.feeInvoiceRevision.create({
         data: {
           invoiceId: invoice.id,
@@ -877,8 +980,15 @@ export class FeeController {
           revisedById: req.user!.userId,
         },
       });
-      return tx.feeInvoice.update({
-        where: { id: invoice.id },
+      const claimed = await tx.feeInvoice.updateMany({
+        where: {
+          id: invoice.id,
+          archived: false,
+          status: { not: 'CANCELLED' },
+          paidAmount: 0,
+          sponsorPaidAmount: 0,
+          revisionNumber: invoice.revisionNumber,
+        },
         data: {
           totalAmount: calculation.totalAmount,
           balance: calculation.totalAmount,
@@ -896,16 +1006,29 @@ export class FeeController {
           revisionNumber,
           status: calculation.totalAmount === 0 && calculation.sponsorAmount === 0 ? 'PAID' : 'PENDING',
         },
+      });
+      if (claimed.count !== 1) throw new ApiError(409, 'Invoice changed while it was being revised. Refresh and try again.');
+
+      const previousLedgerTotal = Number(invoice.totalAmount) + Number(invoice.sponsorAmount || 0);
+      const revisedLedgerTotal = Number(calculation.totalAmount) + Number(calculation.sponsorAmount || 0);
+      await accountingService.postFeeInvoiceRevisionToLedger(
+        invoice.invoiceNumber,
+        revisionNumber,
+        revisedLedgerTotal - previousLedgerTotal,
+        tx,
+        {
+          oldTotalAmount: previousLedgerTotal,
+          newTotalAmount: revisedLedgerTotal,
+          oldTransportAmount: Math.min(Number(invoice.transportBilled || 0), previousLedgerTotal),
+          newTransportAmount: Math.min(Number(calculation.transportAmount || 0), revisedLedgerTotal),
+        },
+      );
+
+      return tx.feeInvoice.findUnique({
+        where: { id: invoice.id },
         include: { revisions: { orderBy: { revisionNumber: 'desc' } } },
       });
-    });
-
-    await accountingService.postFeeInvoiceRevisionToLedger(
-      invoice.invoiceNumber,
-      revisionNumber,
-      (calculation.totalAmount + calculation.sponsorAmount)
-        - (Number(invoice.totalAmount) + Number(invoice.sponsorAmount || 0))
-    );
+    }, { isolationLevel: 'Serializable' });
     res.json({ success: true, data: updated, message: 'Invoice revised from the approved fee configuration' });
   }
 
@@ -954,23 +1077,10 @@ export class FeeController {
     return null;
   }
 
-  private async postMarkedPaidPayments(payments: any[], paymentMethod: string) {
-    if (!payments.length) return;
-    (async () => {
-      const settled = await Promise.allSettled(
-        payments.map((payment) => accountingService.postFeePaymentToLedger(payment, paymentMethod))
-      );
-      settled.forEach((item, index) => {
-        if (item.status === 'rejected') {
-          logger.error(`Post-mark-paid ledger error for payment ${payments[index]?.id}:`, item.reason);
-        }
-      });
-    })();
-  }
-
   async markInvoicePaid(req: AuthRequest, res: Response) {
     const { id } = req.params;
-    const { paymentDate, paymentMethod = 'OTHER', referenceNumber, notes } = req.body;
+    const { paymentDate, referenceNumber, notes } = req.body;
+    const paymentMethod = normalizeFeePaymentMethod(req.body.paymentMethod ?? 'OTHER');
     const userId = req.user!.userId;
     const role = req.user!.role;
     const paidAt = this.parseMarkPaidDate(paymentDate);
@@ -1028,6 +1138,7 @@ export class FeeController {
               recordedBy: userId
             }
           });
+          await accountingService.postFeePaymentToLedger(payment, paymentMethod, tx);
 
           const updatedInvoice = await tx.feeInvoice.update({
             where: { id },
@@ -1046,7 +1157,7 @@ export class FeeController {
           });
 
           return { payment, invoice: updatedInvoice };
-        });
+        }, { isolationLevel: 'Serializable' });
         break;
       } catch (error: any) {
         lastPaymentError = error;
@@ -1056,8 +1167,6 @@ export class FeeController {
     }
 
     if (!result) throw lastPaymentError;
-    await this.postMarkedPaidPayments([result.payment], paymentMethod);
-
     res.status(201).json({
       success: true,
       data: result,
@@ -1118,7 +1227,8 @@ export class FeeController {
   }
 
   async bulkMarkInvoicesPaid(req: AuthRequest, res: Response) {
-    const { invoiceIds, paymentDate, paymentMethod = 'OTHER', referenceNumber, notes } = req.body;
+    const { invoiceIds, paymentDate, referenceNumber, notes } = req.body;
+    const paymentMethod = normalizeFeePaymentMethod(req.body.paymentMethod ?? 'OTHER');
     const userId = req.user!.userId;
     const role = req.user!.role;
     const paidAt = this.parseMarkPaidDate(paymentDate);
@@ -1184,6 +1294,7 @@ export class FeeController {
                 recordedBy: userId
               }
             });
+            await accountingService.postFeePaymentToLedger(payment, paymentMethod, tx);
 
             const updatedInvoice = await tx.feeInvoice.update({
               where: { id: invoiceId },
@@ -1201,7 +1312,7 @@ export class FeeController {
           }
 
           return { paid, skipped };
-        });
+        }, { isolationLevel: 'Serializable' });
         break;
       } catch (error: any) {
         lastPaymentError = error;
@@ -1211,8 +1322,6 @@ export class FeeController {
     }
 
     if (!result) throw lastPaymentError;
-    await this.postMarkedPaidPayments(result.paid.map((item: any) => item.payment), paymentMethod);
-
     res.status(201).json({
       success: true,
       data: result,
@@ -1234,7 +1343,8 @@ export class FeeController {
    * html2canvas / jsPDF with this data.
    */
   async recordPayment(req: AuthRequest, res: Response) {
-    const { invoiceId, learnerId, amount: rawAmount, paymentMethod, paymentDate, referenceNumber, notes, allocatedTuition, allocatedTransport, payerType = 'STUDENT' } = req.body;
+    const { invoiceId, learnerId, amount: rawAmount, paymentDate, referenceNumber, notes, allocatedTuition, allocatedTransport, payerType = 'STUDENT' } = req.body;
+    const paymentMethod = req.body.paymentMethod ? normalizeFeePaymentMethod(req.body.paymentMethod) : '';
     const userId = req.user!.userId;
 
     if ((!invoiceId && !learnerId) || rawAmount === undefined || rawAmount === null || !paymentMethod) {
@@ -1403,8 +1513,16 @@ export class FeeController {
             }
           });
 
+          // Keep the payment, invoice balance, and balanced journal entry in
+          // one transaction. If accounting cannot post, the payment is rolled
+          // back so the cashier can retry without an unledgered receipt.
+          await accountingService.postFeePaymentToLedger(payment, paymentMethod, tx);
+          if (!isSponsorPayment) {
+            await overpaymentCreditService.detectAndPostOverpayment(actualInvoiceId, payment.id, tx);
+          }
+
           return { payment, invoice: finalInvoice };
-        });
+        }, { isolationLevel: 'Serializable' });
         break;
       } catch (error: any) {
         lastPaymentError = error;
@@ -1415,16 +1533,10 @@ export class FeeController {
 
     if (!result) throw lastPaymentError;
 
-    // Background: accounting + SMS (static method throughout)
+    // Accounting is complete before returning success. Only outbound notices
+    // run after commit and cannot roll back a recorded/ledgered payment.
     (async () => {
       try {
-        await accountingService.postFeePaymentToLedger(result.payment, paymentMethod);
-
-        // Detect overpayment & post excess to Tuition Deposits
-        if (result.invoice.status === 'OVERPAID') {
-          await overpaymentCreditService.detectAndPostOverpayment(result.invoice.id, result.payment.id);
-        }
-
         const learner = result.invoice.learner;
         const contactPhone = learner.primaryContactPhone || learner.guardianPhone;
         const newStatus: string = result.invoice.status;
@@ -1523,44 +1635,58 @@ export class FeeController {
    */
   async cancelInvoice(req: AuthRequest, res: Response) {
     const { id } = req.params;
-    const { reason } = req.body;
+    const reason = String(req.body.reason || '').trim();
     const role = req.user!.role;
 
     if (!['SUPER_ADMIN', 'ADMIN'].includes(role)) {
       throw new ApiError(403, 'Only ADMIN or SUPER_ADMIN can cancel invoices');
     }
+    if (reason.length < 5) throw new ApiError(400, 'Add a cancellation reason of at least 5 characters.');
 
-    const invoice = await prisma.feeInvoice.findUnique({
-      where: { id },
-      include: {
-        // Only count active (non-reversed) payments — archived payments have
-        // already been reversed so they should not block cancellation.
-        payments: { where: { archived: false } },
-        learner: true
+    const cancelled = await prisma.$transaction(async (tx) => {
+      const invoice = await tx.feeInvoice.findUnique({
+        where: { id },
+        include: {
+          // Reversed payments remain archived and do not block cancellation.
+          payments: { where: { archived: false } },
+        },
+      });
+      if (!invoice) throw new ApiError(404, 'Invoice not found');
+      if (invoice.archived) throw new ApiError(409, 'Archived invoices cannot be cancelled.');
+      if (invoice.status === 'CANCELLED') throw new ApiError(400, 'Invoice is already cancelled');
+      if (invoice.payments.length > 0
+        || Number(invoice.paidAmount) > 0
+        || Number(invoice.sponsorPaidAmount || 0) > 0
+        || Number(invoice.transportPaid || 0) > 0) {
+        throw new ApiError(409, 'This invoice has recorded payments. Reverse them first, then retry cancellation.');
       }
-    });
-    if (!invoice) throw new ApiError(404, 'Invoice not found');
-    if (invoice.status === 'CANCELLED') throw new ApiError(400, 'Invoice is already cancelled');
-    if (invoice.payments.length > 0) {
-      throw new ApiError(
-        400,
-        `Cannot cancel: ${invoice.payments.length} active payment(s) recorded. Reverse them first.`
-      );
-    }
 
-    const cancelled = await prisma.feeInvoice.update({
-      where: { id },
-      data: { status: 'CANCELLED' as PaymentStatus }
-    });
+      // Reverse the original invoice posting and all posted revisions before
+      // changing status. A ledger failure aborts this transaction.
+      await accountingService.reverseFeeInvoiceLedger(invoice.invoiceNumber, tx);
+      const claimed = await tx.feeInvoice.updateMany({
+        where: {
+          id: invoice.id,
+          archived: false,
+          status: { not: 'CANCELLED' },
+          paidAmount: 0,
+          sponsorPaidAmount: 0,
+          transportPaid: 0,
+        },
+        data: { status: 'CANCELLED' as PaymentStatus },
+      });
+      if (claimed.count !== 1) throw new ApiError(409, 'Invoice changed while cancellation was being processed. Refresh and retry.');
+      return tx.feeInvoice.findUnique({ where: { id: invoice.id } });
+    }, { isolationLevel: 'Serializable' });
 
     logger.info(
-      `[FeeController] Invoice ${invoice.invoiceNumber} cancelled by user ${req.user!.userId}. Reason: ${reason || 'not specified'}`
+      `[FeeController] Invoice ${cancelled?.invoiceNumber || id} cancelled by user ${req.user!.userId}. Reason: ${reason}`
     );
 
     res.json({
       success: true,
       data: cancelled,
-      message: `Invoice ${invoice.invoiceNumber} cancelled successfully`
+      message: `Invoice ${cancelled?.invoiceNumber || id} cancelled and its posted charges reversed.`
     });
   }
 
@@ -1935,6 +2061,8 @@ export class FeeController {
         learnerId: { in: learnerIds },
         term: normalizedTerm,
         academicYear: normalizedYear,
+        archived: false,
+        status: { not: 'CANCELLED' as PaymentStatus },
         ...(normalizedScope === 'WHOLE_SCHOOL' ? {} : { feeStructureId })
       },
       select: { learnerId: true }
@@ -2016,11 +2144,27 @@ export class FeeController {
     for (let attempt = 1; attempt <= INVOICE_NUMBER_RETRY_COUNT; attempt++) {
       try {
         results = await prisma.$transaction(async (tx: any) => {
+          await acquireInvoiceGenerationLock(tx, normalizedYear);
+          const currentInvoices = await tx.feeInvoice.findMany({
+            where: {
+              learnerId: { in: validDrafts.map((draft) => draft.learner.id) },
+              term: normalizedTerm,
+              academicYear: normalizedYear,
+              archived: false,
+              status: { not: 'CANCELLED' as PaymentStatus },
+              ...(normalizedScope === 'WHOLE_SCHOOL' ? {} : { feeStructureId }),
+            },
+            select: { learnerId: true },
+          });
+          const currentLearnerIds = new Set(currentInvoices.map((invoice: any) => invoice.learnerId));
+          const draftsToCreate = validDrafts.filter((draft) => !currentLearnerIds.has(draft.learner.id));
+          if (draftsToCreate.length === 0) return [];
+
           const invoices: any[] = [];
           let nextSequence = await getMaxStandardInvoiceSequence(tx, normalizedYear) + 1;
 
-          for (let idx = 0; idx < validDrafts.length; idx++) {
-            const draft = validDrafts[idx];
+          for (let idx = 0; idx < draftsToCreate.length; idx++) {
+            const draft = draftsToCreate[idx];
             const learner = draft.learner;
             const invoiceNumber = `INV-${normalizedYear}-${String(nextSequence).padStart(6, '0')}`;
             nextSequence++;
@@ -2059,11 +2203,12 @@ export class FeeController {
         }, {
           maxWait: BULK_INVOICE_TRANSACTION_MAX_WAIT_MS,
           timeout: BULK_INVOICE_TRANSACTION_TIMEOUT_MS,
+          isolationLevel: 'Serializable',
         });
         break;
       } catch (error: any) {
         lastError = error;
-        if (error?.code === 'P2002' && attempt < INVOICE_NUMBER_RETRY_COUNT) continue;
+        if (['P2002', 'P2034'].includes(error?.code) && attempt < INVOICE_NUMBER_RETRY_COUNT) continue;
         throw error;
       }
     }
@@ -2086,7 +2231,9 @@ export class FeeController {
       success: true,
       data: results,
       count: results.length,
-      message: normalizedScope === 'WHOLE_SCHOOL'
+      message: results.length === 0
+        ? 'No new invoices were created because active invoices already exist for the selected period.'
+        : normalizedScope === 'WHOLE_SCHOOL'
         ? `Bulk invoices created for ${results.length} learners (whole school scope).`
         : `Bulk invoices created for ${results.length} learners.`
     });

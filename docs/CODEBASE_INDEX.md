@@ -42,7 +42,7 @@ Top-level docs of note: `README.md`, `docs/CODEBASE_INDEX.md`, `docs/DEPLOYMENT.
 - Node.js, **Express**, **TypeScript**
 - **Prisma ORM** on PostgreSQL
 - Realtime: **Socket.io**
-- Payments: M-Pesa/Daraja (+ IntaSend, KopoKopo resolvers)
+- Payments: M-Pesa via Safaricom Daraja; organic Till/Paybill receipts use the verified C2B path.
 - Comms: Email (Resend), SMS (MobileSMSA), WhatsApp
 - Media: Cloudinary · Caching: Redis-ready (dev fallback)
 - Tests: **Jest**
@@ -115,7 +115,7 @@ Protected (after `authenticate`): `/admin`, `/users`, `/learners`, `/classes`, `
 - `__tests__/`, `tests/` — Jest tests (incl. `cbe-grading.util.spec.ts`).
 
 ### Notable services
-Payments: `mpesa.service.ts`, `daraja.service.ts`, `payment-resolver.service.ts`, `intasend.service.ts`, `kopokopo.service.ts`.
+Payments: `mpesa.service.ts`, `daraja.service.ts`, `payment-resolver.service.ts`, `admission-match.service.ts`.
 Comms: `email.service.ts`, `email-resend.service.ts`, `sms.service.ts`, `whatsapp.service.ts`, `notification.service.ts`.
 Assessment: `grading.service.ts`, `calculation.service.ts`, `performance.service.ts`, `report.service.ts`.
 Pathways: `pathway-*.service.ts`, `senior-pathway-*.service.ts`.
@@ -132,7 +132,7 @@ Platform: `school-provisioning.service.ts`, `school-deletion.service.ts`, `subdo
 | **Learners & admissions** | `AdmissionsPage`, `LearnersList`, `TransfersInPage`, `TransferOutPage`, `ExitedLearnersPage`, `PromotionPage`, `profiles/` | `learner.controller.ts`, `admissionNumber.service.ts` |
 | **Academics / CBE** | `FormativeAssessment`, `SummativeAssessment*`, `SummativeTests*`, `LearningAreasManagement`, `PerformanceScale`, `CoreCompetenciesAssessment`, `ValuesAssessment`, `CoCurricularActivities` | `assessmentController.ts`, `cbcController.ts`, `grading.controller.ts`, `grading.service.ts` |
 | **Reports** | `reports/`, `TermlyReport`, `FormativeReport`, `SummativeReport`, `CustomReportsPage`, `ProgressReports` | `reportController.ts`, `report.service.ts`, `pdf.service.ts` |
-| **Fees & payments** | `fees/`, `FeeCollectionPage`, `FeeStructurePage`, `FeeTypesPage`, `FeeReportsPage`, `RecordPaymentPage`, `StudentStatementsPage`, `WaiversPage`, `InvoiceDetailPage` | `fee.controller.ts`, `fee.service.ts`, `payment.controller.ts`, `mpesa.controller.ts` |
+| **Fees & payments** | `fees/`, `FeeCollectionPage`, `FeeStructurePage`, `FeeTypesPage`, `FeeReportsPage`, `RecordPaymentPage`, `StudentStatementsPage`, `WaiversPage`, `InvoiceDetailPage`, `CashierPaymentPage`, `FeeRefundsPage` | `fee.controller.ts`, `fee.service.ts`, `refund.controller.ts`, `refund.service.ts`, `mpesa.controller.ts` |
 | **Accounting** | `accounting/` | `accounting.controller.ts`, `accounting.service.ts` |
 | **HR & payroll** | `hr/`, `TeachersList`, `AddEditTeacherPage` | `hr.controller.ts`, `hr.service.ts`, `staffId.service.ts` |
 | **Attendance** | `attendance/`, `DailyAttendanceAPI`, `AttendanceReports` | `attendance.controller.ts`, `biometric.controller.ts` |

@@ -11,6 +11,7 @@ const mockPrisma = {
     bankStatementLine: {
         create: jest.fn(),
         update: jest.fn(),
+        updateMany: jest.fn(),
         findUnique: jest.fn(),
         findFirst: jest.fn(),
         findMany: jest.fn(),
@@ -30,11 +31,19 @@ const mockPrisma = {
     unmatchedPayment: {
         findFirst: jest.fn(),
         findUnique: jest.fn(),
+        findMany: jest.fn(),
+    },
+    bankStatementMatchEvent: {
+        create: jest.fn(),
     },
     account: {
         findFirst: jest.fn(),
         create: jest.fn(),
     },
+    journalItem: {
+        findUnique: jest.fn(),
+    },
+    $transaction: jest.fn((callback: any) => callback(mockPrisma)),
 };
 
 jest.mock('../../src/config/database', () => ({
@@ -57,6 +66,7 @@ describe('ReconciliationService', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
+        (mockPrisma.$transaction as any).mockImplementation((callback: any) => callback(mockPrisma));
     });
 
     // ── importStatement ──────────────────────────────────────────────────
@@ -66,7 +76,9 @@ describe('ReconciliationService', () => {
             (mockPrisma.account.findFirst as any).mockResolvedValue({ id: 'acc-1', code: '1210' });
             (mockPrisma.bankStatement.create as any).mockResolvedValue({ id: 'stmt-1' });
             (mockPrisma.bankStatementLine.findFirst as any).mockResolvedValue(null); // no duplicates
+            (mockPrisma.bankStatementLine.findMany as any).mockResolvedValue([]);
             (mockPrisma.bankStatementLine.create as any).mockResolvedValue({ id: 'line-1' });
+            (mockPrisma.bankStatementLine.updateMany as any).mockResolvedValue({ count: 1 });
         });
 
         it('should reject empty rows', async () => {
@@ -78,6 +90,18 @@ describe('ReconciliationService', () => {
             ).rejects.toThrow(/empty/);
         });
 
+        it('validates every row before creating a statement or opening a transaction', async () => {
+            await expect(reconciliationService.importStatement({
+                rows: [
+                    { date: '2026-11-01', amount: 100, receiptNo: 'VALID' },
+                    { date: 'not-a-date', amount: 50, receiptNo: 'INVALID' },
+                ],
+                importedById: 'user-1',
+            })).rejects.toThrow(/Row 2 needs a valid transaction date/);
+            expect(mockPrisma.bankStatement.create).not.toHaveBeenCalled();
+            expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+        });
+
         it('should auto-match a row to an existing MpesaTransaction by receipt number', async () => {
             (mockPrisma.mpesaTransaction.findFirst as any).mockResolvedValue({
                 id: 'mpesa-tx-1',
@@ -86,7 +110,7 @@ describe('ReconciliationService', () => {
                 type: 'COLLECTION',
                 status: 'SUCCESS',
             });
-            (mockPrisma.bankStatementLine.update as any).mockResolvedValue({});
+            (mockPrisma.bankStatementMatchEvent.create as any).mockResolvedValue({});
 
             const result = await reconciliationService.importStatement({
                 rows: [{
@@ -103,6 +127,11 @@ describe('ReconciliationService', () => {
             expect(result.unmatched).toBe(0);
             expect(result.details[0].status).toBe('RECONCILED');
             expect(result.details[0].matchType).toBe('MPESA_TRANSACTION');
+            expect(mockPrisma.bankStatementLine.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+                where: { id: 'line-1', status: 'UNRECONCILED' },
+                data: expect.objectContaining({ matchType: 'MPESA_TRANSACTION', matchedId: 'mpesa-tx-1', reconciledById: 'user-1' }),
+            }));
+            expect(mockPrisma.bankStatementMatchEvent.create).toHaveBeenCalled();
         });
 
         it('should auto-match a row to an existing FeePayment by referenceNumber', async () => {
@@ -112,7 +141,7 @@ describe('ReconciliationService', () => {
                 receiptNumber: 'MPESA-DEF456',
                 amount: 3000,
             });
-            (mockPrisma.bankStatementLine.update as any).mockResolvedValue({});
+            (mockPrisma.bankStatementMatchEvent.create as any).mockResolvedValue({});
 
             const result = await reconciliationService.importStatement({
                 rows: [{
@@ -149,10 +178,10 @@ describe('ReconciliationService', () => {
         });
 
         it('should detect duplicate imports (same receipt already exists)', async () => {
-            (mockPrisma.bankStatementLine.findFirst as any).mockResolvedValue({
+            (mockPrisma.bankStatementLine.findMany as any).mockResolvedValue([{
                 id: 'existing-line',
                 reference: 'DUP001',
-            });
+            }]);
 
             const result = await reconciliationService.importStatement({
                 rows: [{
@@ -166,6 +195,7 @@ describe('ReconciliationService', () => {
 
             expect(result.duplicates).toBe(1);
             expect(result.details[0].status).toBe('DUPLICATE');
+            expect(mockPrisma.bankStatement.create).not.toHaveBeenCalled();
         });
 
         it('should flag amount mismatch as UNRECONCILED', async () => {
@@ -206,6 +236,7 @@ describe('ReconciliationService', () => {
                 reconciliationService.manualReconcile({
                     statementLineId: 'line-1',
                     matchType: 'MANUAL',
+                    note: 'Verified independently.',
                     reconciledBy: 'user-1',
                 })
             ).rejects.toThrow(/already reconciled/);
@@ -218,6 +249,7 @@ describe('ReconciliationService', () => {
                 reconciliationService.manualReconcile({
                     statementLineId: 'nonexistent',
                     matchType: 'MANUAL',
+                    note: 'Verified independently.',
                     reconciledBy: 'user-1',
                 })
             ).rejects.toThrow('Statement line not found');
@@ -228,6 +260,7 @@ describe('ReconciliationService', () => {
                 id: 'line-1',
                 status: 'UNRECONCILED',
                 description: 'Test',
+                amount: 1000,
             });
             (mockPrisma.feePayment.findUnique as any).mockResolvedValue(null); // not found
 
@@ -246,8 +279,11 @@ describe('ReconciliationService', () => {
                 id: 'line-1',
                 status: 'UNRECONCILED',
                 description: 'Manual entry',
+                amount: 1000,
             });
-            (mockPrisma.bankStatementLine.update as any).mockResolvedValue({});
+            (mockPrisma.bankStatementLine.updateMany as any).mockResolvedValue({ count: 1 });
+            (mockPrisma.bankStatementLine.findFirst as any).mockResolvedValue(null);
+            (mockPrisma.bankStatementMatchEvent.create as any).mockResolvedValue({});
 
             const result = await reconciliationService.manualReconcile({
                 statementLineId: 'line-1',
@@ -257,7 +293,42 @@ describe('ReconciliationService', () => {
             });
 
             expect(result.success).toBe(true);
-            expect(mockPrisma.bankStatementLine.update).toHaveBeenCalled();
+            expect(mockPrisma.bankStatementLine.updateMany).toHaveBeenCalled();
+        });
+
+        it('should require the target amount to match the statement line', async () => {
+            (mockPrisma.bankStatementLine.findUnique as any).mockResolvedValue({
+                id: 'line-1', status: 'UNRECONCILED', amount: 1200,
+            });
+            (mockPrisma.feePayment.findUnique as any).mockResolvedValue({
+                id: 'pay-1', amount: 1000, archived: false,
+            });
+
+            await expect(reconciliationService.manualReconcile({
+                statementLineId: 'line-1',
+                matchType: 'FEE_PAYMENT',
+                matchedId: 'pay-1',
+                reconciledBy: 'user-1',
+            })).rejects.toThrow(/target amount does not match/);
+            expect(mockPrisma.bankStatementLine.updateMany).not.toHaveBeenCalled();
+        });
+
+        it('should prevent reusing a target that is already matched elsewhere', async () => {
+            (mockPrisma.bankStatementLine.findUnique as any).mockResolvedValue({
+                id: 'line-1', status: 'UNRECONCILED', amount: 1000,
+            });
+            (mockPrisma.feePayment.findUnique as any).mockResolvedValue({
+                id: 'pay-1', amount: 1000, archived: false,
+            });
+            (mockPrisma.bankStatementLine.findFirst as any).mockResolvedValue({ id: 'another-line' });
+
+            await expect(reconciliationService.manualReconcile({
+                statementLineId: 'line-1',
+                matchType: 'FEE_PAYMENT',
+                matchedId: 'pay-1',
+                reconciledBy: 'user-1',
+            })).rejects.toThrow(/already matched/);
+            expect(mockPrisma.bankStatementLine.updateMany).not.toHaveBeenCalled();
         });
     });
 
@@ -268,13 +339,17 @@ describe('ReconciliationService', () => {
             (mockPrisma.bankStatementLine.findUnique as any).mockResolvedValue({
                 id: 'line-1',
                 status: 'RECONCILED',
+                matchType: 'MANUAL',
+                matchedId: null,
+                reconciliationNote: 'Reviewed on bank statement.',
             });
-            (mockPrisma.bankStatementLine.update as any).mockResolvedValue({});
+            (mockPrisma.bankStatementLine.updateMany as any).mockResolvedValue({ count: 1 });
+            (mockPrisma.bankStatementMatchEvent.create as any).mockResolvedValue({});
 
             const result = await reconciliationService.unreconcile('line-1', 'user-1');
             expect(result.success).toBe(true);
 
-            const call = (mockPrisma.bankStatementLine.update as any).mock.calls[0][0];
+            const call = (mockPrisma.bankStatementLine.updateMany as any).mock.calls[0][0];
             expect(call.data.status).toBe('UNRECONCILED');
         });
 
@@ -287,6 +362,16 @@ describe('ReconciliationService', () => {
             await expect(
                 reconciliationService.unreconcile('line-1', 'user-1')
             ).rejects.toThrow(/not reconciled/);
+        });
+
+        it('should refuse to undo a legacy reconciled line without a recorded target', async () => {
+            (mockPrisma.bankStatementLine.findUnique as any).mockResolvedValue({
+                id: 'line-legacy', status: 'RECONCILED', matchType: null, matchedId: null,
+            });
+
+            await expect(reconciliationService.unreconcile('line-legacy', 'user-1'))
+                .rejects.toThrow(/cannot be safely undone/);
+            expect(mockPrisma.bankStatementLine.updateMany).not.toHaveBeenCalled();
         });
     });
 
@@ -333,16 +418,19 @@ describe('ReconciliationService', () => {
     describe('suggestMatches', () => {
 
         it('should return sorted suggestions by confidence', async () => {
+            (mockPrisma.bankStatementLine.findFirst as any).mockResolvedValue(null);
             (mockPrisma.bankStatementLine.findUnique as any).mockResolvedValue({
                 id: 'line-1',
                 amount: 5000,
                 date: new Date('2026-11-01'),
+                status: 'UNRECONCILED',
             });
             (mockPrisma.mpesaTransaction.findMany as any).mockResolvedValue([
                 { id: 'tx-1', transactionId: 'REC1', amount: 5000, createdAt: new Date('2026-11-01'), type: 'COLLECTION', status: 'SUCCESS' },
                 { id: 'tx-2', transactionId: 'REC2', amount: 5000, createdAt: new Date('2026-11-03'), type: 'COLLECTION', status: 'SUCCESS' },
             ]);
             (mockPrisma.feePayment.findMany as any).mockResolvedValue([]);
+            (mockPrisma.unmatchedPayment.findMany as any).mockResolvedValue([]);
 
             const result = await reconciliationService.suggestMatches('line-1');
 

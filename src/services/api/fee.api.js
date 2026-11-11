@@ -22,6 +22,12 @@ export const feeAPI = {
     return fetchWithAuth(`/fees/invoices/aggregates${query ? `?${query}` : ''}`);
   },
   getLearnerInvoices: async (learnerId) => fetchWithAuth(`/fees/invoices/learner/${learnerId}`),
+  searchCashierLearners: async (search) => {
+    const query = new URLSearchParams({ search }).toString();
+    return fetchWithAuth(`/fees/cashier/learners?${query}`);
+  },
+  getAssignedLearnerFeeSummaries: async () => fetchWithAuth('/fees/assigned-learners'),
+  getCashierLearnerInvoices: async (learnerId) => fetchWithAuth(`/fees/cashier/learners/${learnerId}/invoices`),
   getInvoiceById: async (id) => fetchWithAuth(`/fees/invoices/${id}`),
   getLearnerFeeConfigurations: async (learnerId) =>
     fetchWithAuth(`/fees/configurations/learner/${learnerId}`),

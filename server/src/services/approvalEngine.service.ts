@@ -143,6 +143,7 @@ async function paymentReversalApprovalHandler(request: ApprovalRequest, approver
     approverId,
     approverRole: approver.role,
     comment: `Approved via approval engine — request ${request.id}`,
+    notifySubmitter: false,
   });
 
   console.info(`[ApprovalEngine] PAYMENT_REVERSAL hook completed for refund ${refundId}: ${result.message}`);

@@ -193,8 +193,7 @@ export const MOBILE_NAV_CONFIGS: Record<RoleType, MobileNavConfig> = {
     role: 'RECEPTIONIST',
     items: [
       { id: 'dashboard', label: 'Home', icon: Home, path: 'dashboard', color: 'text-brand-purple' },
-      { id: 'learners', label: 'Learners', icon: Users, path: 'learners-list', permission: 'VIEW_ALL_LEARNERS', color: 'text-blue-600' },
-      { id: 'payments', label: 'Payments', icon: Wallet, path: 'fees-record-payment', permission: 'RECORD_PAYMENT', color: 'text-emerald-600' },
+      { id: 'payments', label: 'Payments', icon: Wallet, path: 'fees-cashier', permission: 'RECORD_PAYMENT', color: 'text-emerald-600' },
       { id: 'inbox', label: 'Inbox', icon: Mail, path: 'comm-messages', permission: 'VIEW_INBOX', color: 'text-violet-700' },
     ],
   },
