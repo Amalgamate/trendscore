@@ -148,7 +148,8 @@ router.post(
           learnerId: { in: learnerIds },
           term: term as Term,
           academicYear: yearInt,
-          archived: false
+          archived: false,
+          status: { not: 'CANCELLED' as any },
         }
       });
       const invoiceMap = new Map(existingInvoices.map(i => [i.learnerId, i]));

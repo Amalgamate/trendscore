@@ -156,7 +156,7 @@ class AdmissionMatchService {
                     );
 
                     // Record M-Pesa transaction charge
-                    await accountingService.postMpesaCharge(amount);
+                    await accountingService.postMpesaCharge(amount, `MPESA-${receipt}`);
                 }
             } catch (err: any) {
                 logger.error('[AdmissionMatch] Ledger/overpayment posting error:', err?.message ?? err);

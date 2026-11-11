@@ -34,3 +34,27 @@ export const accountingAPI = {
     fetchWithAuth(`/accounting/reports/trial-balance?startDate=${startDate}&endDate=${endDate}`),
   getDashboardStats: async () => fetchWithAuth('/accounting/dashboard-stats'),
 };
+
+// Bank statement imports and matching use the dedicated reconciliation API.
+export const reconciliationAPI = {
+  getStatements: async ({ page = 1, limit = 50 } = {}) =>
+    fetchWithAuth('/reconciliation/statements?page=' + page + '&limit=' + limit),
+  getStatement: async (statementId, filters = {}) => {
+    const params = new URLSearchParams(filters).toString();
+    return fetchWithAuth('/reconciliation/statements/' + encodeURIComponent(statementId) + (params ? '?' + params : ''));
+  },
+  importCsv: async (file) => {
+    const body = new FormData();
+    body.append('file', file);
+    return fetchWithAuth('/reconciliation/import', { method: 'POST', body });
+  },
+  getSuggestedMatches: async (lineId) =>
+    fetchWithAuth('/reconciliation/lines/' + encodeURIComponent(lineId) + '/suggest-matches'),
+  reconcileLine: async (lineId, data) =>
+    fetchWithAuth('/reconciliation/lines/' + encodeURIComponent(lineId) + '/reconcile', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  undoReconciliation: async (lineId) =>
+    fetchWithAuth('/reconciliation/lines/' + encodeURIComponent(lineId) + '/unreconcile', { method: 'POST' }),
+};

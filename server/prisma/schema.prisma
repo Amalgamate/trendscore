@@ -1579,6 +1579,9 @@ model FeeStructureItem {
   @@map("fee_structure_items")
 }
 
+/// A partial SQL unique index (`fee_invoices_active_period_unique`) enforces
+/// one active, non-cancelled invoice per learner/structure/period while keeping
+/// cancelled and archived invoice history.
 model FeeInvoice {
   id               String           @id @default(uuid())
   invoiceNumber    String           @unique
@@ -1934,7 +1937,7 @@ model CommunicationConfig {
   emailFrom                String?
   emailFromName            String?
   emailEnabled             Boolean   @default(false)
-  mpesaProvider            String?   @default("intasend")
+  mpesaProvider            String?   @default("daraja")
   mpesaPublicKey           String?
   mpesaSecretKey           String?
   mpesaBusinessNo          String?
@@ -2954,13 +2957,35 @@ model BankStatementLine {
   reference     String?
   status        String        @default("UNRECONCILED")
   journalItemId String?       @unique
+  matchType     String?
+  matchedId     String?
+  reconciledById String?
+  reconciledAt  DateTime?
+  reconciliationNote String?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   journalItem   JournalItem?  @relation(fields: [journalItemId], references: [id])
   statement     BankStatement @relation(fields: [statementId], references: [id], onDelete: Cascade)
+  matchEvents   BankStatementMatchEvent[]
 
   @@index([statementId])
+  @@unique([matchType, matchedId])
   @@map("bank_statement_lines")
+}
+
+model BankStatementMatchEvent {
+  id              String            @id @default(uuid())
+  statementLineId String
+  action          String
+  matchType       String?
+  matchedId       String?
+  actorId         String?
+  note            String?
+  createdAt       DateTime          @default(now())
+  statementLine   BankStatementLine @relation(fields: [statementLineId], references: [id], onDelete: Restrict)
+
+  @@index([statementLineId, createdAt])
+  @@map("bank_statement_match_events")
 }
 
 model InventoryCategory {

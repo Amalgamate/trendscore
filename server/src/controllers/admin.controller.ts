@@ -39,7 +39,7 @@ export class AdminController {
           smsEnabled: true,
           smsProvider: 'mobilesasa',
           emailProvider: 'resend',
-          mpesaProvider: 'intasend',
+          mpesaProvider: 'daraja',
         },
       });
     }

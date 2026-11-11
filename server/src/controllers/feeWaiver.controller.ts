@@ -343,7 +343,7 @@ export class FeeWaiverController {
       }
 
       // Internal System Alert for Admins
-      await NotificationService.notifyRoles(['ADMIN', 'SUPER_ADMIN'], {
+      await NotificationService.notifyRoles(['ADMIN', 'SUPER_ADMIN', 'HEAD_TEACHER'], {
         title: 'New Waiver Request',
         message: `KES ${Number(waiver.amountWaived).toLocaleString()} requested for ${learnerName}`,
         type: NotificationType.WAIVER,

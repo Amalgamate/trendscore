@@ -1,15 +1,17 @@
 import { Request, Response } from 'express';
 import { refundService } from '../services/refund.service';
 import logger from '../utils/logger';
+import { parentAccessService } from '../services/parent-access.service';
+import prisma from '../config/database';
 
 /**
  * Refund Controller
  *
  * Routes:
  *  POST   /refunds              — submit a refund request (SUBMIT_REFUND)
- *  POST   /refunds/:id/approve  — approve a refund (APPROVE_REFUND — SUPER_ADMIN only)
- *  POST   /refunds/:id/reject   — reject a refund (APPROVE_REFUND — SUPER_ADMIN only)
- *  GET    /refunds              — list refunds (FINANCIAL_REPORTS)
+ *  POST   /refunds/:id/approve  — approve a refund (school Admin / Head Teacher)
+ *  POST   /refunds/:id/reject   — reject a refund (school Admin / Head Teacher)
+ *  GET    /refunds              — list requests (authorized finance and school leaders)
  *  GET    /refunds/:id          — get a single refund
  */
 
@@ -18,6 +20,15 @@ export const submitRefund = async (req: Request, res: Response) => {
     const { paymentId, reason, method, notes } = req.body;
     const userId = (req as any).user?.userId || (req as any).user?.id;
     const schoolId = (req as any).schoolId || (req as any).user?.schoolId;
+
+    if ((req as any).user?.role === 'PARENT') {
+        const payment = await prisma.feePayment.findUnique({
+            where: { id: paymentId }, select: { invoice: { select: { learnerId: true } } },
+        });
+        if (!payment?.invoice?.learnerId || !(await parentAccessService.canAccessLearner(userId, payment.invoice.learnerId))) {
+            return res.status(403).json({ success: false, message: 'You can request a refund only for a payment linked to your child.' });
+        }
+    }
 
     if (!paymentId || !reason) {
         return res.status(400).json({
@@ -96,10 +107,13 @@ export const listRefunds = async (req: Request, res: Response) => {
     const { status, page, limit } = req.query;
 
     try {
+        const user = (req as any).user;
+        const learnerIds = user?.role === 'PARENT' ? await parentAccessService.getAccessibleLearnerIds(user.userId) : undefined;
         const result = await refundService.listRefunds({
             status: status as string | undefined,
             page: Number(page) || 1,
             limit: Number(limit) || 50,
+            learnerIds,
         });
         res.json({ success: true, ...result });
     } catch (error: any) {
@@ -112,7 +126,9 @@ export const getRefund = async (req: Request, res: Response) => {
     const { id } = req.params;
 
     try {
-        const refund = await refundService.getRefund(id);
+        const user = (req as any).user;
+        const learnerIds = user?.role === 'PARENT' ? await parentAccessService.getAccessibleLearnerIds(user.userId) : undefined;
+        const refund = await refundService.getRefund(id, learnerIds);
         if (!refund) {
             return res.status(404).json({ success: false, message: 'Refund not found' });
         }

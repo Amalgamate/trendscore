@@ -3,6 +3,8 @@ import { authenticate } from '../middleware/auth.middleware';
 import { requirePermission } from '../middleware/permissions.middleware';
 import * as tertiaryController from '../controllers/tertiary.controller';
 import * as mpesaController from '../controllers/mpesa.controller';
+import { requireAnyPermission } from '../middleware/permissions.middleware';
+import { requireSchoolContext } from '../middleware/school.middleware';
 
 const router = Router();
 
@@ -37,6 +39,11 @@ router.delete('/units/:id', requirePermission('ACADEMIC_SETTINGS'), tertiaryCont
 // ==========================================
 // M-Pesa Payments
 // ==========================================
-router.post('/payments/stkpush', mpesaController.initiatePayment);
+router.post(
+  '/payments/stkpush',
+  requireSchoolContext,
+  requireAnyPermission(['RECORD_PAYMENT', 'VIEW_OWN_BALANCE']),
+  mpesaController.initiatePayment,
+);
 
 export default router;

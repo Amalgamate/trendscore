@@ -40,13 +40,14 @@ const createVendorSchema = z.object({
 
 const recordExpenseSchema = z.object({
   vendorId: z.string().min(1).optional(),
-  amount: z.number().min(0),
-  category: z.string().min(1),
-  description: z.string().max(500),
+  amount: z.number().finite().positive('Expense amount must be greater than zero'),
+  category: z.string().trim().min(1).max(100),
+  description: z.string().trim().min(1).max(500),
   date: z.string().datetime().optional(),
   accountId: z.string().min(1),
   paymentAccountId: z.string().min(1),
-  reference: z.string().optional()
+  paymentMethod: z.enum(['CASH', 'MPESA', 'BANK_TRANSFER', 'CHEQUE', 'CARD', 'OTHER']).optional(),
+  reference: z.string().trim().max(150).optional()
 });
 
 // ============================================

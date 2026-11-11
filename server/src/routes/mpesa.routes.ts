@@ -3,6 +3,8 @@ import express from 'express';
 import * as mpesaController from '../controllers/mpesa.controller';
 import { authenticate } from '../middleware/auth.middleware';
 import { requirePermission } from '../middleware/permissions.middleware';
+import { requireAnyPermission } from '../middleware/permissions.middleware';
+import { requireSchoolContext } from '../middleware/school.middleware';
 import { verifyDarajaCallback } from '../middleware/daraja-verify.middleware';
 import { verifyDarajaIP } from '../middleware/daraja-ip-allowlist.middleware';
 
@@ -76,8 +78,20 @@ router.post(
 );
 
 // ── Protected ──────────────────────────────────────────────────────────────
-router.post('/initiate', authenticate, mpesaController.initiatePayment);
-router.get('/status/:checkoutRequestId/:invoiceId', authenticate, mpesaController.queryStatus);
+router.post(
+    '/initiate',
+    authenticate,
+    requireSchoolContext,
+    requireAnyPermission(['RECORD_PAYMENT', 'VIEW_OWN_BALANCE']),
+    mpesaController.initiatePayment,
+);
+router.get(
+    '/status/:checkoutRequestId/:invoiceId',
+    authenticate,
+    requireSchoolContext,
+    requireAnyPermission(['RECORD_PAYMENT', 'VIEW_OWN_BALANCE']),
+    mpesaController.queryStatus,
+);
 
 // C2B URL registration — admin setup (one-time)
 router.post('/c2b/register', authenticate, requirePermission('SYSTEM_SETTINGS'), mpesaController.registerC2bUrls);

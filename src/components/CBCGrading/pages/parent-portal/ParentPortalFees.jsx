@@ -11,16 +11,85 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  CheckCircle2, AlertTriangle,
+  CheckCircle2, AlertTriangle, Receipt, ChevronDown,
   Users,
 } from 'lucide-react';
 import { dashboardAPI, feeAPI } from '../../../../services/api';
+import { financeAPI } from '../../../../services/api/finance.api';
 import { Skeleton } from '../../../ui';
 import MpesaPaymentModal from '../../shared/MpesaPaymentModal';
 
 const fmt    = (n) => Number(n || 0).toLocaleString();
 
 const getChildPhoto = (child) => child?.photoUrl || child?.profilePicture || child?.photo || child?.imageUrl || null;
+
+function ParentPaymentHistory({ children }) {
+  const [childId, setChildId] = useState('');
+  const [payments, setPayments] = useState([]);
+  const [refunds, setRefunds] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [activePayment, setActivePayment] = useState(null);
+  const [reason, setReason] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [notice, setNotice] = useState('');
+  const [error, setError] = useState('');
+
+  const load = useCallback(async (selectedId) => {
+    if (!selectedId) return;
+    setLoading(true); setError('');
+    try {
+      const [invoiceResult, refundResult] = await Promise.all([
+        feeAPI.getLearnerInvoices(selectedId),
+        financeAPI.listRefunds({ limit: 100 }),
+      ]);
+      const invoices = invoiceResult?.data ?? invoiceResult ?? [];
+      const refundRows = refundResult?.data ?? [];
+      setRefunds(Array.isArray(refundRows) ? refundRows : []);
+      setPayments((Array.isArray(invoices) ? invoices : []).flatMap((invoice) =>
+        (invoice.payments || []).map((payment) => ({ ...payment, invoiceNumber: invoice.invoiceNumber, term: invoice.term, academicYear: invoice.academicYear }))
+      ).sort((a, b) => new Date(b.paymentDate) - new Date(a.paymentDate)));
+    } catch (e) { setError(e?.message || 'Could not load payment history. Please try again.'); }
+    finally { setLoading(false); }
+  }, []);
+
+  const submit = async (event) => {
+    event.preventDefault();
+    if (!activePayment || reason.trim().length < 5) { setError('Please explain the reason in at least 5 characters.'); return; }
+    setSubmitting(true); setError(''); setNotice('');
+    try {
+      await financeAPI.submitRefund({ paymentId: activePayment.id, reason: reason.trim() });
+      setNotice('Your refund request was sent to the school for review. You can follow its status here.');
+      setActivePayment(null); setReason('');
+      await load(childId);
+    } catch (e) { setError(e?.message || 'We could not send your request. Please try again.'); }
+    finally { setSubmitting(false); }
+  };
+
+  if (!children.length) return null;
+  const refundByPayment = new Map(refunds.map((refund) => [refund.paymentId, refund]));
+  return <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+    <div className="flex items-center gap-3 border-b border-slate-200 px-4 py-3">
+      <span className="grid h-9 w-9 place-items-center rounded-lg bg-blue-100 text-blue-800"><Receipt size={19} /></span>
+      <div className="min-w-0 flex-1"><h2 className="text-sm font-bold text-slate-950">Payment history</h2><p className="text-xs text-slate-600">Review a payment or ask the school to review a refund.</p></div>
+      <label className="relative"><span className="sr-only">Choose a child</span><select value={childId} onChange={(e) => { setChildId(e.target.value); setActivePayment(null); load(e.target.value); }} className="max-w-40 appearance-none rounded-lg border border-slate-300 bg-white py-2 pl-3 pr-8 text-xs font-semibold text-slate-800"><option value="">Choose child</option>{children.map((child) => <option key={child.id} value={child.id}>{child.name}</option>)}</select><ChevronDown size={14} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-slate-500" /></label>
+    </div>
+    {notice && <p role="status" className="border-b border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-900">{notice}</p>}
+    {error && <p role="alert" className="border-b border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-800">{error}</p>}
+    {!childId ? <p className="px-4 py-5 text-sm text-slate-600">Choose a child to see completed payments.</p> : loading ? <p className="px-4 py-5 text-sm text-slate-600">Loading payments…</p> : payments.length ? <div className="divide-y divide-slate-200">{payments.map((payment) => {
+      const refund = refundByPayment.get(payment.id);
+      const canRequest = !refund && !payment.archived;
+      return <div key={payment.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+        <div className="min-w-0 flex-1"><p className="text-sm font-semibold text-slate-950">{payment.invoiceNumber || 'Fee payment'} · KES {fmt(payment.amount)}</p><p className="text-xs text-slate-600">{payment.paymentMethod} · {payment.receiptNumber || payment.referenceNumber || 'No receipt reference'} · {payment.paymentDate ? new Date(payment.paymentDate).toLocaleDateString() : ''}</p></div>
+        {refund ? <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-900">Refund {String(refund.status).toLowerCase()}</span> : canRequest ? <button type="button" onClick={() => { setActivePayment(payment); setReason(''); setError(''); }} className="rounded-lg border border-blue-700 px-3 py-2 text-xs font-semibold text-blue-800 hover:bg-blue-50">Request review</button> : <span className="text-xs text-slate-500">Reversed</span>}
+      </div>;
+    })}</div> : <p className="px-4 py-5 text-sm text-slate-600">No payments recorded for this child yet.</p>}
+    {activePayment && <form onSubmit={submit} className="space-y-3 border-t border-slate-200 bg-slate-50 p-4">
+      <div><h3 className="text-sm font-bold text-slate-950">Ask the school to review this payment</h3><p className="mt-1 text-xs text-slate-600">Payment KES {fmt(activePayment.amount)} · {activePayment.receiptNumber || activePayment.referenceNumber || 'No reference'}. The school will review it before any refund is processed.</p></div>
+      <label className="block text-xs font-semibold text-slate-800">Reason<textarea required minLength={5} maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} rows={3} className="mt-1 block w-full rounded-lg border border-slate-300 bg-white p-3 text-sm font-normal text-slate-900 outline-none focus:border-blue-700 focus:ring-2 focus:ring-blue-100" placeholder="Tell us what needs to be reviewed" /></label>
+      <div className="flex justify-end gap-2"><button type="button" onClick={() => setActivePayment(null)} className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-700">Cancel</button><button disabled={submitting} className="rounded-lg bg-blue-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{submitting ? 'Sending…' : 'Send request'}</button></div>
+    </form>}
+  </section>;
+}
 
 // ─── Family Fee Overview ──────────────────────────────────────────────────────
 
@@ -550,6 +619,8 @@ const ParentPortalFees = ({ user, onNavigate }) => {
 
         {/* Family balance header */}
         <FamilyFeeHeader children={children} loading={loading} />
+
+        {!loading && <ParentPaymentHistory children={children} />}
 
         {/* ─── Simplified Quick Pay (default path) ─── */}
         {!loading && totalBalance > 0 && !payMode && (

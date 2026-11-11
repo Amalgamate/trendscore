@@ -119,6 +119,7 @@ export class FeeService {
    */
   async generateInvoiceForLearner(learnerId: string): Promise<any> {
     console.log(`[FeeService] Attempting to generate invoice for learner: ${learnerId}`);
+    let generationPeriod: { feeStructureId: string; term: string; academicYear: number } | null = null;
 
     try {
       // 1. Fetch learner details
@@ -167,10 +168,18 @@ export class FeeService {
         console.warn(`[FeeService] ${errorMsg}`);
         return { success: false, error: errorMsg };
       }
+      generationPeriod = { feeStructureId: feeStructure.id, term, academicYear };
 
       // 4. Check for existing invoice (idempotent)
       const existingInvoice = await prisma.feeInvoice.findFirst({
-        where: { learnerId, feeStructureId: feeStructure.id, term: term as any, academicYear }
+        where: {
+          learnerId,
+          feeStructureId: feeStructure.id,
+          term: term as any,
+          academicYear,
+          archived: false,
+          status: { not: 'CANCELLED' as any },
+        }
       });
       if (existingInvoice) {
         return { success: true, invoice: existingInvoice, created: false };
@@ -303,6 +312,21 @@ export class FeeService {
 
       return { success: true, invoice: newInvoice, created: true };
     } catch (error: any) {
+      if (error?.code === 'P2002' && generationPeriod) {
+        const concurrentlyCreatedInvoice = await prisma.feeInvoice.findFirst({
+          where: {
+            learnerId,
+            feeStructureId: generationPeriod.feeStructureId,
+            term: generationPeriod.term as any,
+            academicYear: generationPeriod.academicYear,
+            archived: false,
+            status: { not: 'CANCELLED' as any },
+          },
+        });
+        if (concurrentlyCreatedInvoice) {
+          return { success: true, invoice: concurrentlyCreatedInvoice, created: false };
+        }
+      }
       console.error(`[FeeService] Error: ${error.message}`);
       return { success: false, error: error.message };
     }

@@ -5,7 +5,7 @@ import {
     CheckCheck, Banknote, RefreshCw, ChevronRight,
     Layers, Info, Ban
 } from 'lucide-react';
-import { hrAPI, communicationAPI } from '../../../../services/api';
+import { hrAPI } from '../../../../services/api';
 import { printWindow, captureSingleReport } from '../../../../utils/simplePdfGenerator';
 import { PRODUCT_DISPLAY_NAME } from '../../../../config/productIdentity';
 
@@ -423,7 +423,6 @@ const PayrollManager = () => {
     const [bulkPaying, setBulkPaying] = useState(false);
     const [voidRecord, setVoidRecord] = useState(null);
     const [voiding, setVoiding] = useState(false);
-    const [isKopoKopo, setIsKopoKopo] = useState(false);
     const [showBulkDisburse, setShowBulkDisburse] = useState(false);
     const [disbursing, setDisbursing] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
@@ -450,19 +449,8 @@ const PayrollManager = () => {
     }, [month, year]);
 
     useEffect(() => { 
-        fetchPayroll(); 
-        checkGateway();
+        fetchPayroll();
     }, [fetchPayroll]);
-
-    const checkGateway = async () => {
-        try {
-            const config = await communicationAPI.getConfig();
-            const provider = config?.data?.mpesa?.provider || config?.mpesa?.provider;
-            setIsKopoKopo(provider === 'kopokopo');
-        } catch (err) {
-            console.error('Failed to check gateway:', err);
-        }
-    };
 
     const handleGenerate = async () => {
         try {
@@ -715,19 +703,16 @@ const PayrollManager = () => {
                             {/* Bulk mark paid / Disburse */}
                             {confirmedCount > 0 && (
                                 <>
-                                    {isKopoKopo ? (
-                                        <button onClick={() => setShowBulkDisburse(true)}
-                                            className="px-4 py-2.5 bg-emerald-600 text-white rounded-xl font-medium text-sm hover:bg-emerald-700 transition-all flex items-center gap-2 shadow-lg shadow-emerald-50">
-                                            <CreditCard size={15}/>
-                                            Batch Payout ({confirmedCount})
-                                        </button>
-                                    ) : (
-                                        <button onClick={() => setShowBulkPay(true)}
-                                            className="px-4 py-2.5 bg-emerald-600 text-white rounded-xl font-medium text-sm hover:bg-emerald-700 transition-all flex items-center gap-2">
-                                            <CheckCheck size={15}/>
-                                            Mark All Paid ({confirmedCount})
-                                        </button>
-                                    )}
+                                    <button onClick={() => setShowBulkDisburse(true)}
+                                        className="px-4 py-2.5 bg-emerald-600 text-white rounded-xl font-medium text-sm hover:bg-emerald-700 transition-all flex items-center gap-2 shadow-lg shadow-emerald-50">
+                                        <CreditCard size={15}/>
+                                        M-Pesa payout ({confirmedCount})
+                                    </button>
+                                    <button onClick={() => setShowBulkPay(true)}
+                                        className="px-4 py-2.5 border border-gray-200 text-gray-700 rounded-xl font-medium text-sm hover:bg-gray-50 transition-all flex items-center gap-2">
+                                        <CheckCheck size={15}/>
+                                        Record external payment
+                                    </button>
                                 </>
                             )}
 

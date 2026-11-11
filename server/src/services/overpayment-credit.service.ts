@@ -1,6 +1,7 @@
-import prisma from '../config/database';
 import { accountingService } from './accounting.service';
 import logger from '../utils/logger';
+import { randomUUID } from 'crypto';
+import prisma from '../config/database';
 
 /**
  * Overpayment Credit Service
@@ -27,14 +28,23 @@ class OverpaymentCreditService {
      * Detect whether a payment resulted in an OVERPAID invoice and, if so,
      * post the excess to the Tuition Deposits liability account.
      *
-     * This is called after the FeePayment + invoice update have committed.
-     * It reads the invoice to compute the exact excess (paidAmount - totalAmount)
-     * and creates a separate journal entry for the held credit.
+     * Call after the FeePayment + invoice update, using the same transaction
+     * client when the payment is still being committed. It computes the exact
+     * excess (paidAmount - totalAmount) and posts the held credit atomically.
      *
      * @returns the excess amount posted, or 0 if no overpayment.
      */
-    async detectAndPostOverpayment(invoiceId: string, paymentId: string): Promise<number> {
-        const invoice = await prisma.feeInvoice.findUnique({
+    async detectAndPostOverpayment(invoiceId: string, paymentId: string, client: any = prisma): Promise<number> {
+        const payment = await client.feePayment.findUnique({
+            where: { id: paymentId },
+            select: { id: true, invoiceId: true, amount: true, archived: true },
+        });
+        if (!payment || payment.archived || payment.invoiceId !== invoiceId) {
+            logger.warn(`[Overpayment] Payment ${paymentId} is missing, archived, or linked to another invoice`);
+            return 0;
+        }
+
+        const invoice = await client.feeInvoice.findUnique({
             where: { id: invoiceId },
             select: {
                 id: true,
@@ -58,7 +68,16 @@ class OverpaymentCreditService {
 
         const paidAmount = Number(invoice.paidAmount);
         const totalAmount = Number(invoice.totalAmount);
-        const excess = paidAmount - totalAmount;
+        const paymentAmount = Number(payment.amount);
+        if (!Number.isFinite(paidAmount) || !Number.isFinite(totalAmount) || !Number.isFinite(paymentAmount) || paymentAmount <= 0) {
+            logger.warn(`[Overpayment] Invalid amount data for payment ${paymentId}`);
+            return 0;
+        }
+
+        // Attribute only the additional excess created by this payment. A later
+        // payment must not re-post the invoice's previously held credit.
+        const excess = Math.max(0, paidAmount - totalAmount)
+            - Math.max(0, paidAmount - paymentAmount - totalAmount);
 
         if (excess <= 0.01) {
             // Not a real overpayment — might be a rounding artefact
@@ -84,11 +103,7 @@ class OverpaymentCreditService {
         // a correction entry to move the excess from AR to Tuition Deposits:
         //   Dr AR 1100 (excess — reduces the over-credited AR)
         //   Cr Tuition Deposits 2100 (excess — increases the held credit)
-        try {
-            await this.postExcessToTuitionDeposits(invoice.invoiceNumber, excess, paymentId);
-        } catch (err: any) {
-            logger.error(`[Overpayment] Failed to post excess to Tuition Deposits:`, err?.message ?? err);
-        }
+        await this.postExcessToTuitionDeposits(invoice.invoiceNumber, excess, paymentId, client);
 
         return excess;
     }
@@ -101,26 +116,30 @@ class OverpaymentCreditService {
         invoiceNumber: string,
         excess: number,
         paymentId: string,
+        client: any = prisma,
     ): Promise<void> {
-        let arAccount = await accountingService.getAccountByCode('1100');
-        let depositsAccount = await accountingService.getAccountByCode('2100');
-        let journal = await accountingService.getJournalByCode('MISC');
+        const [arAccount, depositsAccount, journal] = await Promise.all([
+            accountingService.getAccountByCode('1100', client),
+            accountingService.getAccountByCode('2100', client),
+            accountingService.getJournalByCode('MISC', client),
+        ]);
 
         if (!arAccount || !depositsAccount || !journal) {
-            logger.warn('[Overpayment] Missing accounts/journal — ensuring defaults');
-            await accountingService.ensureDefaultAccountingSetup();
-            accountingService.clearCache();
-            arAccount = await accountingService.getAccountByCode('1100');
-            depositsAccount = await accountingService.getAccountByCode('2100');
-            journal = await accountingService.getJournalByCode('MISC');
+            throw new Error('Overpayment accounts or journal are not configured; held-credit posting was not completed.');
         }
 
-        if (!arAccount || !depositsAccount || !journal) {
-            logger.error('[Overpayment] Still missing required accounts/journal — skipping');
+        // Full payment ID makes the posting idempotent per payment, including
+        // callbacks/retries that replay after the ledger entry was committed.
+        const reference = `OVERPAY/${invoiceNumber}/${paymentId}`;
+        const existingEntry = await client.journalEntry.findFirst({
+            where: { journalId: journal.id, reference },
+        });
+        if (existingEntry) {
+            if (existingEntry.status === 'DRAFT') await accountingService.postJournalEntry(existingEntry.id, client);
+            logger.info(`[Overpayment] Existing correction entry reused — ref ${reference}`);
             return;
         }
 
-        const reference = `OVERPAY/${invoiceNumber}/${paymentId.slice(0, 8)}`;
         const entry = await accountingService.createJournalEntry({
             journalId: journal.id,
             reference,
@@ -137,9 +156,9 @@ class OverpaymentCreditService {
                     label: `Held credit: overpayment on ${invoiceNumber}`,
                 },
             ],
-        });
+        }, client);
 
-        await accountingService.postJournalEntry(entry.id);
+        await accountingService.postJournalEntry(entry.id, client);
         logger.info(`[Overpayment] Posted excess KES ${excess.toFixed(2)} to Tuition Deposits — ref ${reference}`);
     }
 
@@ -270,127 +289,151 @@ class OverpaymentCreditService {
         amount: number,
         allocatedBy: string,
     ) {
-        const sourceInvoice = await prisma.feeInvoice.findUnique({
-            where: { id: sourceInvoiceId },
-            include: { learner: true },
-        });
-
-        if (!sourceInvoice) {
-            throw new Error('Source invoice not found');
+        if (!Number.isFinite(amount) || amount <= 0) {
+            throw new Error('Enter a credit allocation greater than zero.');
         }
 
-        if (sourceInvoice.status !== 'OVERPAID') {
-            throw new Error('Source invoice is not overpaid — no credit to allocate');
-        }
-
-        const creditAvailable = Math.max(0, Number(sourceInvoice.paidAmount) - Number(sourceInvoice.totalAmount));
-        if (amount > creditAvailable + 0.01) {
-            throw new Error(
-                `Allocation amount KES ${amount.toFixed(2)} exceeds available credit KES ${creditAvailable.toFixed(2)}`
-            );
-        }
-
-        const targetInvoice = await prisma.feeInvoice.findUnique({
-            where: { id: targetInvoiceId },
-            include: { learner: true },
-        });
-
-        if (!targetInvoice) {
-            throw new Error('Target invoice not found');
-        }
-
-        if (targetInvoice.status === 'PAID' || targetInvoice.status === 'CANCELLED' || targetInvoice.status === 'WAIVED') {
-            throw new Error('Target invoice is already settled');
-        }
-
-        // Verify siblings share a parent
-        if (
-            sourceInvoice.learner.parentId &&
-            targetInvoice.learner.parentId &&
-            sourceInvoice.learner.parentId !== targetInvoice.learner.parentId
-        ) {
-            throw new Error('Target invoice does not belong to a sibling — parents differ');
-        }
-
-        const allocationAmount = Math.min(amount, Number(targetInvoice.balance));
-
-        logger.info(
-            `[OverpaymentAlloc] Allocating KES ${allocationAmount.toFixed(2)} from invoice ${sourceInvoice.invoiceNumber} to ${targetInvoice.invoiceNumber}`
-        );
-
-        // ── 1. Create a FeePayment on the target invoice (credit transfer) ──
+        const familySelect = {
+            parentId: true,
+            firstName: true,
+            lastName: true,
+            familyLinks: {
+                where: { familyAccount: { status: 'ACTIVE' as const, archived: false } },
+                select: { familyAccountId: true },
+            },
+        } as const;
+        let sourceInvoice: any;
+        let targetInvoice: any;
+        const allocationAmount = amount;
         let updatedTarget: any;
         let createdPaymentId: string | null = null;
 
-        await prisma.$transaction(async (tx) => {
-            const payment = await tx.feePayment.create({
-                data: {
-                    invoiceId: targetInvoiceId,
-                    amount: allocationAmount,
-                    paymentMethod: 'OTHER',
-                    receiptNumber: `CREDIT-${sourceInvoice.invoiceNumber}-${Date.now()}`,
-                    referenceNumber: `ALLOC-${sourceInvoice.invoiceNumber}`,
-                    notes: `Credit allocation from overpaid invoice ${sourceInvoice.invoiceNumber} (${sourceInvoice.learner.firstName} ${sourceInvoice.learner.lastName})`,
-                    recordedBy: allocatedBy,
-                    paymentDate: new Date(),
-                },
-            });
-            createdPaymentId = payment.id;
+        // Retry serialization conflicts from simultaneous allocations. Both
+        // invoice rows are re-read and conditionally updated in one transaction.
+        let lastError: any;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+                const transactionResult = await prisma.$transaction(async (tx) => {
+                    const [freshSource, freshTarget] = await Promise.all([
+                        tx.feeInvoice.findUnique({ where: { id: sourceInvoiceId }, include: { learner: { select: familySelect } } }),
+                        tx.feeInvoice.findUnique({ where: { id: targetInvoiceId }, include: { learner: { select: familySelect } } }),
+                    ]);
 
-            // Apply to target invoice fields
-            await tx.feeInvoice.update({
-                where: { id: targetInvoiceId },
-                data: {
-                    paidAmount: { increment: allocationAmount },
-                    balance: { decrement: allocationAmount },
-                },
-            });
+                    if (!freshSource) throw new Error('Source invoice not found');
+                    if (!freshTarget) throw new Error('Target invoice not found');
+                    if (freshSource.status !== 'OVERPAID' || freshSource.archived) {
+                        throw new Error('Source invoice has no available overpayment credit. Refresh and try again.');
+                    }
+                    if (['PAID', 'CANCELLED', 'WAIVED', 'OVERPAID'].includes(freshTarget.status) || freshTarget.archived) {
+                        throw new Error('Target invoice has no outstanding balance. Refresh and choose another invoice.');
+                    }
 
-            // Re-check target invoice status
-            const freshTarget = await tx.feeInvoice.findUnique({ where: { id: targetInvoiceId } });
-            if (freshTarget) {
-                const paid = Number(freshTarget.paidAmount);
-                const total = Number(freshTarget.totalAmount);
-                const bal = Number(freshTarget.balance);
-                let newStatus = freshTarget.status;
-                if (paid > total) newStatus = 'OVERPAID' as any;
-                else if (bal <= 0) newStatus = 'PAID' as any;
-                else if (paid > 0) newStatus = 'PARTIAL' as any;
+                    const sameParent = Boolean(freshSource.learner.parentId)
+                        && freshSource.learner.parentId === freshTarget.learner.parentId;
+                    const sourceFamilyIds = new Set((freshSource.learner.familyLinks || []).map((link: any) => link.familyAccountId));
+                    const sameVerifiedFamily = (freshTarget.learner.familyLinks || []).some((link: any) => sourceFamilyIds.has(link.familyAccountId));
+                    if (!sameParent && !sameVerifiedFamily) {
+                        throw new Error('Credit can only be allocated between learners linked to the same parent or active family account.');
+                    }
 
-                updatedTarget = await tx.feeInvoice.update({
-                    where: { id: targetInvoiceId },
-                    data: { status: newStatus },
-                });
+                    const availableCredit = Math.max(0, Number(freshSource.paidAmount) - Number(freshSource.totalAmount));
+                    const targetTuitionBalance = Math.max(0, Number(freshTarget.balance));
+                    const targetTransportBalance = Math.max(0, Number(freshTarget.transportBalance || 0));
+                    const targetBalance = targetTuitionBalance + targetTransportBalance;
+                    if (!Number.isFinite(availableCredit) || !Number.isFinite(targetBalance) || targetBalance <= 0) {
+                        throw new Error('Source credit or target invoice balance is not valid. Refresh and try again.');
+                    }
+                    if (amount > availableCredit + 0.001) {
+                        throw new Error(`Allocation amount KES ${amount.toFixed(2)} exceeds available credit KES ${availableCredit.toFixed(2)}.`);
+                    }
+                    if (amount > targetBalance + 0.001) {
+                        throw new Error(`Allocation amount KES ${amount.toFixed(2)} exceeds the target outstanding balance KES ${targetBalance.toFixed(2)}.`);
+                    }
+
+                    // Match normal fee-payment allocation: apply to tuition first,
+                    // then transport, and record both sub-ledgers on the invoice.
+                    const tuitionChunk = Math.min(amount, targetTuitionBalance);
+                    const transportChunk = amount - tuitionChunk;
+                    const sourcePaid = Number(freshSource.paidAmount);
+                    const sourceTotal = Number(freshSource.totalAmount);
+                    const nextSourcePaid = sourcePaid - amount;
+                    const nextSourceBalance = Number(freshSource.balance) + amount;
+                    const sourceStatus = nextSourcePaid > sourceTotal ? 'OVERPAID'
+                        : nextSourceBalance <= 0 ? 'PAID'
+                            : nextSourcePaid > 0 ? 'PARTIAL' : 'PENDING';
+                    const targetPaid = Number(freshTarget.paidAmount) + amount;
+                    const nextTargetTuitionBalance = targetTuitionBalance - tuitionChunk;
+                    const nextTargetTransportBalance = targetTransportBalance - transportChunk;
+                    const targetStatus = targetPaid > Number(freshTarget.totalAmount) ? 'OVERPAID'
+                        : nextTargetTuitionBalance <= 0 && nextTargetTransportBalance <= 0 && Number(freshTarget.sponsorBalance || 0) <= 0 ? 'PAID'
+                            : targetPaid > 0 ? 'PARTIAL' : 'PENDING';
+
+                    const sourceClaim = await tx.feeInvoice.updateMany({
+                        where: {
+                            id: sourceInvoiceId,
+                            status: 'OVERPAID',
+                            archived: false,
+                            paidAmount: { gte: Number(freshSource.totalAmount) + amount },
+                        },
+                        data: {
+                            paidAmount: { decrement: amount },
+                            balance: { increment: amount },
+                            status: sourceStatus as any,
+                        },
+                    });
+                    if (sourceClaim.count !== 1) throw new Error('Available source credit changed. Refresh and try again.');
+
+                    const targetClaim = await tx.feeInvoice.updateMany({
+                        where: {
+                            id: targetInvoiceId,
+                            status: { in: ['PENDING', 'PARTIAL'] },
+                            archived: false,
+                            balance: { gte: tuitionChunk },
+                            transportBalance: { gte: transportChunk },
+                        },
+                        data: {
+                            paidAmount: { increment: amount },
+                            balance: { decrement: tuitionChunk },
+                            transportPaid: { increment: transportChunk },
+                            transportBalance: { decrement: transportChunk },
+                            status: targetStatus as any,
+                        },
+                    });
+                    if (targetClaim.count !== 1) throw new Error('Target balance changed. Refresh and try again.');
+
+                    const payment = await tx.feePayment.create({
+                        data: {
+                            invoiceId: targetInvoiceId,
+                            amount,
+                            transportAmount: transportChunk,
+                            paymentMethod: 'OTHER',
+                            receiptNumber: `CREDIT-${freshSource.invoiceNumber}-${randomUUID()}`,
+                            referenceNumber: `ALLOC-${freshSource.invoiceNumber}`,
+                            notes: `Credit allocation from overpaid invoice ${freshSource.invoiceNumber} (${freshSource.learner.firstName} ${freshSource.learner.lastName})`,
+                            recordedBy: allocatedBy,
+                            paymentDate: new Date(),
+                        },
+                    });
+
+                    const [committedSource, committedTarget] = await Promise.all([
+                        tx.feeInvoice.findUnique({ where: { id: sourceInvoiceId } }),
+                        tx.feeInvoice.findUnique({ where: { id: targetInvoiceId } }),
+                    ]);
+                    return { source: freshSource, target: freshTarget, paymentId: payment.id, committedSource, committedTarget };
+                }, { isolationLevel: 'Serializable' });
+
+                sourceInvoice = transactionResult.source;
+                targetInvoice = transactionResult.target;
+                createdPaymentId = transactionResult.paymentId;
+                updatedTarget = transactionResult.committedTarget;
+                break;
+            } catch (error: any) {
+                lastError = error;
+                if (error?.code === 'P2034' && attempt < 3) continue;
+                throw error;
             }
-        });
-
-        // ── 2. Reduce the source invoice's paidAmount (reverse the credit) ──
-        await prisma.$transaction(async (tx) => {
-            await tx.feeInvoice.update({
-                where: { id: sourceInvoiceId },
-                data: {
-                    paidAmount: { decrement: allocationAmount },
-                    balance: { increment: allocationAmount },
-                },
-            });
-
-            // Re-check source invoice status — if paidAmount no longer exceeds
-            // totalAmount, it reverts to PAID
-            const freshSource = await tx.feeInvoice.findUnique({ where: { id: sourceInvoiceId } });
-            if (freshSource) {
-                const paid = Number(freshSource.paidAmount);
-                const total = Number(freshSource.totalAmount);
-                let newStatus = freshSource.status;
-                if (paid > total) newStatus = 'OVERPAID' as any;
-                else if (paid <= total && Number(freshSource.balance) <= 0) newStatus = 'PAID' as any;
-                else if (paid > 0) newStatus = 'PARTIAL' as any;
-
-                await tx.feeInvoice.update({
-                    where: { id: sourceInvoiceId },
-                    data: { status: newStatus },
-                });
-            }
-        });
+        }
+        if (!createdPaymentId) throw lastError || new Error('Credit allocation could not be completed.');
 
         // ── 3. Post ledger entry: Dr Tuition Deposits 2100, Cr AR 1100 ──
         // This reverses the held credit and applies it to the sibling's AR.
@@ -447,7 +490,12 @@ class OverpaymentCreditService {
             return;
         }
 
-        const reference = `ALLOC/${sourceInvoiceNumber}/${targetInvoiceNumber}/${paymentId.slice(0, 8)}`;
+        const reference = `ALLOC/${sourceInvoiceNumber}/${targetInvoiceNumber}/${paymentId}`;
+        const existingEntry = await prisma.journalEntry.findFirst({ where: { journalId: journal.id, reference } });
+        if (existingEntry) {
+            if (existingEntry.status === 'DRAFT') await accountingService.postJournalEntry(existingEntry.id);
+            return;
+        }
         const entry = await accountingService.createJournalEntry({
             journalId: journal.id,
             reference,

@@ -1,345 +1,265 @@
-import React, { useState, useEffect } from 'react';
-import {
-    Loader2,
-    Calendar,
-    ArrowRightLeft,
-    Banknote,
-    Upload,
-    CheckCircle2,
-    AlertCircle,
-    X
-} from 'lucide-react';
-import { accountingAPI } from '../../../../services/api/accounting.api';
-import { 
-    Dialog, 
-    DialogContent, 
-    DialogHeader, 
-    DialogTitle, 
-    DialogFooter 
-} from "../../../ui/dialog";
-import { Button } from "../../../ui/button";
-import { Label } from "../../../ui/label";
-import { toast } from "react-hot-toast";
+import React, { useEffect, useRef, useState } from 'react';
+import { AlertCircle, ArrowRightLeft, CheckCircle2, FileUp, Loader2, RefreshCw, RotateCcw, Upload } from 'lucide-react';
+import { reconciliationAPI } from '../../../../services/api/accounting.api';
+import { toast } from 'react-hot-toast';
+
+const formatCurrency = (amount) => new Intl.NumberFormat('en-KE', {
+    style: 'currency',
+    currency: 'KES',
+    maximumFractionDigits: 2,
+}).format(Number(amount) || 0);
+const formatDate = (date) => {
+    const parsed = new Date(date);
+    return Number.isNaN(parsed.getTime()) ? 'Date unavailable' : parsed.toLocaleDateString();
+};
 
 const BankReconciliation = () => {
     const [statements, setStatements] = useState([]);
-    const [bankAccounts, setBankAccounts] = useState([]);
-    const [selectedBankId, setSelectedBankId] = useState('');
-    const [loading, setLoading] = useState(true);
-    const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+    const [statementId, setStatementId] = useState('');
+    const [statement, setStatement] = useState(null);
+    const [lines, setLines] = useState([]);
+    const [linePage, setLinePage] = useState(1);
+    const [linePages, setLinePages] = useState(1);
     const [activeLine, setActiveLine] = useState(null);
     const [suggestions, setSuggestions] = useState([]);
-    const [matchingLoading, setMatchingLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [matching, setMatching] = useState(false);
+    const [importing, setImporting] = useState(false);
+    const [selectedFile, setSelectedFile] = useState(null);
+    const [manualNote, setManualNote] = useState('');
+    const inputRef = useRef(null);
 
-    const fetchStatements = async (accountId) => {
+    const loadStatements = async (preferredId = '') => {
+        setLoading(true);
         try {
-            setLoading(true);
-            setStatements([]);
+            const response = await reconciliationAPI.getStatements();
+            const rows = Array.isArray(response.data) ? response.data : [];
+            setStatements(rows);
+            const nextId = rows.some((item) => item.id === preferredId) ? preferredId : (rows[0]?.id || '');
+            setStatementId(nextId);
+            if (!nextId) {
+                setStatement(null);
+                setLines([]);
+                setActiveLine(null);
+            }
+        } catch (error) {
+            toast.error(error.message || 'Could not load statements');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const loadStatement = async (id, page = 1, append = false) => {
+        if (!id) return;
+        setLoading(true);
+        if (!append) {
             setActiveLine(null);
             setSuggestions([]);
-
-            const stmtRes = await accountingAPI.getBankStatements(accountId);
-            if (stmtRes.success) {
-                setStatements(stmtRes.data);
-            }
+        }
+        try {
+            const response = await reconciliationAPI.getStatement(id, { limit: 100, page });
+            const result = response.data || {};
+            setStatement(result.statement || null);
+            setLines((current) => append ? current.concat(result.lines || []) : (Array.isArray(result.lines) ? result.lines : []));
+            setLinePage(result.page || page);
+            setLinePages(result.pages || 1);
         } catch (error) {
-            toast.error("Failed to load bank data");
+            toast.error(error.message || 'Could not load statement lines');
         } finally {
             setLoading(false);
         }
     };
 
-    const fetchData = async () => {
-        try {
-            setLoading(true);
-            const accRes = await accountingAPI.getAccounts();
+    useEffect(() => { loadStatements(); }, []);
+    useEffect(() => { if (statementId) loadStatement(statementId); }, [statementId]);
 
-            if (accRes.success) {
-                const banks = accRes.data.filter(a => a.type === 'ASSET_CASH');
-                setBankAccounts(banks);
-                if (banks.length > 0) setSelectedBankId(banks[0].id);
-            }
+    const selectLine = async (line) => {
+        setActiveLine(line);
+        setSuggestions([]);
+        setManualNote('');
+        if (line.status !== 'UNRECONCILED') return;
+        setMatching(true);
+        try {
+            const response = await reconciliationAPI.getSuggestedMatches(line.id);
+            setSuggestions(Array.isArray(response.data?.suggestions) ? response.data.suggestions : []);
         } catch (error) {
-            toast.error("Failed to load bank data");
+            toast.error(error.message || 'Could not find possible matches');
         } finally {
-            setLoading(false);
+            setMatching(false);
         }
     };
 
-    useEffect(() => {
-        fetchData();
-    }, []);
+    const refreshActiveStatement = async () => {
+        if (!statementId) return loadStatements();
+        await loadStatements(statementId);
+        await loadStatement(statementId);
+    };
 
-    useEffect(() => {
-        if (selectedBankId) {
-            fetchStatements(selectedBankId);
-        }
-    }, [selectedBankId]);
-
-    const fetchSuggestions = async (line) => {
+    const importFile = async () => {
+        if (!selectedFile) return toast.error('Choose a CSV file first.');
+        setImporting(true);
         try {
-            setActiveLine(line);
-            setMatchingLoading(true);
-            setSuggestions([]);
-            const response = await accountingAPI.getSuggestedMatches(line.id);
-            if (response.success) {
-                setSuggestions(response.data);
-            }
+            const response = await reconciliationAPI.importCsv(selectedFile);
+            const imported = response.data || {};
+            toast.success(response.message || 'Statement imported');
+            setSelectedFile(null);
+            if (inputRef.current) inputRef.current.value = '';
+            await loadStatements(imported.statementId || '');
         } catch (error) {
-            toast.error("Failed to find matches");
+            toast.error(error.message || 'Could not import this statement');
         } finally {
-            setMatchingLoading(false);
+            setImporting(false);
         }
     };
 
-    const handleReconcile = async (matchId) => {
+    const reconcile = async (matchType, matchedId) => {
+        if (!activeLine) return;
+        setMatching(true);
         try {
-            const response = await accountingAPI.reconcileLine({
-                lineId: activeLine.id,
-                journalItemId: matchId
+            await reconciliationAPI.reconcileLine(activeLine.id, {
+                matchType,
+                matchedId,
+                note: matchType === 'MANUAL' ? manualNote.trim() : undefined,
             });
-            if (response.success) {
-                toast.success("Successfully reconciled");
-                setActiveLine(null);
-                setSuggestions([]);
-                if (selectedBankId) {
-                    fetchStatements(selectedBankId);
-                }
-            }
+            toast.success('Statement line matched');
+            await loadStatement(statementId);
         } catch (error) {
-            toast.error(error.message || "Failed to reconcile");
+            toast.error(error.message || 'Could not match this line');
+        } finally {
+            setMatching(false);
         }
     };
 
-    const formatCurrency = (amount) => {
-        return new Intl.NumberFormat('en-KE', {
-            style: 'currency',
-            currency: 'KES',
-        }).format(amount || 0);
+    const undoMatch = async (line) => {
+        setMatching(true);
+        try {
+            await reconciliationAPI.undoReconciliation(line.id);
+            toast.success('Match undone');
+            setActiveLine(null);
+            await loadStatement(statementId);
+        } catch (error) {
+            toast.error(error.message || 'Could not undo this match');
+        } finally {
+            setMatching(false);
+        }
     };
+
+    const summary = statements.find((item) => item.id === statementId);
+    const activeIsRecordedMatch = activeLine?.status === 'RECONCILED' && Boolean(activeLine.matchType);
 
     return (
-        <div className="p-6 space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
-            {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <main className="p-4 md:p-6 space-y-5">
+            <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
-                    <h1 className="text-2xl font-medium text-gray-800 tracking-tight flex items-center gap-2">
-                        Bank Reconciliation
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-brand-purple/10 text-brand-purple uppercase tracking-tighter">Live Beta</span>
-                    </h1>
-                    <p className="text-gray-500 text-sm">Match bank statement lines with ledger entries</p>
+                    <h1 className="text-xl md:text-2xl font-semibold text-slate-900">Bank reconciliation</h1>
+                    <p className="mt-1 text-sm text-slate-600">Import a CSV, review matches, and resolve the remaining lines.</p>
                 </div>
-                <div className="flex gap-3">
-                    <button 
-                        onClick={() => setIsImportModalOpen(true)}
-                        className="flex items-center gap-2 px-4 py-2 bg-brand-purple text-white rounded-lg hover:bg-brand-purple/90 transition-all shadow-md font-medium"
-                    >
-                        <Upload size={18} />
-                        Import Statement
-                    </button>
+                <div className="flex gap-2">
+                    <button type="button" onClick={refreshActiveStatement} className="inline-flex items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-50"><RefreshCw size={16} /> Refresh</button>
+                    <button type="button" onClick={() => inputRef.current?.click()} className="inline-flex items-center justify-center gap-2 rounded-md bg-blue-700 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-800"><Upload size={16} /> Import CSV</button>
                 </div>
-            </div>
+            </header>
 
-            {/* Bank Selector */}
-            <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col md:flex-row items-center gap-4">
-                <div className="flex items-center gap-2 shrink-0">
-                    <div className="p-2 bg-gray-50 rounded-lg text-gray-400">
-                        <Banknote size={20} />
-                    </div>
-                    <Label className="text-xs font-medium uppercase text-gray-400 tracking-widest">Selected Bank Account</Label>
+            <section className="rounded-lg border border-slate-200 bg-white p-4">
+                <div className="flex flex-col md:flex-row md:items-end gap-3">
+                    <label className="flex-1 text-sm font-medium text-slate-800">
+                        Imported statement
+                        <select value={statementId} onChange={(event) => setStatementId(event.target.value)} className="mt-1 block h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm">
+                            <option value="">Choose a statement</option>
+                            {statements.map((item) => <option key={item.id} value={item.id}>{formatDate(item.dateRange || item.createdAt)} · {item.totalLines} lines · {item.unreconciled} to review</option>)}
+                        </select>
+                    </label>
+                    {summary && (
+                        <div className="flex gap-4 text-sm">
+                            <div><span className="block text-xs text-slate-500">Matched</span><strong className="text-emerald-700">{summary.reconciled}</strong></div>
+                            <div><span className="block text-xs text-slate-500">To review</span><strong className="text-amber-700">{summary.unreconciled}</strong></div>
+                            <div><span className="block text-xs text-slate-500">Unmatched value</span><strong>{formatCurrency(summary.unreconciledAmount)}</strong></div>
+                        </div>
+                    )}
                 </div>
-                <select 
-                    className="flex-1 w-full flex h-10 rounded-md border border-gray-200 bg-gray-50/50 px-3 py-2 text-sm font-medium"
-                    value={selectedBankId}
-                    onChange={(e) => {
-                        setSelectedBankId(e.target.value);
-                        setActiveLine(null);
-                        setSuggestions([]);
-                    }}
-                >
-                    {bankAccounts.map(acc => (
-                        <option key={acc.id} value={acc.id}>[{acc.code}] {acc.name}</option>
-                    ))}
-                </select>
-                <div className="flex items-center gap-6 px-4 py-2 bg-gray-50/50 rounded-lg border border-gray-100">
-                    <div className="text-right">
-                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-tighter">System Balance</p>
-                        <p className="text-xs font-medium text-gray-800 font-mono">
-                            {formatCurrency(bankAccounts.find(a => a.id === selectedBankId)?.balance || 0)}
-                        </p>
+                {statement && <p className="mt-2 text-xs text-slate-600">Imported {formatDate(statement.createdAt)} · Closing balance {formatCurrency(statement.endingBalance)}</p>}
+                <input ref={inputRef} type="file" accept=".csv,text/csv" className="sr-only" onChange={(event) => setSelectedFile(event.target.files?.[0] || null)} />
+                {selectedFile && (
+                    <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-3 rounded-md bg-blue-50 px-3 py-2 text-sm">
+                        <span className="flex-1 truncate font-medium text-blue-950">{selectedFile.name}</span>
+                        <button type="button" onClick={() => { setSelectedFile(null); if (inputRef.current) inputRef.current.value = ''; }} className="text-slate-600 hover:text-slate-900">Remove file</button>
+                        <button type="button" disabled={importing} onClick={importFile} className="inline-flex items-center justify-center gap-2 rounded-md bg-blue-700 px-3 py-2 font-semibold text-white disabled:opacity-60">
+                            {importing ? <Loader2 className="animate-spin" size={16} /> : <FileUp size={16} />} {importing ? 'Importing…' : 'Import statement'}
+                        </button>
                     </div>
-                </div>
-            </div>
+                )}
+            </section>
 
-            {/* Reconciliation Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[500px]">
-                {/* Left: Statement Lines */}
-                <div className="lg:col-span-7 bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden h-full flex flex-col">
-                    <div className="p-4 bg-gray-50/50 border-b border-gray-100 flex items-center justify-between">
-                        <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-widest">Statement Lines</h2>
-                        <span className="text-[10px] font-medium text-brand-purple">{statements.length} total entries</span>
-                    </div>
-                    <div className="flex-1 overflow-y-auto max-h-[600px] divide-y divide-gray-50">
-                        {loading ? (
-                            <div className="p-12 text-center flex flex-col items-center gap-3">
-                                <Loader2 className="animate-spin text-brand-purple" />
-                                <span className="text-sm font-medium text-gray-500 font-mono">Scanning statement records...</span>
-                            </div>
-                        ) : statements.length > 0 ? (
-                            statements.map(line => (
-                                <div 
-                                    key={line.id} 
-                                    onClick={() => !line.isReconciled && fetchSuggestions(line)}
-                                    className={`p-4 transition-all cursor-pointer group ${
-                                        activeLine?.id === line.id ? 'bg-brand-purple/5 border-l-4 border-brand-purple' : 'hover:bg-gray-50'
-                                    } ${line.isReconciled ? 'opacity-60 grayscale-[0.5]' : ''}`}
-                                >
-                                    <div className="flex justify-between items-start">
-                                        <div className="flex flex-col gap-1">
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-sm font-medium text-gray-800 line-clamp-1">{line.description}</span>
-                                                {line.isReconciled && (
-                                                    <CheckCircle2 size={14} className="text-emerald-500" />
-                                                )}
-                                            </div>
-                                            <span className="text-[10px] font-medium text-gray-400 font-mono flex items-center gap-2">
-                                                <Calendar size={12} /> {new Date(line.date).toLocaleDateString()}
-                                                <span className="text-gray-200">|</span>
-                                                {line.reference || 'NO REF'}
-                                            </span>
-                                        </div>
-                                        <div className="text-right">
-                                            <span className={`text-sm font-semibold ${line.amount < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                                                {formatCurrency(line.amount)}
-                                            </span>
-                                            <p className="text-[9px] font-medium text-gray-400 uppercase tracking-tighter">
-                                                {line.isReconciled ? 'Reconciled' : 'Unmatched'}
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
-                            ))
-                        ) : (
-                            <div className="p-12 text-center text-gray-400 flex flex-col items-center gap-3">
-                                <Banknote size={40} className="text-gray-100" />
-                                <span className="text-sm italic">No imported statements found for this account</span>
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Right: Matching Area */}
-                <div className="lg:col-span-5 bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden h-full flex flex-col">
-                    <div className="p-4 bg-gray-50/50 border-b border-gray-100 flex items-center justify-between">
-                        <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-widest">Match Ledger Entry</h2>
-                    </div>
-                    <div className="p-6 h-full flex flex-col">
-                        {!activeLine ? (
-                            <div className="flex flex-col items-center justify-center flex-1 text-center space-y-4">
-                                <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center">
-                                    <ArrowRightLeft className="text-gray-300" size={32} />
-                                </div>
-                                <div>
-                                    <p className="text-sm font-medium text-gray-800">Select an entry</p>
-                                    <p className="text-xs text-gray-400 max-w-[200px]">Click on a statement line to find matching ledger entries</p>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="space-y-6 flex flex-col h-full animate-in fade-in slide-in-from-right-4 duration-300">
-                                <div className="p-4 bg-brand-purple/5 rounded-xl border border-brand-purple/10">
-                                    <div className="flex justify-between items-start mb-2">
-                                        <p className="text-[10px] font-semibold text-brand-purple uppercase tracking-widest">Active Search</p>
-                                        <button onClick={() => setActiveLine(null)}><X size={14} className="text-gray-400" /></button>
-                                    </div>
-                                    <h3 className="text-sm font-medium text-gray-900">{activeLine.description}</h3>
-                                    <div className="flex justify-between items-end mt-4 text-[10px] font-mono">
-                                        <span className="text-gray-500">{new Date(activeLine.date).toDateString()}</span>
-                                        <span className={`text-sm font-semibold ${activeLine.amount < 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                                            {formatCurrency(Math.abs(activeLine.amount))}
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
+                <section className="overflow-hidden rounded-lg border border-slate-200 bg-white xl:col-span-7">
+                    <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3"><h2 className="font-semibold text-slate-900">Statement lines</h2><span className="text-sm text-slate-500">{lines.length} shown</span></div>
+                    {loading ? (
+                        <div className="flex items-center justify-center gap-2 p-10 text-sm text-slate-600"><Loader2 className="animate-spin" size={18} /> Loading statement…</div>
+                    ) : lines.length ? (
+                        <div className="max-h-[65vh] divide-y divide-slate-100 overflow-y-auto">
+                            {lines.map((line) => {
+                                const reconciled = line.status === 'RECONCILED';
+                                return (
+                                    <button type="button" key={line.id} onClick={() => selectLine(line)} className={'flex w-full items-start justify-between gap-3 px-4 py-3 text-left hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-600 ' + (activeLine?.id === line.id ? 'bg-blue-50' : '')}>
+                                        <span className="min-w-0">
+                                            <span className="block truncate text-sm font-medium text-slate-900">{line.description || 'No description'}</span>
+                                            <span className="mt-1 block text-xs text-slate-500">{formatDate(line.date)}{line.reference ? ' · ' + line.reference : ''}</span>
+                                            {reconciled && <span className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-emerald-700"><CheckCircle2 size={13} /> {line.matchType ? 'Matched · ' + line.matchType.replaceAll('_', ' ').toLowerCase() : 'Legacy match details unavailable'}</span>}
                                         </span>
-                                    </div>
-                                </div>
+                                        <span className={'shrink-0 text-right text-sm font-semibold ' + (Number(line.amount) < 0 ? 'text-rose-700' : 'text-emerald-700')}>
+                                            {formatCurrency(line.amount)}
+                                            <span className={'mt-1 block text-xs font-medium ' + (reconciled ? 'text-emerald-700' : 'text-amber-700')}>{reconciled ? 'Matched' : 'Review'}</span>
+                                        </span>
+                                    </button>
+                                );
+                            })}
+                            {linePage < linePages && <button type="button" disabled={loading} onClick={() => loadStatement(statementId, linePage + 1, true)} className="w-full px-4 py-3 text-sm font-semibold text-blue-800 hover:bg-blue-50 disabled:opacity-60">Load next 100 lines</button>}
+                        </div>
+                    ) : (
+                        <div className="p-10 text-center">
+                            <FileUp className="mx-auto mb-3 text-slate-400" size={30} />
+                            <p className="font-medium text-slate-900">{statementId ? 'No lines in this statement' : 'Import a statement to begin'}</p>
+                            <p className="mt-1 text-sm text-slate-600">Choose an M-Pesa CSV file to review its transactions.</p>
+                        </div>
+                    )}
+                </section>
 
-                                <div className="flex-1 overflow-y-auto space-y-3">
-                                    <div className="flex items-center justify-between">
-                                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-widest">Potential Matches</p>
-                                        {matchingLoading && <Loader2 className="animate-spin text-brand-purple" size={14} />}
-                                    </div>
-
-                                    {suggestions.length > 0 ? (
-                                        suggestions.map(match => (
-                                            <div 
-                                                key={match.id}
-                                                className="p-3 bg-white border border-gray-100 rounded-xl hover:border-brand-purple transition-all group relative overflow-hidden"
-                                            >
-                                                <div className="flex justify-between items-start mb-2">
-                                                    <div className="flex flex-col">
-                                                        <span className="text-[10px] font-medium text-brand-purple uppercase">{match.journalEntry.reference}</span>
-                                                        <span className="text-xs font-medium text-gray-800">{match.account.name}</span>
-                                                    </div>
-                                                    <span className="text-[11px] font-semibold text-gray-900 font-mono">
-                                                        {formatCurrency(Number(match.debit) || Number(match.credit))}
-                                                    </span>
-                                                </div>
-                                                <div className="flex justify-between items-center text-[10px] font-mono text-gray-400">
-                                                    <span>{new Date(match.journalEntry.date).toLocaleDateString()}</span>
-                                                    <button 
-                                                        onClick={() => handleReconcile(match.id)}
-                                                        className="px-2 py-1 bg-emerald-50 text-emerald-600 rounded-md hover:bg-emerald-600 hover:text-white transition-all font-medium uppercase tracking-tighter"
-                                                    >
-                                                        Match
-                                                    </button>
-                                                </div>
+                <section className="rounded-lg border border-slate-200 bg-white xl:col-span-5">
+                    <div className="border-b border-slate-200 px-4 py-3"><h2 className="font-semibold text-slate-900">Match this line</h2></div>
+                    {!activeLine ? (
+                        <div className="flex min-h-56 flex-col items-center justify-center p-6 text-center"><ArrowRightLeft className="mb-3 text-slate-400" size={28} /><p className="font-medium text-slate-900">Choose a statement line</p><p className="mt-1 text-sm text-slate-600">Possible matches will appear here.</p></div>
+                    ) : activeIsRecordedMatch ? (
+                        <div className="space-y-4 p-4">
+                            <div className="rounded-md bg-emerald-50 p-3 text-sm text-emerald-950"><p className="font-semibold">This line is matched</p><p className="mt-1">{activeLine.matchType.replaceAll('_', ' ').toLowerCase()} · {activeLine.matchedId}</p>{activeLine.reconciledAt && <p className="mt-1 text-xs">Matched {new Date(activeLine.reconciledAt).toLocaleString()}</p>}</div>
+                            <button type="button" disabled={matching} onClick={() => undoMatch(activeLine)} className="inline-flex items-center gap-2 rounded-md border border-rose-300 px-3 py-2 text-sm font-semibold text-rose-800 hover:bg-rose-50 disabled:opacity-60"><RotateCcw size={16} /> Undo match</button>
+                        </div>
+                    ) : activeLine.status === 'RECONCILED' ? (
+                        <div className="p-4 text-sm text-amber-900"><AlertCircle className="mb-2" size={18} />This is a historical match without a saved target. It cannot be safely undone.</div>
+                    ) : (
+                        <div className="space-y-4 p-4">
+                            <div className="rounded-md bg-slate-50 p-3"><p className="text-sm font-semibold text-slate-900">{activeLine.description || 'No description'}</p><p className="mt-1 text-xs text-slate-600">{formatDate(activeLine.date)} · {activeLine.reference || 'No reference'}</p><p className="mt-2 font-semibold text-slate-900">{formatCurrency(activeLine.amount)}</p></div>
+                            <div>
+                                <div className="mb-2 flex items-center justify-between"><h3 className="text-sm font-semibold text-slate-900">Suggested matches</h3>{matching && <Loader2 className="animate-spin text-blue-700" size={16} />}</div>
+                                {suggestions.length ? (
+                                    <div className="space-y-2">
+                                        {suggestions.map((match) => (
+                                            <div key={match.matchType + '-' + match.matchedId} className="rounded-md border border-slate-200 p-3">
+                                                <div className="flex justify-between gap-2"><div className="min-w-0"><p className="truncate text-sm font-medium text-slate-900">{match.description}</p><p className="mt-1 text-xs text-slate-600">{match.receiptNo || match.matchType.replaceAll('_', ' ')} · {formatDate(match.date)}</p></div><strong className="shrink-0 text-sm">{formatCurrency(match.amount)}</strong></div>
+                                                <button type="button" disabled={matching} onClick={() => reconcile(match.matchType, match.matchedId)} className="mt-2 rounded-md bg-blue-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-60">Match line</button>
                                             </div>
-                                        ))
-                                    ) : !matchingLoading ? (
-                                        <div className="p-8 text-center space-y-2 border-2 border-dashed border-gray-100 rounded-2xl">
-                                            <AlertCircle className="mx-auto text-amber-400" size={24} />
-                                            <p className="text-xs font-medium text-gray-600">No exact matches found</p>
-                                            <p className="text-[10px] text-gray-400">Try manual adjustment or create a missing entry</p>
-                                            <button className="text-[10px] font-semibold text-brand-purple font-mono underline uppercase mt-2">
-                                                Manual Journal
-                                            </button>
-                                        </div>
-                                    ) : null}
-                                </div>
+                                        ))}
+                                    </div>
+                                ) : !matching ? <p className="text-sm text-slate-600">No exact matches. You can record a manual match with a reason.</p> : null}
                             </div>
-                        )}
-                    </div>
-                </div>
+                            <div className="border-t border-slate-200 pt-3">
+                                <label className="block text-sm font-medium text-slate-800">Manual match note<textarea value={manualNote} onChange={(event) => setManualNote(event.target.value)} maxLength={1000} rows={2} className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 text-sm" placeholder="Explain what you verified" /></label>
+                                <button type="button" disabled={matching || !manualNote.trim()} onClick={() => reconcile('MANUAL')} className="mt-2 rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-50">Record manual match</button>
+                            </div>
+                        </div>
+                    )}
+                </section>
             </div>
-
-            {/* Import Dialog */}
-            <Dialog open={isImportModalOpen} onOpenChange={setIsImportModalOpen}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Import Bank Statement</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-6 py-4">
-                        <div className="border-2 border-dashed border-gray-200 rounded-xl p-12 text-center space-y-4 hover:border-brand-purple/40 transition-all cursor-pointer">
-                            <div className="w-12 h-12 bg-gray-50 rounded-full flex items-center justify-center mx-auto text-gray-400">
-                                <Upload size={24} />
-                            </div>
-                            <div className="space-y-1">
-                                <p className="text-sm font-medium text-gray-800">Drop bank CSV here</p>
-                                <p className="text-xs text-gray-400">Supports Equity, KCB, and M-Pesa statements</p>
-                            </div>
-                            <Button size="sm" variant="outline">Browse Files</Button>
-                        </div>
-                        <div className="p-4 bg-amber-50 rounded-lg flex gap-3 text-amber-800 border border-amber-100">
-                            <AlertCircle className="shrink-0 text-amber-500" size={18} />
-                            <p className="text-[10px] leading-normal font-medium">
-                                Ensure your CSV contains columns: Date, Description, Reference, and Amount. Statements are automatically stripped of duplicate records based on reference.
-                            </p>
-                        </div>
-                    </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsImportModalOpen(false)}>Cancel</Button>
-                        <Button disabled className="bg-brand-purple text-white">Process Statement</Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-        </div>
+        </main>
     );
 };
 

@@ -64,7 +64,7 @@ const SupportHub = ({ initialQuery = '', initialSection = '' }) => {
         },
         {
           title: 'M-Pesa Integration Setup',
-          content: 'Go to Settings → Communication Settings → M-Pesa tab. IntaSend is easiest (no Paybill needed, setup in 15 minutes). Sign up at intasend.com, get Public Key and Secret Key, enter Business Number. For production, Safaricom Daraja has lowest fees but requires Paybill number and takes 2-4 weeks approval. Save settings and test with phone number and small amount (KES 10).'
+          content: 'Go to Settings → Communication Settings → M-Pesa. Configure the school’s Safaricom Daraja shortcode and credentials, complete the activation checklist, then test in the selected Daraja environment. Keep API secrets private and confirm the callback URLs are registered before enabling collections.'
         },
         {
           title: 'Testing Integrations',

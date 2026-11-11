@@ -8,7 +8,8 @@ import { jest, describe, it, expect, beforeEach } from '@jest/globals';
  */
 
 // ── Mock Prisma ─────────────────────────────────────────────────────────────
-const mockPrisma = {
+let mockTx: any;
+const mockPrisma: any = {
     account: {
         findFirst: jest.fn(),
         findMany: jest.fn(),
@@ -24,6 +25,7 @@ const mockPrisma = {
     },
     journalEntry: {
         create: jest.fn(),
+        findFirst: jest.fn(),
         findUnique: jest.fn(),
         update: jest.fn(),
         findMany: jest.fn(),
@@ -45,10 +47,14 @@ const mockPrisma = {
     },
     expense: { create: jest.fn(), findMany: jest.fn(), aggregate: jest.fn() },
     $transaction: jest.fn((arg: any) => {
-        if (typeof arg === 'function') return arg(mockPrisma);
+        if (typeof arg === 'function') return arg(mockTx);
         return Promise.all(arg);
     }),
 };
+// Prisma supplies a transaction-scoped client with a different identity from
+// the root client. Keep that distinction so serializable service wrappers do
+// not recursively open transactions in tests.
+mockTx = { ...mockPrisma };
 
 jest.mock('../../src/config/database', () => ({
     __esModule: true,
@@ -73,6 +79,7 @@ describe('Accounting Ledger Postings (Steps 1, 2, 4)', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         service = new AccountingService();
+        (prisma.journalEntry.findFirst as any).mockResolvedValue(null);
     });
 
     // ── postFeePaymentToLedger (Step 1) ──────────────────────────────────
@@ -147,6 +154,177 @@ describe('Accounting Ledger Postings (Steps 1, 2, 4)', () => {
 
             expect(prisma.journalEntry.create).toHaveBeenCalled();
         });
+
+        it('does not duplicate a journal entry for a payment receipt already posted', async () => {
+            mockAccountsByCode({
+                '1210': { id: 'acc-bank', code: '1210' },
+                '1100': { id: 'acc-ar', code: '1100' },
+            });
+            (prisma.journalEntry.findFirst as any).mockResolvedValue({ id: 'entry-existing', status: 'POSTED' });
+
+            await service.postFeePaymentToLedger({
+                id: 'pay-existing', amount: 5000, receiptNumber: 'MPESA-REC-EXISTING', paymentDate: new Date(),
+            }, 'MPESA');
+
+            expect(prisma.journalEntry.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+                where: { journalId: 'journal-1', reference: 'MPESA-REC-EXISTING' },
+            }));
+            expect(prisma.journalEntry.create).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('postFeeInvoiceRevisionToLedger', () => {
+        it('writes a balanced revision entry through the supplied transaction client', async () => {
+            const tx: any = {
+                account: {
+                    findUnique: jest.fn(async ({ where }: any) => ({ id: `account-${where.code}`, code: where.code })),
+                },
+                journal: { findUnique: jest.fn() },
+                journalEntry: {
+                    findFirst: jest.fn(),
+                    create: jest.fn(),
+                    findUnique: jest.fn(),
+                    update: jest.fn(),
+                },
+            };
+            tx.journal.findUnique.mockResolvedValue({ id: 'sales-journal', code: 'INV' });
+            tx.journalEntry.findFirst.mockResolvedValue(null);
+            tx.journalEntry.create.mockResolvedValue({ id: 'revision-entry' });
+            tx.journalEntry.findUnique.mockResolvedValue({ id: 'revision-entry', status: 'DRAFT' });
+            tx.journalEntry.update.mockResolvedValue({ id: 'revision-entry', status: 'POSTED' });
+
+            await service.postFeeInvoiceRevisionToLedger('INV-42', 3, -250, tx);
+
+            const create = tx.journalEntry.create.mock.calls[0][0];
+            expect(create.data.reference).toBe('INV-42-REV-3');
+            expect(create.data.items.create).toEqual([
+                expect.objectContaining({ accountId: 'account-1100', debit: 0, credit: 250 }),
+                expect.objectContaining({ accountId: 'account-4000', debit: 250, credit: 0 }),
+            ]);
+            expect(tx.journalEntry.update).toHaveBeenCalledWith({
+                where: { id: 'revision-entry' },
+                data: { status: 'POSTED' },
+            });
+            expect(prisma.journalEntry.create).not.toHaveBeenCalled();
+        });
+
+        it('does not duplicate a revision journal entry on retry', async () => {
+            const posted = { id: 'existing-entry', status: 'POSTED', items: [] };
+            const tx: any = {
+                journalEntry: { findFirst: jest.fn(), create: jest.fn() },
+            };
+            tx.journalEntry.findFirst.mockResolvedValue(posted);
+
+            await service.postFeeInvoiceRevisionToLedger('INV-42', 3, 250, tx);
+
+            expect(tx.journalEntry.findFirst).toHaveBeenCalledWith({
+                where: { reference: 'INV-42-REV-3' },
+                include: { items: true },
+            });
+            expect(tx.journalEntry.create).not.toHaveBeenCalled();
+        });
+
+        it('splits a transport reclassification between tuition and transport revenue', async () => {
+            const tx: any = {
+                account: {
+                    findUnique: jest.fn(async ({ where }: any) => ({ id: `account-${where.code}`, code: where.code })),
+                },
+                journal: { findUnique: jest.fn() },
+                journalEntry: {
+                    findFirst: jest.fn(),
+                    create: jest.fn(),
+                    findUnique: jest.fn(),
+                    update: jest.fn(),
+                },
+            };
+            tx.journal.findUnique.mockResolvedValue({ id: 'sales-journal', code: 'INV' });
+            tx.journalEntry.findFirst.mockResolvedValue(null);
+            tx.journalEntry.create.mockResolvedValue({ id: 'reclass-entry' });
+            tx.journalEntry.findUnique.mockResolvedValue({ id: 'reclass-entry', status: 'DRAFT' });
+            tx.journalEntry.update.mockResolvedValue({ id: 'reclass-entry', status: 'POSTED' });
+
+            await service.postFeeInvoiceRevisionToLedger('INV-42', 4, 0, tx, {
+                oldTotalAmount: 1000,
+                newTotalAmount: 1000,
+                oldTransportAmount: 200,
+                newTransportAmount: 300,
+            });
+
+            const items = tx.journalEntry.create.mock.calls[0][0].data.items.create;
+            expect(items).toEqual([
+                expect.objectContaining({ accountId: 'account-4000', debit: 100, credit: 0 }),
+                expect.objectContaining({ accountId: 'account-4100', debit: 0, credit: 100 }),
+            ]);
+            expect(items.reduce((sum: number, item: any) => sum + item.debit, 0))
+                .toBe(items.reduce((sum: number, item: any) => sum + item.credit, 0));
+        });
+    });
+
+    describe('reverseFeeInvoiceLedger', () => {
+        it('reverses the original invoice and every posted revision in the caller transaction', async () => {
+            const tx: any = {
+                journalEntry: {
+                    findFirst: jest.fn<() => Promise<any>>().mockResolvedValue(null),
+                    findMany: jest.fn<() => Promise<any[]>>().mockResolvedValue([
+                        {
+                            journalId: 'sales-journal',
+                            items: [
+                                { accountId: 'ar', debit: 1000, credit: 0 },
+                                { accountId: 'tuition', debit: 0, credit: 800 },
+                                { accountId: 'transport', debit: 0, credit: 200 },
+                            ],
+                        },
+                        {
+                            journalId: 'sales-journal',
+                            items: [
+                                { accountId: 'ar', debit: 0, credit: 100 },
+                                { accountId: 'tuition', debit: 100, credit: 0 },
+                            ],
+                        },
+                    ]),
+                    create: jest.fn<() => Promise<any>>().mockResolvedValue({ id: 'cancel-entry' }),
+                    findUnique: jest.fn<() => Promise<any>>().mockResolvedValue({ id: 'cancel-entry', status: 'DRAFT' }),
+                    update: jest.fn<() => Promise<any>>().mockResolvedValue({ id: 'cancel-entry', status: 'POSTED' }),
+                },
+            };
+
+            await service.reverseFeeInvoiceLedger('INV-42', tx);
+
+            expect(tx.journalEntry.findMany).toHaveBeenCalledWith(expect.objectContaining({
+                where: expect.objectContaining({
+                    status: 'POSTED',
+                    OR: [
+                        { reference: 'INV-42' },
+                        { reference: { startsWith: 'INV-42-REV-' } },
+                    ],
+                }),
+            }));
+            const create = tx.journalEntry.create.mock.calls[0][0];
+            expect(create.data.reference).toBe('INV-42-CANCEL');
+            expect(create.data.items.create).toEqual([
+                expect.objectContaining({ accountId: 'ar', debit: 0, credit: 1000 }),
+                expect.objectContaining({ accountId: 'tuition', debit: 800, credit: 0 }),
+                expect.objectContaining({ accountId: 'transport', debit: 200, credit: 0 }),
+                expect.objectContaining({ accountId: 'ar', debit: 100, credit: 0 }),
+                expect.objectContaining({ accountId: 'tuition', debit: 0, credit: 100 }),
+            ]);
+            expect(prisma.journalEntry.create).not.toHaveBeenCalled();
+        });
+
+        it('reuses a posted cancellation entry instead of reversing twice', async () => {
+            const tx: any = {
+                journalEntry: {
+                    findFirst: jest.fn<() => Promise<any>>().mockResolvedValue({ id: 'cancel-entry', status: 'POSTED' }),
+                    findMany: jest.fn(),
+                    create: jest.fn(),
+                },
+            };
+
+            await service.reverseFeeInvoiceLedger('INV-42', tx);
+
+            expect(tx.journalEntry.findMany).not.toHaveBeenCalled();
+            expect(tx.journalEntry.create).not.toHaveBeenCalled();
+        });
     });
 
     // ── postMpesaCharge (Step 2) ─────────────────────────────────────────
@@ -173,12 +351,32 @@ describe('Accounting Ledger Postings (Steps 1, 2, 4)', () => {
             (prisma.journalItem.create as any).mockResolvedValue({});
             (prisma.journalEntry.update as any).mockResolvedValue({});
 
-            await service.postMpesaCharge(5000);
+            await service.postMpesaCharge(5000, 'MPESA-CHARGE-TEST');
 
             expect(prisma.journalEntry.create).toHaveBeenCalled();
             // createJournalEntry uses nested items.create — verify 2 items
             const createCall = (prisma.journalEntry.create as any).mock.calls[0][0];
             expect(createCall.data.items.create).toHaveLength(2);
+        });
+
+        it('does not create another charge entry for a receipt already recorded', async () => {
+            process.env.MPESA_CHARGE_PER_TRANSACTION = '15';
+            (prisma.account.findUnique as any).mockImplementation((args: any) => {
+                const accounts: Record<string, any> = {
+                    '5500': { id: 'acc-charge', code: '5500' },
+                    '1210': { id: 'acc-bank', code: '1210' },
+                };
+                return Promise.resolve(accounts[args.where.code] || null);
+            });
+            (prisma.journal.findUnique as any).mockResolvedValue({ id: 'journal-misc', code: 'MISC' });
+            (prisma.journalEntry.findFirst as any).mockResolvedValue({ id: 'charge-existing', status: 'POSTED' });
+
+            await service.postMpesaCharge(5000, 'MPESA-CHARGE-TEST');
+
+            expect(prisma.journalEntry.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+                where: { journalId: 'journal-misc', reference: 'MPESA-CHARGE/MPESA-CHARGE-TEST' },
+            }));
+            expect(prisma.journalEntry.create).not.toHaveBeenCalled();
         });
     });
 
