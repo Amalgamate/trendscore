@@ -211,7 +211,7 @@ describe('AdmissionMatchService (Daraja Connector — Step 3)', () => {
             // Verify ledger posting was called
             expect(accountingService.postFeePaymentToLedger).toHaveBeenCalled();
             // Verify M-Pesa charge was recorded
-            expect(accountingService.postMpesaCharge).toHaveBeenCalledWith(5000);
+            expect(accountingService.postMpesaCharge).toHaveBeenCalledWith(5000, 'MPESA-REC123');
             // Verify overpayment detection was called
             expect(overpaymentCreditService.detectAndPostOverpayment).toHaveBeenCalledWith('inv-1', 'pay-1');
         });
