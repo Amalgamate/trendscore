@@ -181,7 +181,7 @@ export const getCommunicationConfig = async (req: AuthRequest, res: Response) =>
             mpesa: {
                 enabled: config.mpesaEnabled,
                 provider: 'daraja', // Daraja is the only supported provider
-                publicKey: config.mpesaPublicKey,
+                hasPublicKey: !!config.mpesaPublicKey,
                 businessNumber: config.mpesaBusinessNo,
                 hasSecretKey: !!config.mpesaSecretKey,
                 hasApiKey: !!config.mpesaApiKey,
@@ -276,7 +276,10 @@ export const saveCommunicationConfig = async (req: AuthRequest, res: Response) =
             throw new ApiError(400, 'Complete all M-PESA activation prerequisites before enabling collections.');
         }
         data.mpesaProvider = 'daraja'; // Daraja is the only supported provider
-        data.mpesaPublicKey = mpesa.publicKey || null;
+        // Treat credentials as write-only: never send saved values back to the
+        // browser, and leave them unchanged unless a replacement is supplied.
+        const mpesaPublicKey = normalizeOptionalString(mpesa.publicKey);
+        if (mpesaPublicKey) data.mpesaPublicKey = encryptSetting('M-Pesa consumer key', mpesaPublicKey);
         data.mpesaBusinessNo = mpesa.businessNumber || null;
         data.mpesaEnabled = mpesa.enabled !== undefined ? mpesa.enabled : false;
         data.mpesaSandbox = mpesa.sandbox !== undefined ? mpesa.sandbox : false;
