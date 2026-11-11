@@ -643,7 +643,7 @@ export class FeeController {
     });
     if (!invoice) throw new ApiError(404, 'Invoice not found');
 
-    await assertCanViewFeeRecord(req, invoice);
+await assertCanViewFeeRecord(req, invoice);
 
     const limitedFeeView = ['TEACHER', 'RECEPTIONIST'].includes(String(req.user?.role || '').toUpperCase());
     const responseInvoice = limitedFeeView
