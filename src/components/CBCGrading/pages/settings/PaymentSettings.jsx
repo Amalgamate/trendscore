@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useEffect } from 'react';
-import { DollarSign, Save, Loader, CreditCard, Shield, Globe } from 'lucide-react';
+import { DollarSign, Save, Loader, CreditCard, Shield, Globe, Pencil, X } from 'lucide-react';
 import { communicationAPI } from '../../../../services/api';
 import { useNotifications } from '../../hooks/useNotifications';
 import { PRODUCT_DISPLAY_NAME } from '../../../../config/productIdentity';
@@ -12,6 +12,7 @@ const PaymentSettings = () => {
     const [loading, setLoading] = useState(false);
     const [onboardingReady, setOnboardingReady] = useState(false);
     const [onboardingChecklist, setOnboardingChecklist] = useState({});
+    const [editingFields, setEditingFields] = useState({ shortcode: true, publicKey: true, secretKey: true, passkey: true });
     const { showSuccess, showError } = useNotifications();
 
     const [mpesaSettings, setMpesaSettings] = useState({
@@ -35,18 +36,21 @@ const PaymentSettings = () => {
             setLoading(true);
             const response = await communicationAPI.getConfig();
             const config = (response.data || response).mpesa || {};
+            const isUnconfigured = !config.enabled && !config.hasPublicKey && !config.hasSecretKey && !config.hasPasskey;
+            const sandbox = config.sandbox === true || isUnconfigured;
 
             setMpesaSettings({
                 enabled: config.enabled || false,
-                publicKey: config.publicKey || '',
+                publicKey: '',
                 secretKey: '',
                 passkey: '',
-                shortcode: config.businessNumber || '',
-                sandbox: config.sandbox || false,
-                hasPublicKey: !!config.publicKey,
+                shortcode: config.businessNumber || (sandbox ? '174379' : ''),
+                sandbox,
+                hasPublicKey: !!config.hasPublicKey,
                 hasSecretKey: !!config.hasSecretKey,
                 hasPasskey: !!config.hasPasskey
             });
+            setEditingFields({ shortcode: !config.businessNumber, publicKey: !config.hasPublicKey, secretKey: !config.hasSecretKey, passkey: !config.hasPasskey });
             setOnboardingChecklist(config.onboardingChecklist || {});
         } catch (error) {
             console.error('Failed to load payment config:', error);
@@ -67,6 +71,47 @@ const PaymentSettings = () => {
         )
     };
 
+    const setFieldEditing = (field, editing) => {
+        if (editing && field !== 'shortcode') {
+            setMpesaSettings((current) => ({ ...current, [field]: '' }));
+        }
+        setEditingFields((current) => ({ ...current, [field]: editing }));
+    };
+
+    const renderEditableField = ({ field, label, saved, secret = false, placeholder }) => {
+        const editing = editingFields[field];
+        const hasSavedValue = field === 'shortcode' ? Boolean(mpesaSettings.shortcode) : saved;
+        return (
+            <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">{label}</label>
+                <div className="flex items-center gap-2">
+                    <input
+                        type={secret ? 'password' : 'text'}
+                        value={editing ? mpesaSettings[field] : (field === 'shortcode' ? mpesaSettings.shortcode : '')}
+                        onChange={(e) => setMpesaSettings((current) => ({ ...current, [field]: e.target.value }))}
+                        readOnly={!editing}
+                        autoComplete="new-password"
+                        className={`min-w-0 flex-1 px-4 py-3 border rounded-xl outline-none transition-all ${editing ? 'bg-white border-gray-300 focus:ring-2 focus:ring-green-500' : 'bg-gray-50 border-gray-200 text-gray-600'}`}
+                        placeholder={!editing && hasSavedValue ? '••••••••••••' : placeholder}
+                        aria-label={label}
+                    />
+                    <button
+                        type="button"
+                        onClick={() => setFieldEditing(field, !editing)}
+                        className="shrink-0 inline-flex items-center justify-center w-11 h-11 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-green-500"
+                        aria-label={editing ? `Cancel editing ${label}` : `Edit ${label}`}
+                        title={editing ? 'Cancel' : 'Edit'}
+                    >
+                        {editing ? <X size={18} /> : <Pencil size={18} />}
+                    </button>
+                    {hasSavedValue && !editing && (
+                        <span className="shrink-0 text-[10px] text-emerald-700 font-medium bg-emerald-100 px-2 py-1 rounded-lg uppercase tracking-wider">Saved</span>
+                    )}
+                </div>
+            </div>
+        );
+    };
+
     const handleSave = async () => {
         if (mpesaSettings.enabled && !onboardingReady) {
             showError('Complete all M-PESA activation prerequisites before enabling collections.');
@@ -79,7 +124,7 @@ const PaymentSettings = () => {
                 mpesa: {
                     enabled: mpesaSettings.enabled,
                     provider: PROVIDER,
-                    publicKey: mpesaSettings.publicKey,
+                    publicKey: mpesaSettings.publicKey || undefined,
                     businessNumber: mpesaSettings.shortcode,
                     secretKey: mpesaSettings.secretKey || undefined,
                     passkey: mpesaSettings.passkey || undefined,
@@ -174,18 +219,7 @@ const PaymentSettings = () => {
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                {/* Shortcode */}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Business Shortcode</label>
-                                    <input
-                                        type="text"
-                                        value={mpesaSettings.shortcode}
-                                        onChange={(e) => setMpesaSettings({ ...mpesaSettings, shortcode: e.target.value })}
-                                        className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:bg-white transition-all outline-none"
-                                        placeholder="e.g. 174379"
-                                    />
-                                    <p className="text-xs text-gray-500 mt-2 font-medium">Your primary target identifier for payments</p>
-                                </div>
+                                {renderEditableField({ field: 'shortcode', label: 'Business Shortcode', placeholder: 'e.g. 174379' })}
 
                                 {/* Sandbox Toggle */}
                                 <div className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-200 h-[72px] mt-auto">
@@ -206,56 +240,11 @@ const PaymentSettings = () => {
                             </div>
 
                             <div className="space-y-6 border-t pt-6">
-                                {/* Consumer Key */}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Consumer Key</label>
-                                    <div className="relative">
-                                        <input
-                                            type="text"
-                                            value={mpesaSettings.publicKey}
-                                            onChange={(e) => setMpesaSettings({ ...mpesaSettings, publicKey: e.target.value })}
-                                            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:bg-white transition-all outline-none"
-                                            placeholder={mpesaSettings.hasPublicKey ? '****************' : 'Enter Consumer Key...'}
-                                        />
-                                        {mpesaSettings.hasPublicKey && !mpesaSettings.publicKey && (
-                                            <span className="absolute right-3 top-3 text-[10px] text-emerald-700 font-medium bg-emerald-100 px-2 py-1 rounded-lg uppercase tracking-wider">Saved</span>
-                                        )}
-                                    </div>
-                                </div>
+                                {renderEditableField({ field: 'publicKey', label: 'Consumer Key', saved: mpesaSettings.hasPublicKey, placeholder: 'Enter Consumer Key...' })}
 
-                                {/* Consumer Secret */}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Consumer Secret</label>
-                                    <div className="relative">
-                                        <input
-                                            type="password"
-                                            value={mpesaSettings.secretKey}
-                                            onChange={(e) => setMpesaSettings({ ...mpesaSettings, secretKey: e.target.value })}
-                                            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:bg-white transition-all outline-none"
-                                            placeholder={mpesaSettings.hasSecretKey ? '****************' : 'Enter Consumer Secret...'}
-                                        />
-                                        {mpesaSettings.hasSecretKey && !mpesaSettings.secretKey && (
-                                            <span className="absolute right-3 top-3 text-[10px] text-emerald-700 font-medium bg-emerald-100 px-2 py-1 rounded-lg uppercase tracking-wider">Saved</span>
-                                        )}
-                                    </div>
-                                </div>
+                                {renderEditableField({ field: 'secretKey', label: 'Consumer Secret', saved: mpesaSettings.hasSecretKey, secret: true, placeholder: 'Enter Consumer Secret...' })}
 
-                                {/* Daraja Passkey */}
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">Daraja Passkey</label>
-                                    <div className="relative">
-                                        <input
-                                            type="password"
-                                            value={mpesaSettings.passkey}
-                                            onChange={(e) => setMpesaSettings({ ...mpesaSettings, passkey: e.target.value })}
-                                            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:bg-white transition-all outline-none"
-                                            placeholder={mpesaSettings.hasPasskey ? '****************' : 'Enter Lipa Na M-Pesa Passkey...'}
-                                        />
-                                        {mpesaSettings.hasPasskey && !mpesaSettings.passkey && (
-                                            <span className="absolute right-3 top-3 text-[10px] text-emerald-700 font-medium bg-emerald-100 px-2 py-1 rounded-lg uppercase tracking-wider">Saved</span>
-                                        )}
-                                    </div>
-                                </div>
+                                {renderEditableField({ field: 'passkey', label: 'Daraja Passkey', saved: mpesaSettings.hasPasskey, secret: true, placeholder: 'Enter Lipa Na M-Pesa Passkey...' })}
                             </div>
 
                             <div className="pt-8 border-t flex flex-col md:flex-row items-center justify-between gap-6">

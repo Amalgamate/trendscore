@@ -4,25 +4,76 @@ import prisma from '../config/database';
 import { MpesaStatus, MpesaTransactionType } from '@prisma/client';
 import { PRODUCT_NAME } from '../config/productIdentity';
 import logger from '../utils/logger';
+import { decrypt } from '../utils/encryption.util';
+
+type DarajaConfig = {
+    consumerKey: string;
+    consumerSecret: string;
+    shortCode: string;
+    passKey: string;
+    sandbox: boolean;
+    callbackUrl: string;
+};
 
 class DarajaService {
     private sandboxUrl = 'https://sandbox.safaricom.co.ke';
     private liveUrl = 'https://api.safaricom.co.ke';
 
-    private get baseUrl() {
-        return process.env.NODE_ENV === 'production' ? this.liveUrl : this.sandboxUrl;
-    }
-
-    private get consumerKey() {
-        return process.env.MPESA_CONSUMER_KEY || '';
-    }
-
-    private get consumerSecret() {
-        return process.env.MPESA_CONSUMER_SECRET || '';
+    // Legacy environment configuration remains only for B2C payouts, whose
+    // school-specific credentials have not yet been added to the settings UI.
+    private get environmentConfig(): DarajaConfig {
+        return {
+            consumerKey: process.env.MPESA_CONSUMER_KEY || '',
+            consumerSecret: process.env.MPESA_CONSUMER_SECRET || '',
+            shortCode: process.env.MPESA_SHORTCODE || '174379',
+            passKey: process.env.MPESA_PASSKEY || 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919',
+            sandbox: process.env.NODE_ENV !== 'production',
+            callbackUrl: process.env.MPESA_CALLBACK_URL || 'https://zawadi.trendscore.co.ke/api/mpesa/callback',
+        };
     }
 
     private get shortCode() {
         return process.env.MPESA_SHORTCODE || '174379';
+    }
+
+    /**
+     * Each school deployment has its own CommunicationConfig row. Resolve the
+     * credentials from that database on every operation so sandbox credentials
+     * and shortcodes never bleed between schools or fall back to a shared live
+     * environment configuration.
+     */
+    async getSchoolConfig(): Promise<DarajaConfig> {
+        const saved = await prisma.communicationConfig.findFirst();
+        if (!saved || !saved.mpesaEnabled) {
+            throw new Error('M-Pesa is not enabled for this school.');
+        }
+
+        const consumerKey = saved.mpesaPublicKey ? this.decryptStoredCredential(saved.mpesaPublicKey).trim() : '';
+        const shortCode = String(saved.mpesaBusinessNo || '').trim();
+        const consumerSecret = saved.mpesaSecretKey ? decrypt(saved.mpesaSecretKey).trim() : '';
+        const passKey = saved.mpesaPasskey ? decrypt(saved.mpesaPasskey).trim() : '';
+        if (!consumerKey || !consumerSecret || !shortCode || !passKey) {
+            throw new Error('Complete the school Daraja shortcode, consumer key, consumer secret, and passkey before starting payments.');
+        }
+
+        return {
+            consumerKey,
+            consumerSecret,
+            shortCode,
+            passKey,
+            sandbox: saved.mpesaSandbox,
+            callbackUrl: process.env.MPESA_CALLBACK_URL || 'https://zawadi.trendscore.co.ke/api/mpesa/callback',
+        };
+    }
+
+    private baseUrl(config: DarajaConfig) {
+        return config.sandbox ? this.sandboxUrl : this.liveUrl;
+    }
+
+    private decryptStoredCredential(value: string): string {
+        // Consumer keys were stored as plaintext in older deployments; new
+        // values are encrypted. Support the legacy format during migration.
+        return value.split(':').length === 3 ? decrypt(value) : value;
     }
 
     // B2C — organisation shortcode that initiates the payout (may differ from
@@ -69,10 +120,10 @@ class DarajaService {
         return process.env.MPESA_C2B_VALIDATION_URL || 'https://zawadi.trendscore.co.ke/api/mpesa/c2b/validation';
     }
 
-    async getAccessToken() {
-        const auth = Buffer.from(`${this.consumerKey}:${this.consumerSecret}`).toString('base64');
+    async getAccessToken(config: DarajaConfig = this.environmentConfig) {
+        const auth = Buffer.from(`${config.consumerKey}:${config.consumerSecret}`).toString('base64');
         try {
-            const response = await axios.get(`${this.baseUrl}/oauth/v1/generate?grant_type=client_credentials`, {
+            const response = await axios.get(`${this.baseUrl(config)}/oauth/v1/generate?grant_type=client_credentials`, {
                 headers: {
                     Authorization: `Basic ${auth}`
                 }
@@ -90,9 +141,10 @@ class DarajaService {
         studentId?: string;
         invoiceId?: string;
     }) {
-        const token = await this.getAccessToken();
+        const config = await this.getSchoolConfig();
+        const token = await this.getAccessToken(config);
         const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
-        const password = Buffer.from(`${this.shortCode}${this.passKey}${timestamp}`).toString('base64');
+        const password = Buffer.from(`${config.shortCode}${config.passKey}${timestamp}`).toString('base64');
 
         let phone = params.phoneNumber.replace('+', '');
         if (phone.startsWith('0')) phone = '254' + phone.slice(1);
@@ -121,21 +173,21 @@ class DarajaService {
         }
 
         const payload = {
-            BusinessShortCode: this.shortCode,
+            BusinessShortCode: config.shortCode,
             Password: password,
             Timestamp: timestamp,
             TransactionType: 'CustomerPayBillOnline',
             Amount: Math.round(params.amount),
             PartyA: phone,
-            PartyB: this.shortCode,
+            PartyB: config.shortCode,
             PhoneNumber: phone,
-            CallBackURL: this.callbackUrl,
+            CallBackURL: config.callbackUrl,
             AccountReference: accountReference,
             TransactionDesc: 'Fee Payment'
         };
 
         try {
-            const response = await axios.post(`${this.baseUrl}/mpesa/stkpush/v1/processrequest`, payload, {
+            const response = await axios.post(`${this.baseUrl(config)}/mpesa/stkpush/v1/processrequest`, payload, {
                 headers: {
                     Authorization: `Bearer ${token}`
                 }
@@ -170,19 +222,20 @@ class DarajaService {
     }
 
     async queryStkStatus(checkoutRequestId: string) {
-        const token = await this.getAccessToken();
+        const config = await this.getSchoolConfig();
+        const token = await this.getAccessToken(config);
         const timestamp = new Date().toISOString().replace(/[-:T.]/g, '').slice(0, 14);
-        const password = Buffer.from(`${this.shortCode}${this.passKey}${timestamp}`).toString('base64');
+        const password = Buffer.from(`${config.shortCode}${config.passKey}${timestamp}`).toString('base64');
 
         const payload = {
-            BusinessShortCode: this.shortCode,
+            BusinessShortCode: config.shortCode,
             Password: password,
             Timestamp: timestamp,
             CheckoutRequestID: checkoutRequestId
         };
 
         try {
-            const response = await axios.post(`${this.baseUrl}/mpesa/stkpush/v1/query`, payload, {
+            const response = await axios.post(`${this.baseUrl(config)}/mpesa/stkpush/v1/query`, payload, {
                 headers: {
                     Authorization: `Bearer ${token}`
                 }
@@ -262,7 +315,7 @@ class DarajaService {
         };
 
         try {
-            const response = await axios.post(`${this.baseUrl}/mpesa/b2c/v1/paymentrequest`, payload, {
+            const response = await axios.post(`${this.baseUrl(this.environmentConfig)}/mpesa/b2c/v1/paymentrequest`, payload, {
                 headers: {
                     Authorization: `Bearer ${token}`
                 }
@@ -302,17 +355,18 @@ class DarajaService {
      * This should be called once during deployment or when the callback URLs change.
      */
     async registerC2bUrls(): Promise<{ success: boolean; message: string }> {
-        const token = await this.getAccessToken();
+        const config = await this.getSchoolConfig();
+        const token = await this.getAccessToken(config);
 
         const payload = {
-            ShortCode: this.shortCode,
+            ShortCode: config.shortCode,
             ResponseType: 'Completed', // Accept all payments — validation can still reject
             ConfirmationURL: this.c2bConfirmationUrl,
             ValidationURL: this.c2bValidationUrl,
         };
 
         try {
-            const response = await axios.post(`${this.baseUrl}/mpesa/c2b/v1/registerurl`, payload, {
+            const response = await axios.post(`${this.baseUrl(config)}/mpesa/c2b/v1/registerurl`, payload, {
                 headers: {
                     Authorization: `Bearer ${token}`
                 }

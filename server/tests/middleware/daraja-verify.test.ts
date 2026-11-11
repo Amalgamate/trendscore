@@ -22,6 +22,19 @@ jest.mock('../../src/utils/logger', () => ({
     },
 }));
 
+jest.mock('../../src/config/database', () => ({
+    __esModule: true,
+    default: {
+        communicationConfig: {
+            findFirst: jest.fn().mockResolvedValue({ mpesaSecretKey: 'encrypted-test-secret' } as never),
+        },
+    },
+}));
+
+jest.mock('../../src/utils/encryption.util', () => ({
+    decrypt: () => 'test-daraja-secret-key',
+}));
+
 // We need to set the env vars BEFORE importing the middleware
 const TEST_SECRET = 'test-daraja-secret-key';
 const TEST_CALLBACK_URL = 'https://example.com/api/mpesa/callback';

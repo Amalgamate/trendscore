@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import logger from '../utils/logger';
+import prisma from '../config/database';
+import { decrypt } from '../utils/encryption.util';
 
 /**
  * Daraja Callback Signature Verification Middleware
@@ -21,19 +23,30 @@ import logger from '../utils/logger';
  * In development (no MPESA_CONSUMER_SECRET set), verification is skipped
  * with a loud warning so local testing still works.
  */
-export const verifyDarajaCallback = (req: Request, res: Response, next: NextFunction): void => {
-    const consumerSecret = process.env.MPESA_CONSUMER_SECRET;
+export const verifyDarajaCallback = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    let consumerSecret: string;
+    let schoolCallbackUrl: string;
+    try {
+        // Each school is served from its own database/deployment. Read the
+        // matching encrypted secret from that school's communication config.
+        const config = await prisma.communicationConfig.findFirst();
+        consumerSecret = config?.mpesaSecretKey ? decrypt(config.mpesaSecretKey) : '';
+        schoolCallbackUrl = process.env.MPESA_CALLBACK_URL || 'https://zawadi.trendscore.co.ke/api/mpesa/callback';
+    } catch (error: any) {
+        logger.error('[DarajaVerify] Could not load school callback credentials:', error?.message);
+        res.status(401).json({ error: 'Callback verification not configured' });
+        return;
+    }
 
-    // ── Dev bypass: no secret configured ────────────────────────────────────
-    // Allows sandbox testing without a production secret. A loud warning
-    // ensures this is never silently skipped in production.
+    // Only retain the explicit local development bypass. Production callback
+    // validation must fail closed if this school's secret is absent.
     if (!consumerSecret) {
         if (process.env.NODE_ENV === 'production') {
-            logger.error('[DarajaVerify] MPESA_CONSUMER_SECRET is not set in production — rejecting callback');
+            logger.error('[DarajaVerify] School Daraja consumer secret is not configured — rejecting callback');
             res.status(401).json({ error: 'Callback verification not configured' });
             return;
         }
-        logger.warn('[DarajaVerify] MPESA_CONSUMER_SECRET not set — skipping verification (dev mode only)');
+        logger.warn('[DarajaVerify] School Daraja consumer secret not set — skipping verification (dev mode only)');
         next();
         return;
     }
@@ -51,7 +64,7 @@ export const verifyDarajaCallback = (req: Request, res: Response, next: NextFunc
 
     // ── Retrieve the callback URL configured for Daraja ──────────────────────
     // This must match exactly what was sent in the STK Push CallBackURL field.
-    const callbackUrl = process.env.MPESA_CALLBACK_URL || '';
+    const callbackUrl = schoolCallbackUrl;
 
     // ── Retrieve the raw request body ────────────────────────────────────────
     // Express's JSON parser consumes the stream, so we need the raw body.
