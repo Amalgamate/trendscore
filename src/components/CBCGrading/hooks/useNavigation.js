@@ -24,7 +24,7 @@ import {
     Users2, Truck, Fingerprint, CreditCard, PieChart, BarChart3, AlertCircle,
     Package, Building2, HelpCircle, Receipt, FileText,
     Shirt, ClipboardList, Video, PlayCircle, Gift, Wrench, Activity, Brain, MoreHorizontal, Award,
-    Heart, Star, Sparkles, Rocket
+    Heart, Star, Sparkles, Rocket, Wallet
 } from 'lucide-react';
 
 const focusModules = ['dashboard', 'learners', 'teachers', 'attendance', 'assessment', 'finance', 'communications', 'planner', 'digital-learning', 'learning-hub', 'docs-center', 'settings', 'hr', 'inventory', 'transport', 'pathway-planner'];
