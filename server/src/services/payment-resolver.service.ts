@@ -18,6 +18,8 @@ import prisma from '../config/database';
 import messageService from './message.service';
 import { PaymentStatus } from '@prisma/client';
 import { PRODUCT_DISPLAY_NAME } from '../config/productIdentity';
+import { accountingService } from './accounting.service';
+import { overpaymentCreditService } from './overpayment-credit.service';
 
 // ─── Phone normalisation ────────────────────────────────────────────────────
 export function normalizePhone(raw: string): string {
@@ -26,31 +28,6 @@ export function normalizePhone(raw: string): string {
     if (phone.startsWith('0')) phone = '254' + phone.slice(1);
     if (!phone.startsWith('254')) phone = '254' + phone;
     return phone;
-}
-
-// ─── Learner finder ─────────────────────────────────────────────────────────
-/**
- * Searches ALL learner phone fields for the given normalized phone number.
- * Returns a list of matching learner IDs (may be 0, 1, or many).
- */
-export async function findLearnersByPhone(phone: string): Promise<string[]> {
-    const learners = await prisma.learner.findMany({
-        where: {
-            archived: false,
-            status: 'ACTIVE',
-            OR: [
-                { fatherPhone: phone },
-                { motherPhone: phone },
-                { guardianPhone: phone },
-                { primaryContactPhone: phone },
-                // Also match the linked parent User's phone
-                { parent: { phone: phone } }
-            ]
-        },
-        select: { id: true }
-    });
-
-    return learners.map(l => l.id);
 }
 
 // ─── Shared allocation helper ───────────────────────────────────────────────
@@ -67,8 +44,12 @@ export async function applyAmountToInvoiceFields(
     const inv = await tx.feeInvoice.findUnique({ where: { id: invoiceId } });
     if (!inv) throw new Error(`Invoice ${invoiceId} not found`);
 
-    const tuitionBal   = Number(inv.balance);
+    // `balance` is the total learner balance (tuition + transport); transport
+    // is also tracked as a component in `transportBalance`. Treat it as a
+    // subset so collections don't count transport twice.
+    const totalBal = Math.max(0, Number(inv.balance));
     const transportBal = Number(inv.transportBalance);
+    const tuitionBal = Math.max(0, totalBal - transportBal);
 
     let tuitionChunk: number;
     let transportChunk: number;
@@ -84,8 +65,8 @@ export async function applyAmountToInvoiceFields(
     await tx.feeInvoice.update({
         where: { id: invoiceId },
         data: {
-            paidAmount:       { increment: tuitionChunk },
-            balance:          { decrement: tuitionChunk },
+            paidAmount:       { increment: amount },
+            balance:          { decrement: Math.min(amount, totalBal) },
             transportPaid:    { increment: transportChunk },
             transportBalance: { decrement: transportChunk }
         }
@@ -96,14 +77,20 @@ export async function applyAmountToInvoiceFields(
 /**
  * FIX (Bug 2): Correct 4-branch status logic, identical to fee.controller.ts.
  */
-export function resolveInvoiceStatus(inv: { paidAmount: any; totalAmount: any; balance: any }): PaymentStatus {
+export function resolveInvoiceStatus(inv: {
+    paidAmount: any;
+    totalAmount: any;
+    balance: any;
+    sponsorBalance?: any;
+    sponsorPaidAmount?: any;
+}): PaymentStatus {
     const paid  = Number(inv.paidAmount);
     const total = Number(inv.totalAmount);
     const bal   = Number(inv.balance);
 
     if (paid > total)  return 'OVERPAID';
-    if (bal <= 0)      return 'PAID';
-    if (paid > 0)      return 'PARTIAL';
+    if (bal <= 0 && Number(inv.sponsorBalance || 0) <= 0) return 'PAID';
+    if (paid > 0 || Number(inv.sponsorPaidAmount || 0) > 0) return 'PARTIAL';
     return 'PENDING';
 }
 
@@ -117,8 +104,9 @@ export async function applyPaymentToInvoice(params: {
     amount: number;
     receipt: string;
     phone: string;
+    transactionDate?: Date;
 }): Promise<{ success: boolean; invoiceId?: string; invoiceNumber?: string }> {
-    const { learnerId, amount, receipt, phone } = params;
+    const { learnerId, amount, receipt, phone, transactionDate } = params;
 
     // Find oldest unpaid invoice
     const invoice = await prisma.feeInvoice.findFirst({
@@ -136,22 +124,47 @@ export async function applyPaymentToInvoice(params: {
         return { success: false };
     }
 
+    // A Daraja receipt is globally unique. Never treat a duplicate receipt as
+    // success for a different learner or invoice.
+    const receiptNumber = `MPESA-${receipt}`;
+    const existingPayment = await prisma.feePayment.findUnique({ where: { receiptNumber } });
+    if (existingPayment) {
+        const existingInvoice = await prisma.feeInvoice.findUnique({
+            where: { id: existingPayment.invoiceId },
+            select: { id: true, learnerId: true, invoiceNumber: true },
+        });
+        if (existingInvoice?.learnerId !== learnerId) {
+            throw new Error(`M-Pesa receipt ${receipt} is already linked to a different learner.`);
+        }
+        return { success: true, invoiceId: existingInvoice.id, invoiceNumber: existingInvoice.invoiceNumber };
+    }
+
+    await accountingService.ensureDefaultAccountingSetup();
     const systemUser = await prisma.user.findFirst({ where: { role: 'SUPER_ADMIN' } });
 
     let updatedInvoice: any;
 
     try {
         await prisma.$transaction(async (tx) => {
+            const duplicate = await tx.feePayment.findUnique({ where: { receiptNumber } });
+            if (duplicate) {
+                if (duplicate.invoiceId !== invoice.id) {
+                    throw new Error(`M-Pesa receipt ${receipt} is already linked to a different invoice.`);
+                }
+                updatedInvoice = await tx.feeInvoice.findUnique({ where: { id: invoice.id } });
+                return;
+            }
             // Create payment record — catch duplicate receipt on P2002
             await tx.feePayment.create({
                 data: {
                     invoiceId: invoice.id,
                     amount,
                     paymentMethod: 'MPESA',
-                    receiptNumber: `MPESA-${receipt}`,
+                    receiptNumber,
                     referenceNumber: receipt,
                     notes: `Auto-matched Buy Goods Till payment from ${phone}`,
-                    recordedBy: systemUser?.id || ''
+                    recordedBy: systemUser?.id || '',
+                    ...(transactionDate ? { paymentDate: transactionDate } : {}),
                 }
             });
 
@@ -167,12 +180,20 @@ export async function applyPaymentToInvoice(params: {
                     data: { status: newStatus }
                 });
             }
-        });
+
+            const payment = await tx.feePayment.findUnique({ where: { receiptNumber } });
+            if (!payment) throw new Error(`Payment ${receipt} was not persisted.`);
+            await accountingService.postFeePaymentToLedger(payment, 'MPESA', tx);
+            await overpaymentCreditService.detectAndPostOverpayment(invoice.id, payment.id, tx);
+            await accountingService.postMpesaCharge(Number(payment.amount), receiptNumber, tx);
+        }, { isolationLevel: 'Serializable' });
     } catch (err: any) {
         if (err?.code === 'P2002') {
-            // Duplicate receiptNumber — this payment was already recorded concurrently
-            console.warn(`[PaymentResolver] Duplicate receipt ${receipt} — already recorded.`);
-            return { success: true, invoiceId: invoice.id, invoiceNumber: invoice.invoiceNumber };
+            const duplicate = await prisma.feePayment.findUnique({ where: { receiptNumber } });
+            if (duplicate?.invoiceId === invoice.id) {
+                return { success: true, invoiceId: invoice.id, invoiceNumber: invoice.invoiceNumber };
+            }
+            throw new Error(`M-Pesa receipt ${receipt} is already linked to a different invoice.`);
         }
         throw err;
     }
@@ -202,84 +223,6 @@ export async function applyPaymentToInvoice(params: {
     return { success: true, invoiceId: invoice.id, invoiceNumber: invoice.invoiceNumber };
 }
 
-/**
- * Applies a payment to a SPECIFIC invoice ID.
- */
-export async function applyToSpecificInvoice(params: {
-    invoiceId: string;
-    amount: number;
-    receipt: string;
-    phone: string;
-    recordedBy?: string;
-}): Promise<{ success: boolean; invoiceNumber?: string }> {
-    const { invoiceId, amount, receipt, phone, recordedBy } = params;
-
-    const invoice = await prisma.feeInvoice.findUnique({
-        where: { id: invoiceId },
-        include: { learner: true }
-    });
-
-    if (!invoice) return { success: false };
-
-    let updatedInvoice: any;
-
-    try {
-        await prisma.$transaction(async (tx) => {
-            // Create payment record
-            await tx.feePayment.create({
-                data: {
-                    invoiceId: invoice.id,
-                    amount,
-                    paymentMethod: 'MPESA',
-                    receiptNumber: `MPESA-${receipt}`,
-                    referenceNumber: receipt,
-                    notes: `M-Pesa payment via ${phone}`,
-                    recordedBy: recordedBy || ''
-                }
-            });
-
-            // FIX Bug 4: tuition-first allocation including transport fields
-            await applyAmountToInvoiceFields(tx, invoice.id, amount);
-
-            // FIX Bug 2: correct 4-branch status
-            const fresh = await tx.feeInvoice.findUnique({ where: { id: invoice.id } });
-            if (fresh) {
-                const newStatus = resolveInvoiceStatus(fresh);
-                updatedInvoice = await tx.feeInvoice.update({
-                    where: { id: invoice.id },
-                    data: { status: newStatus }
-                });
-            }
-        });
-    } catch (err: any) {
-        if (err?.code === 'P2002') {
-            console.warn(`[PaymentResolver] Duplicate receipt ${receipt} on invoice ${invoiceId} — already recorded.`);
-            return { success: true, invoiceNumber: invoice.invoiceNumber };
-        }
-        throw err;
-    }
-
-    const finalInv = updatedInvoice ?? await prisma.feeInvoice.findUnique({ where: { id: invoice.id } });
-
-    // SMS Receipt
-    try {
-        const school = await prisma.school.findFirst();
-        const msg = `Payment of KES ${amount.toLocaleString()} received for ${invoice.learner.firstName}. Receipt: ${receipt}. Balance: KES ${Math.max(0, Number(finalInv?.balance || 0)).toLocaleString()}. Thank you, ${school?.name || PRODUCT_DISPLAY_NAME}.`;
-        await messageService.createAndDispatchMessage({
-            senderId: 'system',
-            senderType: 'ADMIN',
-            recipientType: 'INDIVIDUAL',
-            recipients: [{ recipientPhone: phone }],
-            body: msg,
-            messageType: 'SMS'
-        });
-    } catch (e) {
-        console.error('[PaymentResolver] Direct SMS error:', e);
-    }
-
-    return { success: true, invoiceNumber: invoice.invoiceNumber };
-}
-
 // ─── Park unmatched ─────────────────────────────────────────────────────────
 export async function parkAsUnmatched(params: {
     phone: string;
@@ -289,72 +232,16 @@ export async function parkAsUnmatched(params: {
     note?: string;
 }): Promise<void> {
     const { phone, amount, receipt, rawPayload, note } = params;
-    try {
-        await prisma.unmatchedPayment.upsert({
-            where: { receiptNo: receipt },
-            update: {},   // Already parked — do not overwrite
-            create: {
-                phone,
-                amount,
-                receiptNo: receipt,
-                rawPayload,
-                note: note || null
-            }
-        });
-        console.log(`[PaymentResolver] Parked unmatched payment: ${receipt} from ${phone}`);
-    } catch (err) {
-        console.error('[PaymentResolver] Failed to park unmatched payment:', err);
-    }
-}
-
-// ─── Main resolver ──────────────────────────────────────────────────────────
-/**
- * Main entry point: given phone + amount + receipt from a Buy Goods Till webhook,
- * attempt to auto-match and apply; otherwise park as unmatched.
- */
-export async function resolveOrganicPayment(params: {
-    rawPhone: string;
-    amount: number;
-    receipt: string;
-    rawPayload: object;
-}): Promise<{ outcome: 'applied' | 'ambiguous' | 'unmatched'; detail?: string }> {
-    const { rawPhone, amount, receipt, rawPayload } = params;
-    const phone = normalizePhone(rawPhone);
-
-    console.log(`[PaymentResolver] Resolving organic payment: phone=${phone}, amount=${amount}, receipt=${receipt}`);
-
-    const matchedIds = await findLearnersByPhone(phone);
-
-    if (matchedIds.length === 0) {
-        await parkAsUnmatched({ phone, amount, receipt, rawPayload, note: 'No matching phone number found in system' });
-        return { outcome: 'unmatched', detail: 'No learner matched' };
-    }
-
-    if (matchedIds.length > 1) {
-        // Multiple children — park for admin to resolve manually
-        await parkAsUnmatched({
-            phone, amount, receipt, rawPayload,
-            note: `Ambiguous: ${matchedIds.length} learners share this phone number`
-        });
-        return { outcome: 'ambiguous', detail: `${matchedIds.length} potential learners` };
-    }
-
-    // Exactly one learner matched
-    const result = await applyPaymentToInvoice({
-        learnerId: matchedIds[0],
-        amount,
-        receipt,
-        phone
+    await prisma.unmatchedPayment.upsert({
+        where: { receiptNo: receipt },
+        update: {},   // Already parked — do not overwrite
+        create: {
+            phone,
+            amount,
+            receiptNo: receipt,
+            rawPayload,
+            note: note || null
+        }
     });
-
-    if (!result.success) {
-        // Matched learner but no outstanding invoice
-        await parkAsUnmatched({
-            phone, amount, receipt, rawPayload,
-            note: 'Matched learner but no outstanding invoice found'
-        });
-        return { outcome: 'unmatched', detail: 'No outstanding invoice' };
-    }
-
-    return { outcome: 'applied', detail: `Applied to invoice ${result.invoiceNumber}` };
+    console.log(`[PaymentResolver] Parked unmatched payment: ${receipt} from ${phone}`);
 }

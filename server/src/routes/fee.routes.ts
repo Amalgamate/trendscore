@@ -399,7 +399,7 @@ router.post(
   asyncHandler(feeController.markInvoicePaid.bind(feeController))
 );
 
-// Approve a mark-paid request created by an accountant.
+// Record admin review of an accountant mark-paid entry (payment is already posted).
 router.post(
   '/invoices/:id/mark-paid/approve',
   requireRole(['ADMIN', 'SUPER_ADMIN']),

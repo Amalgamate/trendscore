@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { mpesaService } from '../services/mpesa.service';
 import prisma from '../config/database';
 import messageService from '../services/message.service';
-import { applyToSpecificInvoice, applyAmountToInvoiceFields, resolveInvoiceStatus } from '../services/payment-resolver.service';
+import { applyAmountToInvoiceFields, resolveInvoiceStatus } from '../services/payment-resolver.service';
 import { admissionMatchService } from '../services/admission-match.service';
 import { PRODUCT_DISPLAY_NAME } from '../config/productIdentity';
 import { LMSMarketplaceService } from '../services/lms-marketplace.service';
@@ -26,14 +26,18 @@ export const initiatePayment = async (req: AuthRequest, res: Response) => {
     // prompted to pay via a channel the school has turned off.
     try {
         const commConfig = await prisma.communicationConfig.findFirst();
-        if (commConfig && !commConfig.mpesaEnabled) {
+        if (!commConfig || !commConfig.mpesaEnabled) {
             return res.status(403).json({
                 success: false,
                 message: 'M-Pesa collections are currently disabled. Please contact the school office to make a payment.'
             });
         }
     } catch (configErr: any) {
-        logger.warn('[MpesaInitiate] Could not check mpesaEnabled setting — proceeding:', configErr?.message);
+        logger.error('[MpesaInitiate] Could not verify school M-Pesa configuration:', configErr?.message);
+        return res.status(503).json({
+            success: false,
+            message: 'We could not verify the school payment settings. Please try again shortly.'
+        });
     }
 
     try {
@@ -46,6 +50,13 @@ export const initiatePayment = async (req: AuthRequest, res: Response) => {
         }
         if (invoice.status === 'CANCELLED' || invoice.status === 'PAID') {
             return res.status(400).json({ success: false, message: 'This invoice does not have a payment due.' });
+        }
+        const outstanding = Math.max(0, Number(invoice.balance || 0));
+        if (parsedAmount > outstanding + 0.01) {
+            return res.status(400).json({
+                success: false,
+                message: `Payment cannot exceed the outstanding invoice balance of KES ${outstanding.toLocaleString()}.`
+            });
         }
         if (studentId && String(studentId) !== invoice.learnerId) {
             return res.status(400).json({ success: false, message: 'The learner and invoice do not match. Please choose the invoice again.' });
@@ -83,7 +94,6 @@ export const initiatePayment = async (req: AuthRequest, res: Response) => {
  */
 export const queryStatus = async (req: AuthRequest, res: Response) => {
     const { checkoutRequestId, invoiceId } = req.params;
-    const userId = req.user?.userId;
 
     try {
         const existing = await prisma.mpesaTransaction.findUnique({ where: { checkoutRequestId } });
@@ -99,50 +109,25 @@ export const queryStatus = async (req: AuthRequest, res: Response) => {
         }
         await assertCanAccessInvoicePayment(req, invoice);
 
-        const result = await mpesaService.queryStatus(checkoutRequestId);
-        const { state, amount, receipt, phone } = result;
-
-        // Daraja's status query confirms the outcome only; it returns no amount or
-        // receipt. The payment is recorded when the callback arrives, so never
-        // apply a payment from this result (it would create a KES 0 record).
-        if (state === 'COMPLETE' && (!receipt || !Number(amount))) {
-            return res.json({
-                success: true,
-                status: 'COMPLETE',
-                message: 'M-Pesa confirmed the request. We are waiting for the payment receipt to update the school account.'
-            });
+        if (existing.status === 'SUCCESS') {
+            return res.json({ success: true, status: 'COMPLETE', message: 'Payment received and added to the fee account.' });
+        }
+        if (existing.status === 'FAILED' || existing.status === 'CANCELLED') {
+            return res.json({ success: true, status: 'FAILED', message: 'The M-Pesa request was not completed. You can try again or choose another payment method.' });
         }
 
+        const result = await mpesaService.queryStatus(checkoutRequestId);
+        const { state } = result;
+        // Daraja's status query does not include the receipt details required
+        // for a fee payment. Only the signed callback may post the payment.
+        // Do not show success until that callback has committed the fee and
+        // ledger entries.
         if (state === 'COMPLETE') {
-            if (existing.status === 'SUCCESS') {
-                return res.json({ success: true, status: 'COMPLETE', message: 'Payment already recorded' });
-            }
-
-            if (Math.abs(Number(amount) - Number(existing.amount)) > 0.01) {
-                logger.error(`[MpesaStatus] Provider amount mismatch for invoice ${invoiceId}`);
-                return res.status(409).json({ success: false, message: 'The confirmed amount does not match this payment request. The school office has been asked to review it.' });
-            }
-
-            // Apply to specific fee invoice
-            const systemUser = await prisma.user.findFirst({ where: { role: 'SUPER_ADMIN' } });
-            const application = await applyToSpecificInvoice({
-                invoiceId,
-                amount: Number(amount || 0),
-                receipt: receipt || '',
-                phone: phone || '',
-                recordedBy: systemUser?.id || userId || ''
+            return res.json({
+                success: true,
+                status: 'PROCESSING',
+                message: 'M-Pesa confirmed the request. We are waiting for the receipt to finish updating the school account.'
             });
-
-            if (!application.success) {
-                return res.status(409).json({ success: false, status: 'REVIEW_REQUIRED', message: 'M-Pesa confirmed the payment, but we could not apply it automatically. The school finance team should review it.' });
-            }
-
-            await prisma.mpesaTransaction.update({
-                where: { id: existing.id },
-                data: { status: 'SUCCESS', resultCode: 0, resultDesc: 'Complete', transactionId: receipt },
-            });
-
-            return res.json({ success: true, status: 'COMPLETE', message: 'Payment received and added to the fee account.' });
         }
 
         return res.json({
@@ -247,20 +232,9 @@ export const handleCallback = async (req: Request, res: Response) => {
             }
 
             if (isSuccess) {
-                await prisma.mpesaTransaction.update({
-                    where: { id: transaction.id },
-                    data: {
-                        status: 'SUCCESS',
-                        resultCode,
-                        resultDesc,
-                        transactionId: receipt || null,
-                        phoneNumber: phone || null,
-                        metadata: { amount, phone, receipt }
-                    }
-                });
-
                 // If tied to a specific invoice, apply directly
                 if (transaction.invoiceId) {
+                    await accountingService.ensureDefaultAccountingSetup();
                     const systemUser = await prisma.user.findFirst({ where: { role: 'SUPER_ADMIN' } });
 
                     let updatedInvoice: any;
@@ -292,7 +266,15 @@ export const handleCallback = async (req: Request, res: Response) => {
                                     data: { status: newStatus }
                                 });
                             }
-                        });
+
+                            await accountingService.postFeePaymentToLedger(createdPayment, 'MPESA', tx);
+                            await overpaymentCreditService.detectAndPostOverpayment(
+                                transaction.invoiceId!,
+                                createdPayment.id,
+                                tx,
+                            );
+                            await accountingService.postMpesaCharge(amount, `MPESA-${receipt}`, tx);
+                        }, { isolationLevel: 'Serializable' });
                     } catch (err: any) {
                         if (err?.code === 'P2002') {
                             logger.warn(`[MpesaCallback] Duplicate receipt ${receipt} — already recorded.`);
@@ -315,7 +297,10 @@ export const handleCallback = async (req: Request, res: Response) => {
                     const recordedPayment = createdPaymentId
                         ? await prisma.feePayment.findUnique({ where: { id: createdPaymentId } })
                         : await prisma.feePayment.findUnique({ where: { receiptNumber: `MPESA-${receipt}` } });
-                    if (recordedPayment && !recordedPayment.archived) {
+                    if (!recordedPayment || recordedPayment.invoiceId !== transaction.invoiceId) {
+                        throw new Error(`M-Pesa receipt ${receipt} is already linked to a different invoice.`);
+                    }
+                    if (isDuplicate && recordedPayment && !recordedPayment.archived) {
                         await accountingService.postFeePaymentToLedger(recordedPayment, 'MPESA');
                         await overpaymentCreditService.detectAndPostOverpayment(
                             transaction.invoiceId!,
@@ -357,6 +342,20 @@ export const handleCallback = async (req: Request, res: Response) => {
                     }
                 }
 
+                // Do not expose a completed state until the fee payment and
+                // accounting legs have both been persisted successfully.
+                await prisma.mpesaTransaction.update({
+                    where: { id: transaction.id },
+                    data: {
+                        status: 'SUCCESS',
+                        resultCode,
+                        resultDesc,
+                        transactionId: receipt || null,
+                        phoneNumber: phone || null,
+                        metadata: { amount, phone, receipt }
+                    }
+                });
+
                 logger.info(`[MpesaCallback] STK success: ${transaction.id} | receipt: ${receipt}`);
             } else {
                 await prisma.mpesaTransaction.update({
@@ -384,9 +383,8 @@ export const handleCallback = async (req: Request, res: Response) => {
         // ── 4. No matching STK transaction ─────────────────────────────────────
         // Never apply an uninitiated STK callback. Organic Till/Paybill payments
         // are handled separately by the verified Daraja C2B confirmation route.
-        logger.warn(`[MpesaCallback] No STK transaction found for ${checkoutRequestId}; ignored`);
-
-        return res.json({ success: true });
+        logger.error(`[MpesaCallback] No STK transaction found for ${checkoutRequestId}; requesting provider retry`);
+        return res.status(500).json({ success: false, message: 'Payment request is not yet available for callback processing.' });
 
     } catch (error: any) {
         logger.error('[MpesaCallback] Error:', error.message);
@@ -449,13 +447,13 @@ export const resolveUnmatchedPayment = async (req: Request, res: Response) => {
         }
 
         const systemUser = await prisma.user.findFirst({ where: { role: 'SUPER_ADMIN' } });
-
         // Use the original payment date, not the resolution date.
         // Previously the FeePayment defaulted to new Date(), which meant a
         // payment received on the 1st and resolved on the 15th appeared in
         // reports as if it arrived on the 15th — distorting monthly collection
         // figures and bank reconciliation.
         const originalPaymentDate = unmatched.transactionDate || unmatched.createdAt;
+        await accountingService.ensureDefaultAccountingSetup();
 
         let updated: any;
         let createdPaymentId: string | null = null;
@@ -665,7 +663,7 @@ export const handleC2bConfirmation = async (req: Request, res: Response) => {
             amount,
             transactionType,
         });
-        return res.json({ success: true });
+        return res.status(500).json({ success: false, message: 'The payment confirmation payload was incomplete.' });
     }
 
     logger.info(`[C2BConfirm] Receipt: ${receipt} | Amount: ${amount} | Phone: ${phone} | BillRef: ${billRefNumber}`);
@@ -677,14 +675,14 @@ export const handleC2bConfirmation = async (req: Request, res: Response) => {
             // Daraja format: 20260110143000
             const t = transTime;
             if (t.length === 14) {
-                transactionDate = new Date(
+                transactionDate = new Date(Date.UTC(
                     Number(t.slice(0, 4)),
                     Number(t.slice(4, 6)) - 1,
                     Number(t.slice(6, 8)),
                     Number(t.slice(8, 10)),
                     Number(t.slice(10, 12)),
                     Number(t.slice(12, 14))
-                );
+                ));
             }
         }
 
@@ -699,12 +697,13 @@ export const handleC2bConfirmation = async (req: Request, res: Response) => {
 
         logger.info(`[C2BConfirm] Result: ${result.outcome} — ${result.detail || ''}`);
     } catch (error: any) {
-        logger.error('[C2BConfirm] Error:', error.message);
-        // Still return 200 to Daraja — failing to respond causes retries
+        logger.error('[C2BConfirm] Processing failed; requesting Daraja retry:', error.message);
+        // Matching, unmatched-payment persistence, invoice application and
+        // ledger posting must complete before acknowledging this callback.
+        return res.status(500).json({ success: false, message: 'Payment confirmation could not be recorded.' });
     }
 
-    // Always respond 200 to Daraja
-    res.json({ success: true });
+    return res.json({ success: true });
 };
 
 // ─── C2B Validation Handler ────────────────────────────────────────────────

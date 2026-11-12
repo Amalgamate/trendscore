@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useEffect } from 'react';
-import { DollarSign, Save, Loader, CreditCard, Shield, Globe, Pencil, X } from 'lucide-react';
+import { DollarSign, Save, Loader, CreditCard, Shield, Globe, Pencil, X, Wifi, CheckCircle, XCircle } from 'lucide-react';
 import { communicationAPI } from '../../../../services/api';
 import { useNotifications } from '../../hooks/useNotifications';
 import { PRODUCT_DISPLAY_NAME } from '../../../../config/productIdentity';
@@ -12,6 +12,8 @@ const PaymentSettings = () => {
     const [loading, setLoading] = useState(false);
     const [onboardingReady, setOnboardingReady] = useState(false);
     const [onboardingChecklist, setOnboardingChecklist] = useState({});
+    const [connectionTests, setConnectionTests] = useState({ sandbox: null, live: null });
+    const [testingEnvironment, setTestingEnvironment] = useState(null);
     const [editingFields, setEditingFields] = useState({ shortcode: true, publicKey: true, secretKey: true, passkey: true });
     const { showSuccess, showError } = useNotifications();
 
@@ -27,11 +29,7 @@ const PaymentSettings = () => {
         hasPasskey: false
     });
 
-    useEffect(() => {
-        loadConfig();
-    }, []);
-
-    const loadConfig = async () => {
+    const loadConfig = useCallback(async () => {
         try {
             setLoading(true);
             const response = await communicationAPI.getConfig();
@@ -58,7 +56,11 @@ const PaymentSettings = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [showError]);
+
+    useEffect(() => {
+        loadConfig();
+    }, [loadConfig]);
 
     const handleReadinessChange = useCallback(({ ready }) => setOnboardingReady(ready), []);
     const credentialReadiness = {
@@ -70,8 +72,12 @@ const PaymentSettings = () => {
             (mpesaSettings.passkey || mpesaSettings.hasPasskey)
         )
     };
+    const canEnableGateway = mpesaSettings.sandbox
+        ? credentialReadiness.credentials && onboardingChecklist.callback === true
+        : onboardingReady;
 
     const setFieldEditing = (field, editing) => {
+        setConnectionTests({ sandbox: null, live: null });
         if (editing && field !== 'shortcode') {
             setMpesaSettings((current) => ({ ...current, [field]: '' }));
         }
@@ -88,7 +94,10 @@ const PaymentSettings = () => {
                     <input
                         type={secret ? 'password' : 'text'}
                         value={editing ? mpesaSettings[field] : (field === 'shortcode' ? mpesaSettings.shortcode : '')}
-                        onChange={(e) => setMpesaSettings((current) => ({ ...current, [field]: e.target.value }))}
+                        onChange={(e) => {
+                            setConnectionTests({ sandbox: null, live: null });
+                            setMpesaSettings((current) => ({ ...current, [field]: e.target.value }));
+                        }}
                         readOnly={!editing}
                         autoComplete="new-password"
                         className={`min-w-0 flex-1 px-4 py-3 border rounded-xl outline-none transition-all ${editing ? 'bg-white border-gray-300 focus:ring-2 focus:ring-green-500' : 'bg-gray-50 border-gray-200 text-gray-600'}`}
@@ -113,12 +122,13 @@ const PaymentSettings = () => {
     };
 
     const handleSave = async () => {
-        if (mpesaSettings.enabled && !onboardingReady) {
+        if (mpesaSettings.enabled && !canEnableGateway) {
             showError('Complete all M-PESA activation prerequisites before enabling collections.');
             return;
         }
         try {
             setLoading(true);
+            setConnectionTests({ sandbox: null, live: null });
 
             const payload = {
                 mpesa: {
@@ -147,6 +157,51 @@ const PaymentSettings = () => {
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleTestConnection = async (sandbox) => {
+        const environment = sandbox ? 'sandbox' : 'live';
+        setTestingEnvironment(environment);
+        setConnectionTests((current) => ({ ...current, [environment]: null }));
+        try {
+            const response = await communicationAPI.testMpesaConnection(sandbox);
+            const result = response;
+            const status = { success: result.success === true, message: result.message || 'Connection check completed.' };
+            setConnectionTests((current) => ({ ...current, [environment]: status }));
+            if (status.success) showSuccess(status.message);
+            else showError(status.message);
+        } catch (error) {
+            const message = error.message || `Could not authenticate with Daraja ${sandbox ? 'Sandbox' : 'Live'}.`;
+            setConnectionTests((current) => ({ ...current, [environment]: { success: false, message } }));
+            showError(message);
+        } finally {
+            setTestingEnvironment(null);
+        }
+    };
+
+    const renderConnectionTest = (sandbox) => {
+        const environment = sandbox ? 'sandbox' : 'live';
+        const result = connectionTests[environment];
+        const isTesting = testingEnvironment === environment;
+        return (
+            <div className="flex flex-col items-start gap-2">
+                <button
+                    type="button"
+                    onClick={() => handleTestConnection(sandbox)}
+                    disabled={loading || !!testingEnvironment}
+                    className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                    {isTesting ? <Loader size={16} className="animate-spin" /> : <Wifi size={16} />}
+                    {isTesting ? 'Checking…' : `Test ${sandbox ? 'Sandbox' : 'Live'} connection`}
+                </button>
+                {result && (
+                    <p className={`flex items-start gap-1.5 text-xs ${result.success ? 'text-emerald-700' : 'text-red-700'}`} role="status">
+                        {result.success ? <CheckCircle size={15} className="mt-0.5 shrink-0" /> : <XCircle size={15} className="mt-0.5 shrink-0" />}
+                        <span>{result.message}</span>
+                    </p>
+                )}
+            </div>
+        );
     };
 
     return (
@@ -232,11 +287,25 @@ const PaymentSettings = () => {
                                             type="checkbox"
                                             className="sr-only peer"
                                             checked={mpesaSettings.sandbox}
-                                            onChange={(e) => setMpesaSettings({ ...mpesaSettings, sandbox: e.target.checked })}
+                                            onChange={(e) => {
+                                                setConnectionTests({ sandbox: null, live: null });
+                                                setMpesaSettings({ ...mpesaSettings, sandbox: e.target.checked });
+                                            }}
                                         />
                                         <div className="w-12 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
                                     </label>
                                 </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 gap-4 rounded-xl border border-blue-100 bg-blue-50/60 p-4 md:grid-cols-2">
+                                {renderConnectionTest(true)}
+                                {renderConnectionTest(false)}
+                                <p className="text-xs leading-relaxed text-gray-600 md:col-span-2">
+                                    These checks use the credentials currently saved for this school. Save credential changes before testing them.
+                                </p>
+                                <p className="text-xs leading-relaxed text-gray-600 md:col-span-2">
+                                    Connection test checks Daraja authentication only. It does not send a payment request or confirm that callback URLs are reachable; use a sandbox or live transaction to verify the full payment flow.
+                                </p>
                             </div>
 
                             <div className="space-y-6 border-t pt-6">
@@ -256,8 +325,10 @@ const PaymentSettings = () => {
                                                 className="sr-only peer"
                                                 checked={mpesaSettings.enabled}
                                                 onChange={(e) => {
-                                                    if (e.target.checked && !onboardingReady) {
-                                                        showError('Complete the M-PESA activation checklist first.');
+                                                    if (e.target.checked && !canEnableGateway) {
+                                                        showError(mpesaSettings.sandbox
+                                                            ? 'Enter the sandbox credentials and confirm the callback is configured first.'
+                                                            : 'Complete all M-PESA production prerequisites first.');
                                                         return;
                                                     }
                                                     setMpesaSettings({ ...mpesaSettings, enabled: e.target.checked });

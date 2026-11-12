@@ -7,6 +7,7 @@ import prisma from '../../config/database';
 import multer from 'multer';
 import { accountingService } from '../../services/accounting.service';
 import { buildLearnerMapFromAdmNos } from '../../services/admissionNumber.service';
+import { overpaymentCreditService } from '../../services/overpayment-credit.service';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const ExcelJS: typeof import('exceljs') = require('exceljs');
@@ -377,6 +378,7 @@ router.post(
       // Expected columns: Adm No, Date, Amount, Reference, Method
       const { academicYear, term } = req.body;
       const data = await parseWorkbook(req.file.buffer);
+      await accountingService.ensureDefaultAccountingSetup();
 
       // Set headers for streaming NDJSON
       res.setHeader('Content-Type', 'application/x-ndjson');
@@ -447,7 +449,7 @@ router.post(
           if (modeRaw) {
              const m = String(modeRaw).toUpperCase().trim();
              if (m.includes('MPESA') || m.includes('M-PESA') || m.includes('M PESA')) parsedPaymentMethod = 'MPESA';
-             else if (m.includes('BANK')) parsedPaymentMethod = 'BANK';
+             else if (m.includes('BANK')) parsedPaymentMethod = 'BANK_TRANSFER';
              else if (m.includes('CHEQUE')) parsedPaymentMethod = 'CHEQUE';
              else if (m.includes('CARD') || m.includes('DEBIT') || m.includes('CREDIT')) parsedPaymentMethod = 'CARD';
              else parsedPaymentMethod = 'OTHER';
@@ -484,31 +486,39 @@ router.post(
           const randStr = Math.random().toString(36).substring(2, 6).toUpperCase();
           const receiptNumber = `RCP-${Date.now().toString().slice(-4)}${randStr}`;
 
-          // Calculate explicit vs intelligent allocation
-          const currentTuitionBal = Number(invoice.balance || 0);
-          const currentTransportBal = Number(invoice.transportBalance || 0);
-          
-          let tuitionChunk = 0;
-          let transportChunk = 0;
-
           const passedAllocation = String(allocationRaw || '').toUpperCase().trim();
+          const paymentDate = dateRaw ? new Date(dateRaw) : new Date();
+          if (Number.isNaN(paymentDate.getTime())) throw new Error('Invalid payment date');
 
-          if (passedAllocation === 'TRANSPORT') {
-            transportChunk = amount;
-          } else if (passedAllocation === 'TUITION') {
-            tuitionChunk = amount;
-          } else {
-             // AUTO
-             if (amount <= currentTuitionBal) {
-                 tuitionChunk = amount;
-             } else {
-                 tuitionChunk = currentTuitionBal;
-                 transportChunk = amount - currentTuitionBal;
-             }
-          }
-
-          // Create payment
+          // Record the payment, allocation, invoice update and ledger entry as
+          // one unit. A failed ledger post leaves the row retryable, not half
+          // imported into the learner account.
           const payment = await prisma.$transaction(async (tx) => {
+            const currentInvoice = await tx.feeInvoice.findUnique({ where: { id: invoice.id } });
+            if (!currentInvoice || currentInvoice.archived || ['CANCELLED', 'WAIVED'].includes(currentInvoice.status)) {
+              throw new Error('Invoice is no longer available for payment');
+            }
+            const totalBalance = Math.max(0, Number(currentInvoice.balance || 0));
+            const currentTransportBal = Math.max(0, Number(currentInvoice.transportBalance || 0));
+            const currentTuitionBal = Math.max(0, totalBalance - currentTransportBal);
+            if (amount > totalBalance + 0.01) {
+              throw new Error(`Payment exceeds the outstanding balance of KES ${totalBalance.toLocaleString()}`);
+            }
+
+            let tuitionChunk = 0;
+            let transportChunk = 0;
+            if (passedAllocation === 'TRANSPORT') {
+              if (amount > currentTransportBal + 0.01) throw new Error('Payment exceeds the outstanding transport balance');
+              transportChunk = amount;
+            } else if (passedAllocation === 'TUITION') {
+              if (amount > currentTuitionBal + 0.01) throw new Error('Payment exceeds the outstanding tuition balance');
+              tuitionChunk = amount;
+            } else {
+              tuitionChunk = Math.min(amount, currentTuitionBal);
+              transportChunk = amount - tuitionChunk;
+              if (transportChunk > currentTransportBal + 0.01) throw new Error('Payment exceeds the outstanding invoice balance');
+            }
+
             const createdPayment = await tx.feePayment.create({
               data: {
                 receiptNumber,
@@ -517,7 +527,7 @@ router.post(
                 transportAmount: transportChunk,
                 paymentMethod: parsedPaymentMethod,
                 referenceNumber: refRaw ? String(refRaw) : undefined,
-                paymentDate: dateRaw ? new Date(dateRaw) : new Date(),
+                paymentDate,
                 notes: 'Bulk imported payment',
                 recordedBy: req.user!.userId
               }
@@ -526,33 +536,32 @@ router.post(
             await tx.feeInvoice.update({
               where: { id: invoice.id },
               data: {
-                paidAmount: { increment: tuitionChunk },
-                balance: { decrement: tuitionChunk },
+                paidAmount: { increment: amount },
+                balance: { decrement: amount },
                 transportPaid: { increment: transportChunk },
                 transportBalance: { decrement: transportChunk }
               }
             });
 
-            // Need to pull fresh balance to determine enum Status
             const freshInvoice = await tx.feeInvoice.findUnique({ where: { id: invoice.id } });
             if (freshInvoice) {
+               const status = Number(freshInvoice.paidAmount) > Number(freshInvoice.totalAmount)
+                 ? 'OVERPAID'
+                 : Number(freshInvoice.balance) <= 0 && Number(freshInvoice.sponsorBalance || 0) <= 0
+                   ? 'PAID'
+                   : Number(freshInvoice.paidAmount) > 0 || Number(freshInvoice.sponsorPaidAmount || 0) > 0
+                     ? 'PARTIAL'
+                     : 'PENDING';
                await tx.feeInvoice.update({
                   where: { id: invoice.id },
-                  data: {
-                     status: Number(freshInvoice.balance) <= 0 ? 'PAID' : 'PARTIAL'
-                  }
+                  data: { status }
                });
             }
 
+            await accountingService.postFeePaymentToLedger(createdPayment, parsedPaymentMethod, tx);
+            await overpaymentCreditService.detectAndPostOverpayment(invoice.id, createdPayment.id, tx);
             return createdPayment;
-          });
-
-          // Sync with Ledger
-          try {
-             await accountingService.postFeePaymentToLedger(payment, 'OTHER');
-          } catch (e) {
-             console.error(`Ledger sync failed for payment ${payment.id}`, e);
-          }
+          }, { isolationLevel: 'Serializable' });
 
           results.processed++;
           

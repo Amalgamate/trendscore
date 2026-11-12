@@ -1,6 +1,17 @@
 import { fetchWithAuth } from './core';
 
 export const mpesaAPI = {
+    /** Start an invoice-bound STK Push collection. */
+    initiatePayment: (data) =>
+        fetchWithAuth('/mpesa/initiate', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        }),
+
+    /** Check provider state; only the callback-confirmed state is final. */
+    checkPaymentStatus: (checkoutRequestId, invoiceId) =>
+        fetchWithAuth(`/mpesa/status/${encodeURIComponent(checkoutRequestId)}/${encodeURIComponent(invoiceId)}`),
+
     // ── Unmatched Payments (Buy Goods Till queue) ─────────────────────────
 
     /** Count of PENDING unmatched payments — for badge display */

@@ -233,30 +233,79 @@ export class AccountingService {
      * Cr: Transport Revenue (4100) for transport portion
      * Cr: Tuition Revenue (4000) for tuition portion
      */
-    async postFeeInvoiceToLedger(invoice: any) {
+    async postFeeInvoiceToLedger(invoice: any, client: any = prisma): Promise<any> {
+        if (client === prisma) {
+            await this.ensureDefaultAccountingSetup();
+            this.clearCache();
+            return prisma.$transaction(
+                (tx) => this.postFeeInvoiceToLedger(invoice, tx),
+                { isolationLevel: 'Serializable' },
+            );
+        }
+
         const totalAmount = Number(invoice.totalAmount || 0) + Number(invoice.sponsorAmount || 0);
         const invoiceNumber = invoice.invoiceNumber;
         const transportAmount = Math.min(Number(invoice.transportBilled || 0), totalAmount);
         const tuitionAmount = Math.max(0, totalAmount - transportAmount);
 
-        let arAccount = await this.getAccountByCode('1100');
-        let revenueAccount = await this.getAccountByCode('4000');
-        let transportAccount = await this.getAccountByCode('4100');
-        let salesJournal = await this.getJournalByCode('INV');
+        let arAccount = await this.getAccountByCode('1100', client);
+        let revenueAccount = await this.getAccountByCode('4000', client);
+        let transportAccount = await this.getAccountByCode('4100', client);
+        let salesJournal = await this.getJournalByCode('INV', client);
 
         if (!arAccount || !revenueAccount || !transportAccount || !salesJournal) {
-            console.warn(`[Accounting] Missing setup for fee invoice — initializing defaults.`);
-            await this.ensureDefaultAccountingSetup();
-            this.clearCache();
-            arAccount = await this.getAccountByCode('1100');
-            revenueAccount = await this.getAccountByCode('4000');
-            transportAccount = await this.getAccountByCode('4100');
-            salesJournal = await this.getJournalByCode('INV');
+            throw new Error(`Required accounting setup is missing for fee invoice ${invoiceNumber}.`);
         }
 
-        if (!arAccount || !revenueAccount || !salesJournal) {
-            console.warn(`[Accounting] Still missing required accounts/journal. Skipping auto-post.`);
-            return;
+        const existingEntry = await client.journalEntry.findFirst({
+            where: { journalId: salesJournal.id, reference: invoiceNumber },
+            include: { items: true },
+        });
+        if (existingEntry?.status === 'DRAFT') return this.postJournalEntry(existingEntry.id, client);
+
+        const postedInvoiceEntries = await client.journalEntry.findMany({
+            where: {
+                journalId: salesJournal.id,
+                status: 'POSTED',
+                OR: [
+                    { reference: invoiceNumber },
+                    { reference: { startsWith: `${invoiceNumber}-REV-` } },
+                ],
+            },
+            include: { items: { include: { account: { select: { code: true } } } } },
+        });
+        if (postedInvoiceEntries.length > 0) {
+            let previousReceivable = 0;
+            let previousTransport = 0;
+            let latestRevision = 0;
+            for (const postedEntry of postedInvoiceEntries) {
+                const revisionMatch = String(postedEntry.reference || '').match(/-REV-(\d+)$/);
+                if (revisionMatch) latestRevision = Math.max(latestRevision, Number(revisionMatch[1]));
+                for (const item of postedEntry.items) {
+                    const debit = Number(item.debit || 0);
+                    const credit = Number(item.credit || 0);
+                    if (item.account.code === '1100') previousReceivable += debit - credit;
+                    if (item.account.code === '4100') previousTransport += credit - debit;
+                }
+            }
+
+            const nextReceivable = Number(totalAmount.toFixed(2));
+            const nextTransport = Number(transportAmount.toFixed(2));
+            if (Math.abs(previousReceivable - nextReceivable) > 0.01 || Math.abs(previousTransport - nextTransport) > 0.01) {
+                return this.postFeeInvoiceRevisionToLedger(
+                    invoiceNumber,
+                    latestRevision + 1,
+                    nextReceivable - previousReceivable,
+                    client,
+                    {
+                        oldTotalAmount: previousReceivable,
+                        newTotalAmount: nextReceivable,
+                        oldTransportAmount: previousTransport,
+                        newTransportAmount: nextTransport,
+                    },
+                );
+            }
+            return postedInvoiceEntries[0];
         }
 
         const entryDate = invoice.invoiceDate ? new Date(invoice.invoiceDate) : new Date();
@@ -294,9 +343,9 @@ export class AccountingService {
             reference: invoiceNumber,
             date: entryDate,
             items
-        });
+        }, client);
 
-        return this.postJournalEntry(entry.id);
+        return this.postJournalEntry(entry.id, client);
     }
 
     async postFeeInvoiceRevisionToLedger(
@@ -715,69 +764,6 @@ export class AccountingService {
 
             if (!entry) throw new Error('Expense journal entry could not be posted.');
             return expense;
-        });
-    }
-
-    async getBankStatements(accountId?: string) {
-        return prisma.bankStatement.findMany({
-            where: { accountId: accountId || undefined },
-            include: { lines: true },
-            orderBy: { createdAt: 'desc' }
-        });
-    }
-
-    async importBankStatement(data: {
-        accountId: string;
-        startingBalance: number;
-        endingBalance: number;
-        lines: { date: Date; description: string; amount: number; reference?: string }[];
-    }) {
-        return prisma.bankStatement.create({
-            data: {
-                accountId: data.accountId,
-                startingBalance: data.startingBalance,
-                endingBalance: data.endingBalance,
-                lines: {
-                    create: data.lines.map(line => ({
-                        date: line.date,
-                        description: line.description,
-                        amount: line.amount,
-                        reference: line.reference
-                    }))
-                }
-            },
-            include: { lines: true }
-        });
-    }
-
-    async reconcileStatementLine(lineId: string, journalItemId: string) {
-        return prisma.bankStatementLine.update({
-            where: { id: lineId },
-            data: { journalItemId, status: 'RECONCILED' }
-        });
-    }
-
-    async suggestMatches(lineId: string) {
-        const line = await prisma.bankStatementLine.findUnique({ where: { id: lineId } });
-        if (!line) throw new Error('Statement line not found');
-
-        const startDate = new Date(line.date);
-        startDate.setDate(startDate.getDate() - 7);
-        const endDate = new Date(line.date);
-        endDate.setDate(endDate.getDate() + 7);
-
-        const amount = Math.abs(Number(line.amount));
-
-        return prisma.journalItem.findMany({
-            where: {
-                bankStatementLine: { is: null },
-                OR: [{ debit: amount }, { credit: amount }],
-                entry: {
-                    date: { gte: startDate, lte: endDate },
-                    status: 'POSTED'
-                }
-            },
-            include: { entry: true, account: true }
         });
     }
 

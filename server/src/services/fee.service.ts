@@ -182,6 +182,8 @@ export class FeeService {
         }
       });
       if (existingInvoice) {
+        // Repair invoices created before ledger posting was made atomic.
+        await accountingService.postFeeInvoiceToLedger(existingInvoice);
         return { success: true, invoice: existingInvoice, created: false };
       }
 
@@ -226,43 +228,51 @@ export class FeeService {
       dueDate.setDate(dueDate.getDate() + 14);
 
       // 7. Create invoice
-      const newInvoice = await createInvoiceWithSafeNumber(
-        prisma,
-        {
-          learnerId,
-          feeStructureId: feeStructure.id,
-          term,
-          academicYear,
-          dueDate,
-          totalAmount: calculation.totalAmount,
-          paidAmount: 0,
-          balance: calculation.totalAmount,
-          transportBilled: calculation.transportAmount,
-          transportPaid: 0,
-          transportBalance: calculation.transportAmount,
-          grossAmount: calculation.grossAmount,
-          adjustmentAmount: calculation.adjustmentAmount,
-          sponsorAmount: calculation.sponsorAmount,
-          sponsorPaidAmount: 0,
-          sponsorBalance: calculation.sponsorAmount,
-          studentAmount: calculation.studentAmount,
-          carryForwardAmount: calculation.carryForwardAmount,
-          calculationSnapshot: calculation.calculationSnapshot,
-          feeConfigurationId: calculation.feeConfigurationId,
-          status: calculation.totalAmount === 0 && calculation.sponsorAmount === 0 ? 'PAID' : 'PENDING',
-          issuedBy: 'SYSTEM'
-        },
-        { learner: true }
-      );
-
-      // 8. Post to accounting ledger (best-effort)
-      try {
-        await accountingService.postFeeInvoiceToLedger(newInvoice);
-      } catch (ledgerError: any) {
-        console.warn(
-          `[FeeService] Failed to post invoice to ledger: ${ledgerError?.message || ledgerError}`
-        );
+      let newInvoice: any;
+      let invoiceError: any;
+      await accountingService.ensureDefaultAccountingSetup();
+      for (let attempt = 1; attempt <= INVOICE_NUMBER_RETRY_COUNT; attempt++) {
+        try {
+          newInvoice = await prisma.$transaction(async (tx) => {
+            const created = await createInvoiceWithSafeNumber(
+              tx,
+              {
+                learnerId,
+                feeStructureId: feeStructure.id,
+                term,
+                academicYear,
+                dueDate,
+                totalAmount: calculation.totalAmount,
+                paidAmount: 0,
+                balance: calculation.totalAmount,
+                transportBilled: calculation.transportAmount,
+                transportPaid: 0,
+                transportBalance: calculation.transportAmount,
+                grossAmount: calculation.grossAmount,
+                adjustmentAmount: calculation.adjustmentAmount,
+                sponsorAmount: calculation.sponsorAmount,
+                sponsorPaidAmount: 0,
+                sponsorBalance: calculation.sponsorAmount,
+                studentAmount: calculation.studentAmount,
+                carryForwardAmount: calculation.carryForwardAmount,
+                calculationSnapshot: calculation.calculationSnapshot,
+                feeConfigurationId: calculation.feeConfigurationId,
+                status: calculation.totalAmount === 0 && calculation.sponsorAmount === 0 ? 'PAID' : 'PENDING',
+                issuedBy: 'SYSTEM'
+              },
+              { learner: true }
+            );
+            await accountingService.postFeeInvoiceToLedger(created, tx);
+            return created;
+          }, { isolationLevel: 'Serializable' });
+          break;
+        } catch (error: any) {
+          invoiceError = error;
+          if (['P2002', 'P2034'].includes(error?.code) && attempt < INVOICE_NUMBER_RETRY_COUNT) continue;
+          throw error;
+        }
       }
+      if (!newInvoice) throw invoiceError || new Error('Fee invoice could not be created.');
 
       // 9. Notifications (best-effort — never blocks invoice creation)
       if (!SKIP_FEE_NOTIFICATIONS && learner.parent && learner.parent.phone) {

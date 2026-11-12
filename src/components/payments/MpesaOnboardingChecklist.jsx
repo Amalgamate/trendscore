@@ -164,7 +164,7 @@ export default function MpesaOnboardingChecklist({
             <span className="text-xs font-semibold text-emerald-800">{completed}/{allItems.length} ready</span>
           </div>
           <p className="mt-1 text-xs leading-relaxed text-emerald-800">
-            Registration can continue now, but collections should remain disabled until this checklist and a controlled production test are complete.
+            Production collections require the full checklist and a controlled live test. Sandbox testing can be enabled once the sandbox credentials and callback are configured.
           </p>
           <div className="mt-3 h-2 overflow-hidden rounded-full bg-emerald-100">
             <div className="h-full rounded-full bg-emerald-600 transition-all" style={{ width: `${percent}%` }} />

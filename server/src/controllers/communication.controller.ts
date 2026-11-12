@@ -23,6 +23,7 @@ import {
 
 import logger from '../utils/logger';
 import { isMpesaOnboardingComplete } from '../config/mpesa-onboarding';
+import { darajaService } from '../services/daraja.service';
 import { parentAccessService } from '../services/parent-access.service';
 
 /**
@@ -187,7 +188,7 @@ export const getCommunicationConfig = async (req: AuthRequest, res: Response) =>
                 hasApiKey: !!config.mpesaApiKey,
                 hasPasskey: !!config.mpesaPasskey,
                 onboardingChecklist: config.mpesaOnboardingChecklist || {},
-                onboardingReady: isMpesaOnboardingComplete(config.mpesaOnboardingChecklist),
+                onboardingReady: isMpesaOnboardingComplete(config.mpesaOnboardingChecklist, config.mpesaSandbox),
                 onboardingUpdatedAt: config.mpesaOnboardingUpdatedAt,
                 sandbox: config.mpesaSandbox
             },
@@ -272,7 +273,8 @@ export const saveCommunicationConfig = async (req: AuthRequest, res: Response) =
 
     if (mpesa) {
         const onboardingChecklist = mpesa.onboardingChecklist ?? existingConfig?.mpesaOnboardingChecklist ?? {};
-        if (mpesa.enabled === true && !isMpesaOnboardingComplete(onboardingChecklist)) {
+        const sandbox = mpesa.sandbox !== undefined ? mpesa.sandbox : Boolean(existingConfig?.mpesaSandbox);
+        if (mpesa.enabled === true && !isMpesaOnboardingComplete(onboardingChecklist, sandbox)) {
             throw new ApiError(400, 'Complete all M-PESA activation prerequisites before enabling collections.');
         }
         data.mpesaProvider = 'daraja'; // Daraja is the only supported provider
@@ -282,7 +284,7 @@ export const saveCommunicationConfig = async (req: AuthRequest, res: Response) =
         if (mpesaPublicKey) data.mpesaPublicKey = encryptSetting('M-Pesa consumer key', mpesaPublicKey);
         data.mpesaBusinessNo = mpesa.businessNumber || null;
         data.mpesaEnabled = mpesa.enabled !== undefined ? mpesa.enabled : false;
-        data.mpesaSandbox = mpesa.sandbox !== undefined ? mpesa.sandbox : false;
+        data.mpesaSandbox = sandbox;
         data.mpesaOnboardingChecklist = onboardingChecklist;
         data.mpesaOnboardingUpdatedAt = new Date();
         data.mpesaOnboardingUpdatedBy = req.user?.userId || null;
@@ -399,6 +401,17 @@ export const saveCommunicationConfig = async (req: AuthRequest, res: Response) =
         success: true,
         message: 'Configuration saved successfully',
         data: { id: config.id, updatedAt: config.updatedAt, ai: getPublicAISettings(config.emailTemplates) }
+    });
+};
+
+/** Verify credentials against Sandbox or Live using Daraja OAuth only. */
+export const testMpesaConnection = async (req: AuthRequest, res: Response) => {
+    const { sandbox } = req.body as { sandbox: boolean };
+    const result = await darajaService.testSchoolConnection(sandbox);
+    res.status(result.success ? 200 : 422).json({
+        success: result.success,
+        data: { environment: sandbox ? 'SANDBOX' : 'LIVE', authenticated: result.success },
+        message: result.message,
     });
 };
 

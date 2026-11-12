@@ -135,6 +135,47 @@ class DarajaService {
         }
     }
 
+    /** Validate the saved school credentials against the selected Daraja
+     * environment. This only requests an OAuth token; it never initiates a
+     * payment or registers callback URLs.
+     */
+    async testSchoolConnection(sandbox: boolean): Promise<{ success: boolean; message: string }> {
+        const saved = await prisma.communicationConfig.findFirst();
+        if (!saved) return { success: false, message: 'Payment settings have not been saved for this school.' };
+
+        const consumerKey = saved.mpesaPublicKey ? this.decryptStoredCredential(saved.mpesaPublicKey).trim() : '';
+        const consumerSecret = saved.mpesaSecretKey ? decrypt(saved.mpesaSecretKey).trim() : '';
+        const shortcode = String(saved.mpesaBusinessNo || '').trim();
+        if (!consumerKey || !consumerSecret || !shortcode) {
+            return { success: false, message: 'Save the consumer key, consumer secret, and business shortcode first.' };
+        }
+
+        const config: DarajaConfig = {
+            consumerKey,
+            consumerSecret,
+            shortCode: shortcode,
+            passKey: saved.mpesaPasskey ? decrypt(saved.mpesaPasskey).trim() : '',
+            sandbox,
+            callbackUrl: process.env.MPESA_CALLBACK_URL || 'https://zawadi.trendscore.co.ke/api/mpesa/callback',
+        };
+
+        try {
+            await this.getAccessToken(config);
+            const savedEnvironmentMatches = Boolean(saved.mpesaSandbox) === sandbox;
+            return {
+                success: true,
+                message: savedEnvironmentMatches
+                    ? `Daraja ${sandbox ? 'Sandbox' : 'Live'} credentials authenticated successfully.`
+                    : `Daraja ${sandbox ? 'Sandbox' : 'Live'} credentials authenticated. The saved gateway mode is currently ${saved.mpesaSandbox ? 'Sandbox' : 'Live'}; save settings to switch it.`,
+            };
+        } catch {
+            return {
+                success: false,
+                message: `Daraja ${sandbox ? 'Sandbox' : 'Live'} authentication failed. Check that the credentials belong to this environment.`,
+            };
+        }
+    }
+
     async initiateStkPush(params: {
         phoneNumber: string;
         amount: number;

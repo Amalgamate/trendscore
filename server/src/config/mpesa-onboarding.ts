@@ -6,8 +6,13 @@ export const MPESA_ONBOARDING_REQUIREMENT_IDS = [
   'provider_account', 'credentials', 'callback', 'sandbox_test', 'production_test', 'rotation'
 ] as const;
 
-export const isMpesaOnboardingComplete = (value: unknown) => {
+export const isMpesaOnboardingComplete = (value: unknown, sandbox = false) => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const checklist = value as Record<string, unknown>;
-  return MPESA_ONBOARDING_REQUIREMENT_IDS.every((id) => checklist[id] === true);
+  // Sandbox is a test environment. Requiring school KYC, a production payment,
+  // and a rotation plan before allowing a sandbox request makes safe testing
+  // impossible. Keep the production gate intact, but require the callback to
+  // be configured before enabling sandbox callbacks.
+  const requirements = sandbox ? ['credentials', 'callback'] : MPESA_ONBOARDING_REQUIREMENT_IDS;
+  return requirements.every((id) => checklist[id] === true);
 };

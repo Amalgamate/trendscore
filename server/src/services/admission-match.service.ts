@@ -1,9 +1,5 @@
 import prisma from '../config/database';
 import { normalizePhone, applyPaymentToInvoice, parkAsUnmatched } from './payment-resolver.service';
-import { accountingService } from './accounting.service';
-import { overpaymentCreditService } from './overpayment-credit.service';
-import messageService from './message.service';
-import { PRODUCT_DISPLAY_NAME } from '../config/productIdentity';
 import logger from '../utils/logger';
 
 /**
@@ -85,9 +81,17 @@ class AdmissionMatchService {
                 },
             });
 
-            learner = allLearners.find(l =>
+            const normalizedMatches = allLearners.filter(l =>
                 l.admissionNumber.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() === refClean
-            ) || null;
+            );
+            if (normalizedMatches.length > 1) {
+                await parkAsUnmatched({
+                    phone, amount, receipt, rawPayload,
+                    note: `Ambiguous account reference: ${normalizedMatches.length} admission numbers normalize to "${refClean}"`,
+                });
+                return { outcome: 'unmatched', detail: 'Account reference matches more than one learner' };
+            }
+            learner = normalizedMatches[0] || null;
         }
 
         if (!learner) {
@@ -109,6 +113,7 @@ class AdmissionMatchService {
             amount,
             receipt,
             phone,
+            transactionDate: params.transactionDate,
         });
 
         if (!result.success) {
@@ -122,45 +127,6 @@ class AdmissionMatchService {
                 detail: 'No outstanding invoice for matched learner',
                 learnerId: learner.id,
             };
-        }
-
-        // ── 4. Post to ledger + detect overpayment ──────────────────────────
-        // The applyPaymentToInvoice function creates the FeePayment and updates
-        // the invoice, but doesn't post to the ledger or detect overpayments.
-        // We need to find the created payment and do that here.
-        if (result.invoiceId) {
-            try {
-                const payment = await prisma.feePayment.findFirst({
-                    where: {
-                        invoiceId: result.invoiceId,
-                        receiptNumber: `MPESA-${receipt}`,
-                    },
-                    orderBy: { createdAt: 'desc' },
-                    select: { id: true, amount: true, paymentDate: true },
-                });
-
-                if (payment) {
-                    await accountingService.postFeePaymentToLedger(
-                        {
-                            id: payment.id,
-                            amount: Number(payment.amount),
-                            receiptNumber: `MPESA-${receipt}`,
-                            paymentDate: payment.paymentDate || new Date(),
-                        },
-                        'MPESA'
-                    );
-
-                    await overpaymentCreditService.detectAndPostOverpayment(
-                        result.invoiceId,
-                        payment.id
-                    );
-
-                    // Record M-Pesa transaction charge
-                    await accountingService.postMpesaCharge(amount, `MPESA-${receipt}`);
-                }
-            } catch (err: any) {
-                logger.error('[AdmissionMatch] Ledger/overpayment posting error:', err?.message ?? err);
-            }
         }
 
         return {

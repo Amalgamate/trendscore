@@ -998,14 +998,9 @@ export class TransportController {
                 });
             }
 
-            // Post to ledger crediting 4100
-            setImmediate(async () => {
-                try {
-                    await accountingService.postFeeInvoiceToLedger(invoice);
-                } catch (e) {
-                    logger.error('[TransportController] postFeeInvoiceToLedger error:', e);
-                }
-            });
+            // Do not report transport billing as complete until the invoice
+            // revenue and receivable changes are posted to the ledger.
+            await accountingService.postFeeInvoiceToLedger(invoice);
 
             res.json({
                 success: true,
@@ -1136,16 +1131,11 @@ export class TransportController {
                 updatedInvoices.push(inv);
             }
 
-            // Post ledger entries asynchronously
-            setImmediate(async () => {
-                for (const inv of updatedInvoices) {
-                    try {
-                        await accountingService.postFeeInvoiceToLedger(inv);
-                    } catch (e) {
-                        logger.error('[TransportController] bulk postFeeInvoiceToLedger error:', e);
-                    }
-                }
-            });
+            // Post each invoice before returning success so failed journal
+            // writes are visible and can be safely retried by the operator.
+            for (const inv of updatedInvoices) {
+                await accountingService.postFeeInvoiceToLedger(inv);
+            }
 
             res.json({
                 success: true,

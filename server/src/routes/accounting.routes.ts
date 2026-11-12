@@ -242,63 +242,6 @@ router.post(
   accountingController.recordExpense
 );
 
-// ============================================
-// BANK & RECONCILIATION
-// ============================================
-
-/**
- * @route   GET /api/accounting/bank-statements
- * @desc    Get bank statements
- * @access  ADMIN, SUPER_ADMIN, ACCOUNTANT
- */
-router.get(
-  '/bank-statements',
-  authenticate,
-  requireRole([...ROLE_FINANCE_ACCESS]),
-  rateLimit({ windowMs: 60_000, maxRequests: 100 }),
-  accountingController.getBankStatements
-);
-
-/**
- * @route   POST /api/accounting/bank-statements/import
- * @desc    Import bank statement (CSV/OFX)
- * @access  ADMIN, SUPER_ADMIN, ACCOUNTANT
- */
-router.post(
-  '/bank-statements/import',
-  authenticate,
-  requireRole([...ROLE_FINANCE_ACCESS]),
-  rateLimit({ windowMs: 60_000, maxRequests: 10 }),
-  auditLog('IMPORT_BANK_STATEMENT'),
-  accountingController.importBankStatement
-);
-
-/**
- * @route   POST /api/accounting/bank-statements/reconcile
- * @desc    Reconcile bank entry
- * @access  ADMIN, SUPER_ADMIN, ACCOUNTANT
- */
-router.post(
-  '/bank-statements/reconcile',
-  authenticate,
-  requireRole([...ROLE_FINANCE_ACCESS]),
-  rateLimit({ windowMs: 60_000, maxRequests: 30 }),
-  auditLog('RECONCILE_BANK_ENTRY'),
-  accountingController.reconcileLine
-);
-
-/**
- * @route   GET /api/accounting/bank-statements/:lineId/suggest-matches
- * @desc    Get suggested journal matches for a bank line
- * @access  ADMIN, SUPER_ADMIN, ACCOUNTANT
- */
-router.get(
-  '/bank-statements/:lineId/suggest-matches',
-  authenticate,
-  requireRole([...ROLE_FINANCE_ACCESS]),
-  accountingController.suggestMatches
-);
-
 export default router;
 
 

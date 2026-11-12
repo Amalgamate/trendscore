@@ -7,6 +7,11 @@ export const communicationAPI = {
     fetchWithAuth('/communication/top-up', { method: 'POST', body: JSON.stringify(data) }),
   saveConfig: async (data) =>
     fetchWithAuth('/communication/config', { method: 'POST', body: JSON.stringify(data) }),
+  testMpesaConnection: async (sandbox) =>
+    fetchWithAuth('/communication/mpesa/test-connection', {
+      method: 'POST',
+      body: JSON.stringify({ sandbox }),
+    }),
   sendTestSMS: async (data) =>
     fetchWithAuth('/communication/test/sms', { method: 'POST', body: JSON.stringify(data) }),
   sendTestEmail: async (data) =>

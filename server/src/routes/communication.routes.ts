@@ -10,6 +10,7 @@ import {
     draftEmailTemplate,
     getBirthdaysToday,
     sendBirthdayWishes,
+    testMpesaConnection,
     getInboxMessages,
     getParentDeliveryInbox,
     archiveInboxMessage,
@@ -96,6 +97,8 @@ const sendTestSmsSchema = z.object({
     scheduledFor: z.string().optional()
 });
 
+const testMpesaConnectionSchema = z.object({ sandbox: z.boolean() });
+
 const initiateSmsTopUpSchema = z.object({
     phone: z.string().min(9).max(20),
     amount: z.coerce.number().min(10).max(1_000_000),
@@ -176,6 +179,15 @@ router.post(
     validate(saveCommunicationConfigSchema),
     auditLog('SAVE_COMMUNICATION_CONFIG'),
     saveCommunicationConfig
+);
+
+router.post(
+    '/mpesa/test-connection',
+    requireRole(['SUPER_ADMIN', 'ADMIN']),
+    rateLimit({ windowMs: 60_000, maxRequests: 5 }),
+    validate(testMpesaConnectionSchema),
+    auditLog('TEST_MPESA_CONNECTION'),
+    testMpesaConnection
 );
 
 // Send Test SMS

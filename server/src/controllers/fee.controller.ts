@@ -770,6 +770,7 @@ await assertCanViewFeeRecord(req, invoice);
 
     let invoice: any;
     let invoiceCreationError: any;
+    await accountingService.ensureDefaultAccountingSetup();
     for (let attempt = 1; attempt <= INVOICE_NUMBER_RETRY_COUNT; attempt++) {
       try {
         invoice = await prisma.$transaction(async (tx: any) => {
@@ -787,7 +788,7 @@ await assertCanViewFeeRecord(req, invoice);
           });
           if (activeInvoice) throw new ApiError(400, 'An invoice for this period already exists for the student');
 
-          return createInvoiceWithSafeNumber(
+          const createdInvoice = await createInvoiceWithSafeNumber(
             tx,
             {
               learnerId,
@@ -818,6 +819,8 @@ await assertCanViewFeeRecord(req, invoice);
               feeStructure: { include: { feeItems: { include: { feeType: true } } } } as any
             }
           );
+          await accountingService.postFeeInvoiceToLedger(createdInvoice, tx);
+          return createdInvoice;
         }, { isolationLevel: 'Serializable' });
         break;
       } catch (error: any) {
@@ -853,10 +856,9 @@ await assertCanViewFeeRecord(req, invoice);
       }
 
       try {
-        await accountingService.postFeeInvoiceToLedger(invoice);
         await complianceService.syncInvoiceToETIMS(invoice.id);
       } catch (err) {
-        logger.error('Post-creation background tasks error:', err);
+        logger.error('Post-creation eTIMS sync error:', err);
       }
     });
 
@@ -1056,10 +1058,11 @@ await assertCanViewFeeRecord(req, invoice);
   }
 
   private getMarkPaidAmounts(invoice: any) {
-    const tuitionBalance = Math.max(0, Number(invoice?.balance || 0));
+    const totalBalance = Math.max(0, Number(invoice?.balance || 0));
     const transportBalance = Math.max(0, Number(invoice?.transportBalance || 0));
+    const tuitionBalance = Math.max(0, totalBalance - transportBalance);
     const sponsorBalance = Math.max(0, Number(invoice?.sponsorBalance || 0));
-    const amount = Number((tuitionBalance + transportBalance).toFixed(2));
+    const amount = Number(totalBalance.toFixed(2));
     return { tuitionBalance, transportBalance, sponsorBalance, amount };
   }
 
@@ -1086,14 +1089,12 @@ await assertCanViewFeeRecord(req, invoice);
     const paidAt = this.parseMarkPaidDate(paymentDate);
     const finalNotes = notes || 'Marked as paid manually from fee invoice list';
 
-    // Maker-checker: ACCOUNTANT users cannot mark paid with method 'OTHER'
-    // (no verifiable money trail). They must use CASH, BANK_TRANSFER, or CHEQUE
-    // — all of which leave a receipt that can be audited. Only ADMIN/SUPER_ADMIN
-    // can use 'OTHER', and even then it's logged for audit.
+    // Accountant entries need a traceable payment method and reference. Admins
+    // can record OTHER when a school-specific payment trail requires it.
     if (role === 'ACCOUNTANT' && paymentMethod === 'OTHER') {
       throw new ApiError(
         403,
-        'Accountants cannot mark invoices as paid with method "OTHER". Use CASH, BANK_TRANSFER, or CHEQUE — or ask an admin to approve.'
+        'Accountants cannot mark invoices as paid with method "OTHER". Use CASH, BANK_TRANSFER, or CHEQUE, then ask an admin to review the recorded entry if needed.'
       );
     }
 
@@ -1110,6 +1111,7 @@ await assertCanViewFeeRecord(req, invoice);
     let result: any;
     let lastPaymentError: any;
 
+    await accountingService.ensureDefaultAccountingSetup();
     for (let attempt = 1; attempt <= RECEIPT_NUMBER_RETRY_COUNT; attempt++) {
       try {
         result = await prisma.$transaction(async (tx) => {
@@ -1143,8 +1145,8 @@ await assertCanViewFeeRecord(req, invoice);
           const updatedInvoice = await tx.feeInvoice.update({
             where: { id },
             data: {
-              paidAmount: { increment: tuitionBalance },
-              balance: { decrement: tuitionBalance },
+              paidAmount: { increment: amount },
+              balance: { decrement: amount },
               transportPaid: { increment: transportBalance },
               transportBalance: { decrement: transportBalance },
               status: 'PAID' as PaymentStatus
@@ -1177,13 +1179,11 @@ await assertCanViewFeeRecord(req, invoice);
   /**
    * POST /fees/invoices/:id/mark-paid/approve
    *
-   * Approves a mark-paid entry that was created by an accountant. This is the
-   * checker side of the maker-checker: the accountant creates the payment, and
-   * an admin/super_admin verifies it by adding their approval stamp.
+   * Records an admin's review of a mark-paid entry created by an accountant.
    *
    * The approval adds the approver's ID and timestamp to the payment's notes
-   * and logs the action. The payment is already applied — this is a
-   * post-hoc verification, not a gate.
+   * and logs the action. The payment is already applied; this is post-entry
+   * review, not a gate before money is recorded.
    */
   async approveMarkPaid(req: AuthRequest, res: Response) {
     const { id } = req.params;
@@ -1204,12 +1204,12 @@ await assertCanViewFeeRecord(req, invoice);
       throw new ApiError(404, 'Payment not found for this invoice');
     }
 
-    // Check if already approved
-    if (payment.notes?.includes('[Approved by:')) {
-      throw new ApiError(400, 'This payment has already been approved');
+    // Check if already reviewed
+    if (payment.notes?.includes('[Reviewed by:')) {
+      throw new ApiError(400, 'This payment has already been reviewed');
     }
 
-    const approvalStamp = `[Approved by: ${approverId} (${approverRole}) at ${new Date().toISOString()}]`;
+    const approvalStamp = `[Reviewed by: ${approverId} (${approverRole}) at ${new Date().toISOString()}]`;
     const updatedPayment = await prisma.feePayment.update({
       where: { id: paymentId },
       data: {
@@ -1217,12 +1217,12 @@ await assertCanViewFeeRecord(req, invoice);
       },
     });
 
-    logger.info(`[FeeController] Mark-paid ${paymentId} approved by ${approverId} (${approverRole})`);
+    logger.info(`[FeeController] Mark-paid ${paymentId} reviewed by ${approverId} (${approverRole})`);
 
     res.json({
       success: true,
       data: { payment: updatedPayment },
-      message: 'Mark-paid entry approved'
+      message: 'Mark-paid entry review recorded'
     });
   }
 
@@ -1252,6 +1252,7 @@ await assertCanViewFeeRecord(req, invoice);
     let result: any;
     let lastPaymentError: any;
 
+    await accountingService.ensureDefaultAccountingSetup();
     for (let attempt = 1; attempt <= RECEIPT_NUMBER_RETRY_COUNT; attempt++) {
       try {
         result = await prisma.$transaction(async (tx) => {
@@ -1299,8 +1300,8 @@ await assertCanViewFeeRecord(req, invoice);
             const updatedInvoice = await tx.feeInvoice.update({
               where: { id: invoiceId },
               data: {
-                paidAmount: { increment: tuitionBalance },
-                balance: { decrement: tuitionBalance },
+                paidAmount: { increment: amount },
+                balance: { decrement: amount },
                 transportPaid: { increment: transportBalance },
                 transportBalance: { decrement: transportBalance },
                 status: 'PAID' as PaymentStatus
@@ -1383,6 +1384,7 @@ await assertCanViewFeeRecord(req, invoice);
     let result: any;
     let lastPaymentError: any;
 
+    await accountingService.ensureDefaultAccountingSetup();
     for (let attempt = 1; attempt <= RECEIPT_NUMBER_RETRY_COUNT; attempt++) {
       try {
         result = await prisma.$transaction(async (tx) => {
@@ -1418,8 +1420,9 @@ await assertCanViewFeeRecord(req, invoice);
           const invoiceDetails = isSponsorPayment
             ? null
             : await tx.feeInvoice.findUnique({ where: { id: actualInvoiceId }});
-          const currentTuitionBal = Math.max(0, Number(invoiceDetails?.balance || 0));
           const currentTransportBal = Math.max(0, Number(invoiceDetails?.transportBalance || 0));
+          const currentTotalBal = Math.max(0, Number(invoiceDetails?.balance || 0));
+          const currentTuitionBal = Math.max(0, currentTotalBal - currentTransportBal);
 
           // Support both allocatedTransport and transportAmount from frontend
           const effectiveTransport = allocatedTransport !== undefined 
@@ -1443,6 +1446,9 @@ await assertCanViewFeeRecord(req, invoice);
              }
              if (transportChunk > currentTransportBal + 0.01) {
                  throw new ApiError(400, "Transport allocation cannot exceed the outstanding transport balance");
+             }
+             if (tuitionChunk > currentTuitionBal + 0.01) {
+                 throw new ApiError(400, "Tuition allocation cannot exceed the outstanding tuition balance");
              }
           } else {
              // Default Intelligent Allocation: Tuition first, then Transport
@@ -2141,6 +2147,7 @@ await assertCanViewFeeRecord(req, invoice);
     let results: any[];
     let lastError: any;
 
+    await accountingService.ensureDefaultAccountingSetup();
     for (let attempt = 1; attempt <= INVOICE_NUMBER_RETRY_COUNT; attempt++) {
       try {
         results = await prisma.$transaction(async (tx: any) => {
@@ -2196,6 +2203,7 @@ await assertCanViewFeeRecord(req, invoice);
                 issuedBy: userId
               }
             });
+            await accountingService.postFeeInvoiceToLedger(invoice, tx);
             invoices.push(invoice);
           }
 
@@ -2219,7 +2227,6 @@ await assertCanViewFeeRecord(req, invoice);
       logger.info(`[BulkCompliance] Starting background tasks for ${results.length} invoices...`);
       for (const inv of results) {
         try {
-          await accountingService.postFeeInvoiceToLedger(inv);
           await complianceService.syncInvoiceToETIMS(inv.id);
         } catch (err) {
           logger.error(`[BulkCompliance] Failed for invoice ${inv.invoiceNumber}:`, err);

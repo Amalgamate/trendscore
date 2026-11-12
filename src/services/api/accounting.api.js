@@ -22,12 +22,6 @@ export const accountingAPI = {
   getExpenses: async () => fetchWithAuth('/accounting/expenses'),
   recordExpense: async (data) =>
     fetchWithAuth('/accounting/expenses', { method: 'POST', body: JSON.stringify(data) }),
-  getBankStatements: async (accountId) => fetchWithAuth(`/accounting/bank-statements${accountId ? `?accountId=${accountId}` : ''}`),
-  importBankStatement: async (data) =>
-    fetchWithAuth('/accounting/bank-statements/import', { method: 'POST', body: JSON.stringify(data) }),
-  reconcileLine: async (data) =>
-    fetchWithAuth('/accounting/bank-statements/reconcile', { method: 'POST', body: JSON.stringify(data) }),
-  getSuggestedMatches: async (lineId) => fetchWithAuth(`/accounting/bank-statements/${lineId}/suggest-matches`),
   getReport: async (type, startDate, endDate) =>
     fetchWithAuth(`/accounting/reports?type=${type}&startDate=${startDate}&endDate=${endDate}`),
   getTrialBalance: async (startDate, endDate) =>

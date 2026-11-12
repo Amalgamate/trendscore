@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  X, CreditCard, Phone, Loader2, CheckCircle2, 
-  AlertCircle, Smartphone, ArrowRight, ShieldCheck 
+  X, CreditCard, Phone, Loader2, CheckCircle2,
+  AlertCircle, Smartphone, ShieldCheck
 } from 'lucide-react';
-import axios from 'axios';
 import { toast } from 'react-hot-toast';
+import { mpesaAPI } from '../../../services/api';
 
 const MpesaPaymentModal = ({ isOpen, onClose, invoice, parentPhone, onPaymentSuccess }) => {
   const [amount, setAmount] = useState(invoice?.balance || 0);
@@ -13,6 +13,7 @@ const MpesaPaymentModal = ({ isOpen, onClose, invoice, parentPhone, onPaymentSuc
   const [status, setStatus] = useState('idle'); // 'idle' | 'initiating' | 'pending' | 'success' | 'failed'
   const [checkoutId, setCheckoutId] = useState(null);
   const [error, setError] = useState(null);
+  const [statusMessage, setStatusMessage] = useState('Waiting for confirmation from M-Pesa…');
 
   useEffect(() => {
     if (invoice?.balance) setAmount(invoice.balance);
@@ -25,8 +26,8 @@ const MpesaPaymentModal = ({ isOpen, onClose, invoice, parentPhone, onPaymentSuc
     if (status === 'pending' && checkoutId) {
       pollInterval = setInterval(async () => {
         try {
-          const response = await axios.get(`/api/mpesa/status/${checkoutId}/${invoice.id}`);
-          if (response.data.status === 'COMPLETE') {
+          const response = await mpesaAPI.checkPaymentStatus(checkoutId, invoice.id);
+          if (response.status === 'COMPLETE') {
             setStatus('success');
             clearInterval(pollInterval);
             toast.success('Payment received successfully!');
@@ -34,10 +35,12 @@ const MpesaPaymentModal = ({ isOpen, onClose, invoice, parentPhone, onPaymentSuc
               onPaymentSuccess?.();
               onClose();
             }, 3000);
-          } else if (response.data.status === 'FAILED') {
+          } else if (response.status === 'FAILED') {
             setStatus('failed');
-            setError('Payment was cancelled or failed.');
+            setError(response.message || 'Payment was cancelled or failed.');
             clearInterval(pollInterval);
+          } else if (response.status === 'PROCESSING') {
+            setStatusMessage(response.message || 'M-Pesa confirmed the request. We are waiting for the receipt to update your school account.');
           }
         } catch (err) {
           console.error('Polling error:', err);
@@ -53,9 +56,10 @@ const MpesaPaymentModal = ({ isOpen, onClose, invoice, parentPhone, onPaymentSuc
     e.preventDefault();
     if (!amount || amount <= 0) return toast.error('Please enter a valid amount');
     const invoiceBalance = Number(invoice?.balance || 0);
-    if (invoice?.id !== 'advance' && invoiceBalance > 0 && Number(amount) > invoiceBalance) {
+    if (invoiceBalance > 0 && Number(amount) > invoiceBalance) {
       return toast.error(`Payment cannot exceed this invoice balance of KES ${invoiceBalance.toLocaleString()}`);
     }
+    if (!invoice?.id) return toast.error('Choose a fee invoice before paying.');
     if (!phone) return toast.error('Please enter an M-Pesa phone number');
 
     setLoading(true);
@@ -63,22 +67,23 @@ const MpesaPaymentModal = ({ isOpen, onClose, invoice, parentPhone, onPaymentSuc
     setError(null);
 
     try {
-      const response = await axios.post('/api/mpesa/initiate', {
-        amount,
+      const response = await mpesaAPI.initiatePayment({
+        amount: Number(amount),
         phoneNumber: phone,
-        invoiceId: invoice.id
+        invoiceId: invoice.id,
       });
 
-      if (response.data.success) {
-        setCheckoutId(response.data.checkoutRequestId);
+      if (response.success) {
+        setCheckoutId(response.checkoutRequestId);
+        setStatusMessage('Waiting for confirmation from M-Pesa…');
         setStatus('pending');
       } else {
-        throw new Error(response.data.message || 'Failed to initiate payment');
+        throw new Error(response.message || 'Failed to initiate payment');
       }
     } catch (err) {
       console.error('Payment initiation error:', err);
       setStatus('failed');
-      setError(err.response?.data?.message || err.message || 'An error occurred');
+      setError(err.message || 'An error occurred');
     } finally {
       setLoading(false);
     }
@@ -118,7 +123,7 @@ const MpesaPaymentModal = ({ isOpen, onClose, invoice, parentPhone, onPaymentSuc
                     type="number"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
-                    max={invoice?.id !== 'advance' ? Number(invoice?.balance || 0) || undefined : undefined}
+                    max={Number(invoice?.balance || 0) || undefined}
                     className="w-full pl-14 pr-4 py-3.5 bg-slate-50 border-2 border-slate-100 rounded-2xl text-lg font-semibold text-slate-900 focus:bg-white focus:border-orange-500 focus:ring-0 transition-all outline-none"
                     placeholder="0.00"
                     required
@@ -180,7 +185,7 @@ const MpesaPaymentModal = ({ isOpen, onClose, invoice, parentPhone, onPaymentSuc
               </div>
               <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-full border border-slate-100">
                 <Loader2 size={14} className="animate-spin text-orange-600" />
-                <span className="text-[11px] font-medium text-slate-500 uppercase tracking-[0.1em]">Waiting for confirmation</span>
+                <span className="text-[11px] font-medium text-slate-500">{statusMessage}</span>
               </div>
               <p className="text-[10px] text-slate-400 font-medium uppercase underline cursor-pointer hover:text-slate-600" onClick={() => setStatus('idle')}>
                 Didn't get a prompt? Try again
