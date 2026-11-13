@@ -181,27 +181,35 @@ export const applyModulePackageToSchool = async (
 
 export const ensureSchoolModuleConfigs = async (schoolId: string, packageId?: ModulePackageId | null) => {
   await ensureAppCatalog();
-  const count = await prisma.schoolAppConfig.count({ where: { schoolId } });
-  if (count > 0) return;
+  const configured = await prisma.schoolAppConfig.findMany({
+    where: { schoolId },
+    select: { appId: true },
+  });
+  if (configured.length > 0) {
+    const configuredAppIds = new Set(configured.map((config) => config.appId));
+    const apps = await prisma.app.findMany({
+      where: { isSystem: false },
+      select: { id: true },
+    });
 
-  if (packageId) {
-    await applyModulePackageToSchool(schoolId, packageId);
+    for (const app of apps) {
+      if (configuredAppIds.has(app.id)) continue;
+      await prisma.schoolAppConfig.upsert({
+        where: { schoolId_appId: { schoolId, appId: app.id } },
+        update: {},
+        create: {
+          schoolId,
+          appId: app.id,
+          isActive: false,
+          isMandatory: false,
+          isVisible: true,
+        },
+      });
+    }
     return;
   }
 
-  const apps = await prisma.app.findMany({ where: { isSystem: false } });
-  const starterMandatory = new Set(getPackageDefinition('starter').mandatory);
-  for (const app of apps) {
-    await prisma.schoolAppConfig.create({
-      data: {
-        schoolId,
-        appId: app.id,
-        isActive: true,
-        isMandatory: starterMandatory.has(app.slug),
-        isVisible: true,
-      },
-    });
-  }
+  await applyModulePackageToSchool(schoolId, packageId || 'starter');
 };
 
 export const listSchoolModules = async (schoolId: string) => {

@@ -5,6 +5,7 @@ import { authenticate } from '../middleware/auth.middleware';
 import { requirePermission, auditLog } from '../middleware/permissions.middleware';
 import { validate } from '../middleware/validation.middleware';
 import { rateLimit } from '../middleware/enhanced-rateLimit.middleware';
+import { requireApp } from '../middleware/requireApp';
 
 const router = Router();
 const libraryController = new LibraryController();
@@ -70,7 +71,7 @@ const waiveFineSchema = z.object({
   notes: z.string().max(1000).optional()
 });
 
-router.use(authenticate);
+router.use(authenticate, requireApp('library'));
 
 router.get(
   '/books',

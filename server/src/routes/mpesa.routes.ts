@@ -4,7 +4,7 @@ import * as mpesaController from '../controllers/mpesa.controller';
 import { authenticate } from '../middleware/auth.middleware';
 import { requirePermission } from '../middleware/permissions.middleware';
 import { requireAnyPermission } from '../middleware/permissions.middleware';
-import { requireSchoolContext } from '../middleware/school.middleware';
+import { requireSingleSchoolContext } from '../middleware/school.middleware';
 import { verifyDarajaCallback } from '../middleware/daraja-verify.middleware';
 import { verifyDarajaIP } from '../middleware/daraja-ip-allowlist.middleware';
 
@@ -26,6 +26,7 @@ router.post(
     }),
     verifyDarajaIP,
     verifyDarajaCallback,
+    requireSingleSchoolContext,
     mpesaController.handleCallback,
 );
 
@@ -38,6 +39,7 @@ router.post(
     }),
     verifyDarajaIP,
     verifyDarajaCallback,
+    requireSingleSchoolContext,
     mpesaController.handleC2bConfirmation,
 );
 
@@ -50,6 +52,7 @@ router.post(
     }),
     verifyDarajaIP,
     verifyDarajaCallback,
+    requireSingleSchoolContext,
     mpesaController.handleC2bValidation,
 );
 
@@ -62,6 +65,7 @@ router.post(
     }),
     verifyDarajaIP,
     verifyDarajaCallback,
+    requireSingleSchoolContext,
     mpesaController.handleB2cResult,
 );
 
@@ -74,6 +78,7 @@ router.post(
     }),
     verifyDarajaIP,
     verifyDarajaCallback,
+    requireSingleSchoolContext,
     mpesaController.handleB2cTimeout,
 );
 
@@ -81,30 +86,30 @@ router.post(
 router.post(
     '/initiate',
     authenticate,
-    requireSchoolContext,
+    requireSingleSchoolContext,
     requireAnyPermission(['RECORD_PAYMENT', 'VIEW_OWN_BALANCE']),
     mpesaController.initiatePayment,
 );
 router.get(
     '/status/:checkoutRequestId/:invoiceId',
     authenticate,
-    requireSchoolContext,
+    requireSingleSchoolContext,
     requireAnyPermission(['RECORD_PAYMENT', 'VIEW_OWN_BALANCE']),
     mpesaController.queryStatus,
 );
 
 // C2B URL registration — admin setup (one-time)
-router.post('/c2b/register', authenticate, requirePermission('SYSTEM_SETTINGS'), mpesaController.registerC2bUrls);
+router.post('/c2b/register', authenticate, requireSingleSchoolContext, requirePermission('SYSTEM_SETTINGS'), mpesaController.registerC2bUrls);
 
 // Money-action routes — restricted to authorised roles only.
 // Previously these used `authenticate` alone, meaning any logged-in user
 // (parent, teacher) could trigger salary payouts or release unmatched payments.
-router.post('/payout/bulk',    authenticate, requirePermission('INITIATE_PAYOUT'),     mpesaController.initiateBulkPayout);
+router.post('/payout/bulk',    authenticate, requireSingleSchoolContext, requirePermission('INITIATE_PAYOUT'),     mpesaController.initiateBulkPayout);
 
 // Unmatched payments (Buy Goods Till organic payments)
-router.get('/unmatched',             authenticate, requirePermission('VIEW_UNMATCHED_PAYMENTS'), mpesaController.getUnmatchedPayments);
-router.get('/unmatched/count',       authenticate, requirePermission('VIEW_UNMATCHED_PAYMENTS'), mpesaController.getUnmatchedCount);
-router.put('/unmatched/:id/resolve', authenticate, requirePermission('RELEASE_UNMATCHED'),     mpesaController.resolveUnmatchedPayment);
-router.put('/unmatched/:id/dismiss', authenticate, requirePermission('RELEASE_UNMATCHED'),     mpesaController.dismissUnmatchedPayment);
+router.get('/unmatched',             authenticate, requireSingleSchoolContext, requirePermission('VIEW_UNMATCHED_PAYMENTS'), mpesaController.getUnmatchedPayments);
+router.get('/unmatched/count',       authenticate, requireSingleSchoolContext, requirePermission('VIEW_UNMATCHED_PAYMENTS'), mpesaController.getUnmatchedCount);
+router.put('/unmatched/:id/resolve', authenticate, requireSingleSchoolContext, requirePermission('RELEASE_UNMATCHED'),     mpesaController.resolveUnmatchedPayment);
+router.put('/unmatched/:id/dismiss', authenticate, requireSingleSchoolContext, requirePermission('RELEASE_UNMATCHED'),     mpesaController.dismissUnmatchedPayment);
 
 export default router;

@@ -15,13 +15,22 @@ export const requireApp = (slug: string) => {
           })
         : null;
       const schoolId = req.school?.id || fallbackSchool?.id;
-      if (!schoolId) return next();
 
       // SUPER_ADMINs always have access to manage and configure all apps
       if (req.user?.role === 'SUPER_ADMIN') return next();
 
+      if (!schoolId) {
+        return next(
+          new ApiError(403, 'School module configuration is unavailable').withCode('APP_CONFIG_MISSING')
+        );
+      }
+
       const configCount = await prisma.schoolAppConfig.count({ where: { schoolId } });
-      if (configCount === 0) return next();
+      if (configCount === 0) {
+        return next(
+          new ApiError(403, 'School module configuration is unavailable').withCode('APP_CONFIG_MISSING')
+        );
+      }
 
       const config = await prisma.schoolAppConfig.findFirst({
         where: { schoolId, app: { slug } },
@@ -40,7 +49,11 @@ export const requireApp = (slug: string) => {
         if (legacyLmsConfig?.isActive && legacyLmsConfig.isVisible) return next();
       }
 
-      if (!config) return next();
+      if (!config) {
+        return next(
+          new ApiError(403, 'This module is not configured for this school').withCode('APP_DISABLED')
+        );
+      }
       if (slug === 'fee-management') {
         const activeConfigs = await prisma.schoolAppConfig.findMany({
           where: { schoolId, isActive: true, isVisible: true },

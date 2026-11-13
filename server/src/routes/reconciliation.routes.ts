@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth.middleware';
 import { requirePermission } from '../middleware/permissions.middleware';
-import { requireSchoolContext } from '../middleware/school.middleware';
+import { requireSingleSchoolContext } from '../middleware/school.middleware';
 import { rateLimit } from '../middleware/enhanced-rateLimit.middleware';
 import { auditLog } from '../middleware/permissions.middleware';
 import { uploadSingle } from '../middleware/upload.middleware';
@@ -10,7 +10,7 @@ import * as reconciliationController from '../controllers/reconciliation.control
 const router = Router();
 
 // All reconciliation routes require authentication + school context
-router.use(authenticate, requireSchoolContext);
+router.use(authenticate, requireSingleSchoolContext);
 
 // ── Dashboard ──────────────────────────────────────────────────────────────
 router.get(
