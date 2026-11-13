@@ -1,18 +1,14 @@
 /**
  * ParentPortalFees — Family Fees Management
  *
- * Three payment modes:
- *  1. Pay One Child  — select child, pay that balance
- *  2. Pay Full Family Balance — clears all at once
- *  3. Partial Payment — enter amount then choose distribution strategy
- *
- * Real data from dashboardAPI.getParentMetrics + feeAPI.getLearnerInvoices
+ * Parents choose a learner and an issued invoice before starting an invoice-bound
+ * M-Pesa payment. Advance payments require a separate credit ledger workflow.
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  CheckCircle2, AlertTriangle, Receipt, ChevronDown,
-  Users,
+  CheckCircle2, Receipt, ChevronDown, ChevronRight,
+  Users, Wallet,
 } from 'lucide-react';
 import { dashboardAPI, feeAPI } from '../../../../services/api';
 import { financeAPI } from '../../../../services/api/finance.api';
@@ -21,10 +17,8 @@ import MpesaPaymentModal from '../../shared/MpesaPaymentModal';
 
 const fmt    = (n) => Number(n || 0).toLocaleString();
 
-const getChildPhoto = (child) => child?.photoUrl || child?.profilePicture || child?.photo || child?.imageUrl || null;
-
-function ParentPaymentHistory({ children }) {
-  const [childId, setChildId] = useState('');
+function ParentPaymentHistory({ children, initialChildId, refreshKey = 0 }) {
+  const [childId, setChildId] = useState(initialChildId || '');
   const [payments, setPayments] = useState([]);
   const [refunds, setRefunds] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -51,6 +45,14 @@ function ParentPaymentHistory({ children }) {
     } catch (e) { setError(e?.message || 'Could not load payment history. Please try again.'); }
     finally { setLoading(false); }
   }, []);
+
+  useEffect(() => {
+    if (initialChildId && !childId) setChildId(initialChildId);
+  }, [initialChildId, childId]);
+
+  useEffect(() => {
+    if (childId) load(childId);
+  }, [childId, refreshKey, load]);
 
   const submit = async (event) => {
     event.preventDefault();
@@ -98,236 +100,43 @@ function FamilyFeeHeader({ children, loading }) {
   const allCleared   = totalBalance === 0 && children.length > 0;
 
   return (
-    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-700 via-blue-600 to-sky-500 p-4 text-white shadow-sm">
-      <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-white/10" />
-      <div className="absolute -bottom-14 left-8 h-36 w-36 rounded-full bg-sky-300/20" />
-
-      <div className="relative">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-[10px] font-bold text-blue-100 uppercase tracking-wider mb-1">Total Outstanding</p>
-            <p className="text-xs text-blue-100/90">
-              {children.length} child{children.length !== 1 ? 'ren' : ''} linked
-            </p>
-          </div>
-          <div className={`h-9 w-9 rounded-full flex items-center justify-center ${allCleared ? 'bg-emerald-400/20 text-emerald-100' : 'bg-amber-300/20 text-amber-100'}`}>
-            {allCleared ? <CheckCircle2 size={18} /> : <AlertTriangle size={18} />}
-          </div>
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 bg-white px-4 py-3">
+      <div className="flex min-w-0 items-center gap-3">
+        <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-lg ${allCleared ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-800'}`}>
+          {allCleared ? <CheckCircle2 size={21} /> : <Wallet size={21} />}
+        </span>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-slate-600">Family fees · {children.length} linked child{children.length === 1 ? '' : 'ren'}</p>
+          {loading ? <Skeleton className="mt-1 h-7 w-32" /> : <p className="text-xl font-extrabold text-slate-950">KES {fmt(totalBalance)} <span className="text-xs font-medium text-slate-500">outstanding</span></p>}
         </div>
-
-        {loading ? (
-          <Skeleton className="h-10 w-44 bg-white/20 mt-3" />
-        ) : (
-          <div className="mt-3">
-            <p className="text-3xl font-black tracking-tight">
-              KES {fmt(totalBalance)}
-            </p>
-            <p className="text-xs text-blue-100 mt-1">
-              {allCleared ? 'All balances are cleared' : 'Balance summary by child'}
-            </p>
-          </div>
-        )}
-
-        {!loading && children.length > 0 && (
-          <div className="mt-4 space-y-2">
-            {children.map((child) => {
-              const bal = Number(child.feeBalance || 0);
-              const photoSrc = getChildPhoto(child);
-              return (
-                <div key={child.id} className="flex items-center justify-between gap-3 rounded-xl bg-white/12 px-3 py-2.5 ring-1 ring-white/15 backdrop-blur">
-                  <div className="flex items-center gap-2 min-w-0">
-                    {photoSrc ? (
-                      <img
-                        src={photoSrc}
-                        alt={child.name}
-                        className="w-9 h-9 rounded-full object-cover border-2 border-white/80 shadow-sm flex-shrink-0"
-                        onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.nextSibling.style.display = 'flex'; }}
-                      />
-                    ) : null}
-                    <div
-                      style={{ display: photoSrc ? 'none' : 'flex' }}
-                      className="w-9 h-9 rounded-full bg-white/20 border-2 border-white/80 text-white text-xs font-bold items-center justify-center flex-shrink-0"
-                    >
-                      {child.name?.[0]}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-bold truncate">{child.name}</p>
-                      <p className="text-[10px] text-blue-100 truncate">{child.grade}</p>
-                    </div>
-                  </div>
-                  <span className={`text-sm font-black flex-shrink-0 ${bal > 0 ? 'text-amber-100' : 'text-emerald-100'}`}>
-                    {bal > 0 ? `KES ${fmt(bal)}` : 'Cleared'}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        )}
       </div>
+      <p className="text-xs text-slate-600">{allCleared ? 'All current invoices are cleared.' : 'Choose a child and invoice below to pay securely.'}</p>
     </div>
   );
 }
 
-// ─── Step indicator ───────────────────────────────────────────────────────────
-
-function StepIndicator({ step, total }) {
+function ChildInvoiceList({ child, invoices, loading, error, onPay, onRetry }) {
+  if (!child) return null;
   return (
-    <div className="flex items-center gap-1.5 mb-1">
-      {Array.from({ length: total }).map((_, i) => (
-        <div
-          key={i}
-          className={`h-1 flex-1 rounded-full transition-colors ${i < step ? 'bg-[#3B1FA3]' : 'bg-gray-200'}`}
-        />
-      ))}
-    </div>
-  );
-}
-
-function StepHeader({ number, title }) {
-  return (
-    <div className="flex items-center gap-2 mb-3">
-      <div className="w-6 h-6 rounded-full bg-[#3B1FA3] text-white text-xs font-bold flex items-center justify-center flex-shrink-0">
-        {number}
+    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <div className="flex items-center gap-3 border-b border-slate-200 px-4 py-3">
+        <span className="grid h-9 w-9 place-items-center rounded-full bg-blue-50 text-sm font-bold text-blue-900">{child.name?.trim()?.[0] || '?'}</span>
+        <div className="min-w-0 flex-1"><h2 className="truncate text-sm font-bold text-slate-950">{child.name}</h2><p className="text-xs text-slate-600">{child.grade || 'Learner'} · issued fee invoices</p></div>
+        <span className="text-sm font-bold text-slate-900">KES {fmt(child.feeBalance)}</span>
       </div>
-      <p className="text-sm font-bold text-[#3B1FA3]">{title}</p>
-    </div>
-  );
-}
-
-// ─── Step 1 — Choose payment type ────────────────────────────────────────────
-
-function Step1ChooseType({ selected, onChange, children }) {
-  const modes = [
-    { id: 'full',    icon: '💳', label: 'Pay Next Invoice',  sub: 'Pay one outstanding invoice in full' },
-    { id: 'partial', icon: '💰', label: 'Partial Payment',  sub: 'Pay part of the next outstanding invoice' },
-    { id: 'one',     icon: '👤', label: 'Choose a Child',   sub: 'Select a child, then pay one invoice' },
-  ];
-  return (
-    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-      <StepHeader number={1} title="Choose payment type" />
-      {modes.map(m => (
-        <button
-          key={m.id}
-          onClick={() => onChange(m.id)}
-          className={`w-full flex items-center gap-3 px-4 py-3 border-t border-gray-50 transition-colors text-left ${selected === m.id ? 'bg-[#3B1FA3]/5' : 'hover:bg-gray-50'}`}
-        >
-          <span className="text-base">{m.icon}</span>
-          <div className="flex-1">
-            <p className={`text-sm font-semibold ${selected === m.id ? 'text-[#3B1FA3]' : 'text-gray-800'}`}>{m.label}</p>
-            <p className="text-[10px] text-gray-400">{m.sub}</p>
-          </div>
-          <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${selected === m.id ? 'border-[#3B1FA3] bg-[#3B1FA3]' : 'border-gray-300'}`}>
-            {selected === m.id && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
-          </div>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-// ─── Step 2 — Enter Amount ───────────────────────────────────────────────────
-
-function Step2EnterAmount({ mode, amount, setAmount, children }) {
-  if (mode === 'full') return null;
-  const total = children.reduce((s, c) => s + Number(c.feeBalance || 0), 0);
-  const n     = Number(amount) || 0;
-
-  return (
-    <div className="bg-white border border-gray-200 rounded-xl p-4">
-      <StepHeader number={2} title="Enter amount" />
-      <p className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-2">Amount to Pay</p>
-      <div className="flex items-center border-2 border-[#3B1FA3] rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-[#3B1FA3]/30">
-        <span className="px-3 py-3 text-sm font-bold text-gray-500 bg-gray-50 border-r border-gray-200">KES</span>
-        <input
-          type="number" min="1" max={total}
-          value={amount}
-          onChange={e => setAmount(e.target.value)}
-          placeholder="0"
-          className="flex-1 px-3 py-3 text-xl font-bold text-gray-900 focus:outline-none"
-        />
-      </div>
-      {n > total && <p className="text-xs text-rose-600 mt-1.5">Exceeds outstanding balance of KES {fmt(total)}</p>}
-    </div>
-  );
-}
-
-// ─── Step 3 — Choose distribution ────────────────────────────────────────────
-
-function Step3Distribution({ mode, amount, strategy, setStrategy, custom, setCustom, children, selectedChildId, setSelectedChildId }) {
-  if (mode === 'one') {
-    // (Step 3 for 'one' is child selector)
-    return (
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        <div className="px-4 pt-3 pb-1"><StepHeader number={3} title="Select child" /></div>
-        {children.map(c => {
-          const bal = Number(c.feeBalance || 0);
-          const isSel = selectedChildId === c.id;
-          const photoSrc = getChildPhoto(c);
-          return (
-            <button key={c.id} onClick={() => setSelectedChildId(isSel ? null : c.id)}
-              className={`w-full flex items-center gap-3 px-4 py-3 border-t border-gray-50 text-left transition-colors ${isSel ? 'bg-[#3B1FA3]/5' : 'hover:bg-gray-50'}`}
-            >
-              <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 ${isSel ? 'border-[#3B1FA3] bg-[#3B1FA3]' : 'border-gray-300'}`} />
-              {photoSrc ? (
-                <img
-                  src={photoSrc}
-                  alt={c.name}
-                  className="w-8 h-8 rounded-full object-cover border border-blue-500 shadow-sm"
-                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                />
-              ) : null}
-              <div className="flex-1"><p className="text-sm font-medium text-gray-800">{c.name}</p><p className="text-[10px] text-gray-400">{c.grade}</p></div>
-              <span className={`text-sm font-bold ${bal > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>{bal > 0 ? `KES ${fmt(bal)}` : 'Cleared'}</span>
-            </button>
-          );
-        })}
-      </div>
-    );
-  }
-
-  if (mode !== 'partial') return null;
-  const n        = Number(amount) || 0;
-  const even     = children.length > 0 ? Math.floor(n / children.length) : 0;
-  const options  = [
-    { id: 'even',   label: 'Distribute Evenly',       sub: even > 0 ? `≈ KES ${fmt(even)} each` : '' },
-    { id: 'oldest', label: 'Oldest Balances First',   sub: 'Clear oldest invoices first'             },
-    { id: 'custom', label: 'Custom Allocation',       sub: 'Choose amount per child'                 },
-  ];
-  const customTotal = Object.values(custom).reduce((s, v) => s + (Number(v) || 0), 0);
-
-  return (
-    <div className="space-y-3">
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        <div className="px-4 pt-3 pb-1"><StepHeader number={3} title="Choose distribution" /></div>
-        {options.map(o => (
-          <button key={o.id} onClick={() => setStrategy(o.id)}
-            className={`w-full flex items-center gap-3 px-4 py-3 border-t border-gray-50 text-left transition-colors ${strategy === o.id ? 'bg-[#3B1FA3]/5' : 'hover:bg-gray-50'}`}
-          >
-            <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${strategy === o.id ? 'border-[#3B1FA3] bg-[#3B1FA3]' : 'border-gray-300'}`}>
-              {strategy === o.id && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
-            </div>
-            <div><p className={`text-sm font-semibold ${strategy === o.id ? 'text-[#3B1FA3]' : 'text-gray-800'}`}>{o.label}</p>
-            {o.sub && <p className="text-[10px] text-gray-400">{o.sub}</p>}</div>
-          </button>
-        ))}
-      </div>
-      {strategy === 'custom' && (
-        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-          <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider px-4 pt-3 pb-2">Allocate Per Child</p>
-          {children.map(c => (
-            <div key={c.id} className="flex items-center gap-3 px-4 py-2.5 border-t border-gray-50">
-              <span className="text-sm text-gray-700 flex-1 truncate">{c.name}</span>
-              <input type="number" min="0" value={custom[c.id] ?? ''} onChange={e => setCustom(p => ({ ...p, [c.id]: e.target.value }))}
-                placeholder="0" className="w-24 border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm font-bold text-right focus:outline-none focus:ring-2 focus:ring-[#3B1FA3]" />
-            </div>
-          ))}
-          <div className="px-4 py-2.5 border-t border-gray-100 flex justify-between">
-            <span className="text-xs text-gray-500">Allocated</span>
-            <span className={`text-xs font-bold ${customTotal === n ? 'text-emerald-600' : 'text-rose-600'}`}>KES {fmt(customTotal)} / KES {fmt(n)}</span>
-          </div>
+      {loading ? <div className="px-4 py-5 text-sm text-slate-600">Loading invoices…</div> : error ? <div className="flex items-center justify-between gap-3 px-4 py-5"><p className="text-sm text-rose-800">{error}</p><button type="button" onClick={onRetry} className="shrink-0 text-xs font-bold text-blue-800 underline">Try again</button></div> : invoices.length ? (
+        <div className="divide-y divide-slate-100">
+          {invoices.map((invoice) => {
+            const balance = Math.max(0, Number(invoice.balance ?? invoice.outstanding ?? 0));
+            const termLabel = [invoice.term, invoice.academicYear].filter(Boolean).join(' · ') || 'School fees';
+            return <div key={invoice.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
+              <div className="min-w-0 flex-1"><p className="text-sm font-semibold text-slate-900">{invoice.invoiceNumber || 'Fee invoice'} <span className="font-normal text-slate-600">· {termLabel}</span></p><p className="text-xs text-slate-600">Total KES {fmt(invoice.totalAmount)} · Paid KES {fmt(invoice.paidAmount)} · Balance <strong className="text-slate-900">KES {fmt(balance)}</strong></p>{invoice.dueDate && <p className="mt-0.5 text-[11px] text-slate-500">Due {new Date(invoice.dueDate).toLocaleDateString()}</p>}</div>
+              {balance > 0 ? <button type="button" onClick={() => onPay(invoice)} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-[#173FBF] px-4 py-2 text-sm font-bold text-white hover:bg-blue-800"><Wallet size={16} /> Pay invoice</button> : <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-800">Paid</span>}
+            </div>;
+          })}
         </div>
-      )}
-    </div>
+      ) : <div className="space-y-1 px-4 py-5"><p className="text-sm font-semibold text-slate-900">No fee invoice has been issued for this child yet.</p><p className="text-xs leading-5 text-slate-600">To pay toward a future term before an invoice exists, the school needs to support advance fee credits. This payment page currently accepts invoice-linked payments only. Contact the school office for an advance payment.</p></div>}
+    </section>
   );
 }
 
@@ -337,16 +146,16 @@ const ParentPortalFees = ({ user, onNavigate }) => {
   const [children, setChildren] = useState([]);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState(null);
-  const [payMode, setPayMode]   = useState(null);   // null = not started
-  const [amount, setAmount]     = useState('');
-  const [strategy, setStrategy] = useState(null);
-  const [custom, setCustom]     = useState({});
-  const [selectedChildId, setSelectedChildId] = useState(null);
+  const [selectedChildId, setSelectedChildId] = useState('');
+  const [invoices, setInvoices] = useState([]);
+  const [invoicesLoading, setInvoicesLoading] = useState(false);
+  const [invoicesError, setInvoicesError] = useState('');
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
 
   // M-Pesa payment modal state
   const [payingInvoice, setPayingInvoice]         = useState(null);
   const [showPaymentModal, setShowPaymentModal]   = useState(false);
-  const [preparingPayment, setPreparingPayment]   = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -361,210 +170,84 @@ const ParentPortalFees = ({ user, onNavigate }) => {
   useEffect(() => { load(); }, [load]);
 
   const totalBalance = children.reduce((s, c) => s + Number(c.feeBalance || 0), 0);
+  const selectedChild = children.find((child) => String(child.id) === String(selectedChildId)) || null;
 
-  const resetFlow = () => {
-    setPayMode(null);
-    setAmount('');
-    setStrategy(null);
-    setCustom({});
-    setSelectedChildId(null);
+  const loadInvoices = useCallback(async (childId) => {
+    if (!childId) { setInvoices([]); setInvoicesError(''); return; }
+    setInvoicesLoading(true);
+    setError(null);
+    setInvoicesError('');
+    try {
+      const result = await feeAPI.getLearnerInvoices(childId);
+      const rows = result?.data?.invoices ?? result?.data ?? result?.invoices ?? result ?? [];
+      setInvoices(Array.isArray(rows) ? rows.filter((invoice) => !invoice.archived && invoice.status !== 'CANCELLED') : []);
+    } catch (e) {
+      setInvoices([]);
+      setInvoicesError(e?.message || 'Could not load this child’s invoices.');
+    } finally {
+      setInvoicesLoading(false);
+    }
+  }, []);
+
+  const chooseChild = (childId) => {
+    setSelectedChildId(childId);
+    setHistoryOpen(false);
+    loadInvoices(childId);
   };
 
-  // Determine current step for progress bar (only used in advanced mode)
-  const step = !payMode || payMode === 'advanced' ? 0 : payMode === 'full' ? 2 : amount ? (strategy ? 4 : 3) : 2;
-
-  // Resolve one outstanding invoice for the quick-pay STK push. The family
-  // balance can span several invoices, so this action pays only this invoice;
-  // parents can repeat it or use Advanced options for a custom allocation.
-  // ─── Quick Pay (simplified default path) ───
-  // Resolves the first child with an outstanding invoice and opens M-Pesa
-  // STK push directly for the full family balance — no mode selection,
-  // no distribution strategy, just one tap to pay.
-  const handleQuickPay = async () => {
+  const startPayment = (invoice) => {
+    const balance = Math.max(0, Number(invoice?.balance ?? invoice?.outstanding ?? 0));
+    if (!invoice?.id || balance <= 0) {
+      setError('This invoice has no amount due. Refresh the invoice list and try again.');
+      return;
+    }
     setError(null);
-    const targetChildId = children.find(c => Number(c.feeBalance || 0) > 0)?.id;
-    if (!targetChildId) {
-      setError('No outstanding balance found');
-      return;
-    }
-    setPreparingPayment(true);
-    try {
-      const res = await feeAPI.getLearnerInvoices(targetChildId);
-      const invoices = res?.data ?? res ?? [];
-      const list = Array.isArray(invoices) ? invoices : [];
-      const outstanding = list.find((inv) => Number(inv?.balance ?? inv?.outstanding ?? 0) > 0);
-      if (!outstanding) {
-        setError('No outstanding invoice found for this child');
-        return;
-      }
-      const invoiceBalance = Number(outstanding?.balance ?? outstanding?.outstanding ?? 0);
-      setPayingInvoice({ id: outstanding.id, balance: invoiceBalance });
-      setShowPaymentModal(true);
-    } catch (e) {
-      setError(e?.message || 'Failed to prepare payment');
-    } finally {
-      setPreparingPayment(false);
-    }
-  };
-
-  // balance — MpesaPaymentModal drives a single M-Pesa transaction per push.
-  const handleReviewPay = async () => {
-    setError(null);
-
-    const targetChildId = payMode === 'one'
-      ? selectedChildId
-      : children.find(c => Number(c.feeBalance || 0) > 0)?.id;
-
-    if (!targetChildId) {
-      setError('Select a child to pay for');
-      return;
-    }
-
-    const requestedAmount = Number(amount) || 0;
-    if (payMode !== 'full' && requestedAmount <= 0) {
-      setError('Enter a valid amount to pay');
-      return;
-    }
-
-    setPreparingPayment(true);
-    try {
-      const res = await feeAPI.getLearnerInvoices(targetChildId);
-      const invoices = res?.data ?? res ?? [];
-      const list = Array.isArray(invoices) ? invoices : [];
-      const outstanding = list.find((inv) => Number(inv?.balance ?? inv?.outstanding ?? 0) > 0);
-
-      if (!outstanding) {
-        setError('No outstanding invoice found for this child');
-        return;
-      }
-
-      const invoiceBalance = Number(outstanding?.balance ?? outstanding?.outstanding ?? 0);
-      const payAmount = payMode === 'full' ? invoiceBalance : requestedAmount;
-      if (payAmount > invoiceBalance) {
-        setError(`This payment is tied to one invoice. Its remaining balance is KES ${fmt(invoiceBalance)}.`);
-        return;
-      }
-      setPayingInvoice({ id: outstanding.id, balance: invoiceBalance, amount: payAmount });
-      setShowPaymentModal(true);
-    } catch (e) {
-      setError(e?.message || 'Failed to prepare payment');
-    } finally {
-      setPreparingPayment(false);
-    }
+    setPayingInvoice({
+      id: invoice.id,
+      balance,
+      learnerId: selectedChild?.id,
+      learnerName: selectedChild?.name,
+      invoiceNumber: invoice.invoiceNumber,
+      term: invoice.term,
+      academicYear: invoice.academicYear,
+    });
+    setShowPaymentModal(true);
   };
 
   return (
     <div className="min-h-screen bg-[var(--app-page-bg)] pb-20">
-      <div className="pt-1 space-y-4">
-        {error && <div className="bg-rose-50 border border-rose-200 rounded-xl p-3"><p className="text-xs text-rose-700">{error}</p></div>}
+      <div className="pt-1 space-y-3">
+        {error && <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2.5"><p className="text-sm text-rose-800">{error}</p><button type="button" onClick={() => selectedChildId ? loadInvoices(selectedChildId) : load()} className="shrink-0 text-xs font-bold text-rose-900 underline">Retry</button></div>}
 
-        {/* Family balance header */}
         <FamilyFeeHeader children={children} loading={loading} />
 
-        {!loading && <ParentPaymentHistory children={children} />}
-
-        {/* ─── Simplified Quick Pay (default path) ─── */}
-        {!loading && totalBalance > 0 && !payMode && (
-          <div className="bg-white border border-gray-200 rounded-2xl p-4 space-y-3">
-            <div className="text-center">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Total family balance</p>
-              <p className="text-3xl font-black text-[#3B1FA3]">KES {fmt(totalBalance)}</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => handleQuickPay()}
-              disabled={preparingPayment}
-              className="w-full py-3.5 bg-[#3B1FA3] text-white text-sm font-bold rounded-xl hover:bg-[#2d1680] transition-colors disabled:opacity-60"
-            >
-              {preparingPayment ? 'Preparing M-Pesa…' : 'Pay next outstanding invoice'}
-            </button>
-            <p className="text-center text-[11px] text-gray-500">This pays one invoice. Use advanced options to choose a child or split a payment.</p>
-            <button
-              type="button"
-              onClick={() => setPayMode('advanced')}
-              className="w-full py-2 text-xs font-semibold text-gray-500 hover:text-[#3B1FA3] transition-colors"
-            >
-              Advanced options (partial, one child, custom split)
-            </button>
+        {!loading && children.length > 0 && <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+          <div className="border-b border-slate-200 px-4 py-3"><h2 className="text-sm font-bold text-slate-950">Choose a child to pay</h2><p className="mt-0.5 text-xs text-slate-600">Payments are matched to the invoice you select.</p></div>
+          <div className="divide-y divide-slate-100 sm:grid sm:grid-cols-2 sm:divide-y-0">
+            {children.map((child, index) => {
+              const selected = String(selectedChildId) === String(child.id);
+              const balance = Number(child.feeBalance || 0);
+              return <button key={child.id} type="button" onClick={() => chooseChild(child.id)} className={`flex min-h-16 w-full items-center gap-3 px-4 py-3 text-left transition-colors sm:border-b sm:border-slate-100 ${index % 2 === 0 ? 'sm:border-r' : ''} ${selected ? 'bg-blue-50 ring-1 ring-inset ring-blue-300' : 'hover:bg-slate-50'}`}>
+                <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-full border-2 border-white text-sm font-bold shadow-sm ${selected ? 'bg-blue-800 text-white' : 'bg-blue-100 text-blue-900'}`}>{child.name?.trim()?.[0] || '?'}</span>
+                <span className="min-w-0 flex-1"><span className="block truncate text-sm font-bold text-slate-950">{child.name}</span><span className="block text-xs text-slate-600">{child.grade || 'Learner'}</span></span>
+                <span className="shrink-0 text-right"><span className={`block text-sm font-bold ${balance > 0 ? 'text-slate-950' : 'text-emerald-800'}`}>{balance > 0 ? `KES ${fmt(balance)}` : 'Cleared'}</span><span className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-800">{selected ? 'Selected' : 'View invoices'} <ChevronRight size={14} /></span></span>
+              </button>;
+            })}
           </div>
-        )}
+        </section>}
 
-        {/* ─── Advanced payment flow (hidden by default) ─── */}
-        {!loading && totalBalance > 0 && payMode === 'advanced' && (
-          <>
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-bold text-[#3B1FA3]">Advanced Payment</h2>
-              <StepIndicator step={step} total={4} />
-            </div>
-            {/* Step 1 */}
-            <Step1ChooseType
-              selected={payMode === 'advanced' ? null : payMode}
-              onChange={m => { setPayMode(m); setAmount(''); setStrategy(null); setCustom({}); }}
-              children={children}
-            />
+        {!loading && selectedChild && <ChildInvoiceList child={selectedChild} invoices={invoices} loading={invoicesLoading} error={invoicesError} onRetry={() => loadInvoices(selectedChild.id)} onPay={startPayment} />}
 
-            {/* Step 2 — amount (only for partial / one) */}
-            {payMode && payMode !== 'full' && payMode !== 'advanced' && (
-              <Step2EnterAmount mode={payMode} amount={amount} setAmount={setAmount} children={children} />
-            )}
+        {!loading && children.length > 0 && <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2.5"><p className="text-xs text-sky-950"><strong>Paying ahead for next term?</strong> Online advance payments need a learner credit record and are not enabled yet. Current checkout accepts issued invoices only.</p><button type="button" onClick={() => onNavigate?.('parent-portal-messages')} className="shrink-0 text-xs font-bold text-blue-800 underline">Message the school</button></div>}
 
-            {/* Select a child when a parent is paying an invoice for one child. */}
-            {payMode === 'one' && (
-              <Step3Distribution
-                mode={payMode}
-                amount={amount}
-                strategy={strategy}
-                setStrategy={setStrategy}
-                custom={custom}
-                setCustom={setCustom}
-                children={children}
-                selectedChildId={selectedChildId}
-                setSelectedChildId={setSelectedChildId}
-              />
-            )}
+        {!loading && children.length > 0 && totalBalance === 0 && <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3"><CheckCircle2 size={19} className="mt-0.5 shrink-0 text-emerald-700" /><div><p className="text-sm font-bold text-emerald-900">Current fees are cleared</p><p className="mt-0.5 text-xs text-emerald-800">When a new term invoice is issued, it will appear under the child above.</p></div></div>}
 
-            {/* Step 4 — Review & Pay CTA */}
-            {payMode && payMode !== 'advanced' && (
-              payMode === 'full' ||
-              (payMode === 'partial' && Number(amount) > 0) ||
-              (payMode === 'one' && Number(amount) > 0 && selectedChildId)
-            ) && (
-              <div className="bg-white border border-gray-200 rounded-xl p-4">
-                <StepHeader number={4} title="Review & Pay" />
-                <button
-                  onClick={handleReviewPay}
-                  disabled={preparingPayment}
-                  className="w-full py-3.5 bg-[#3B1FA3] text-white text-sm font-bold rounded-xl hover:bg-[#2d1680] transition-colors disabled:opacity-60"
-                >
-                  {preparingPayment ? 'Preparing…' : 'Review Payment'}
-                </button>
-              </div>
-            )}
+        {!loading && children.length > 0 && <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+          <button type="button" onClick={() => setHistoryOpen((open) => !open)} className="flex min-h-14 w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-50"><span className="grid h-9 w-9 place-items-center rounded-lg bg-slate-100 text-slate-700"><Receipt size={18} /></span><span className="flex-1"><span className="block text-sm font-bold text-slate-950">Payment history</span><span className="block text-xs text-slate-600">Receipts and payment review requests</span></span><ChevronDown size={17} className={`text-slate-600 transition-transform ${historyOpen ? 'rotate-180' : ''}`} /></button>
+          {historyOpen && <ParentPaymentHistory key={`${selectedChildId || 'none'}-${historyRefreshKey}`} children={children} initialChildId={selectedChildId} refreshKey={historyRefreshKey} />}
+        </section>}
 
-            {/* Back to simple view */}
-            <button
-              type="button"
-              onClick={resetFlow}
-              className="w-full py-2 text-xs font-semibold text-gray-500 hover:text-[#3B1FA3] transition-colors"
-            >
-              ← Back to simple pay
-            </button>
-          </>
-        )}
-
-        {!loading && totalBalance === 0 && children.length > 0 && (
-          <div className="space-y-4">
-            {/* All cleared confirmation */}
-            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-5 text-center">
-              <CheckCircle2 size={28} className="mx-auto mb-2 text-emerald-500" />
-              <p className="text-sm font-bold text-emerald-700">All fees are cleared!</p>
-              <p className="text-xs text-emerald-600 mt-1">No outstanding balances for any child.</p>
-            </div>
-
-          </div>
-        )}
-
-        {!loading && children.length === 0 && (
+        {!loading && !error && children.length === 0 && (
           <div className="bg-white border border-dashed border-gray-200 rounded-xl p-8 text-center">
             <Users size={28} className="mx-auto mb-2 text-gray-300" />
             <p className="text-sm text-gray-500">No children linked to your account</p>
@@ -580,8 +263,9 @@ const ParentPortalFees = ({ user, onNavigate }) => {
         onPaymentSuccess={() => {
           setShowPaymentModal(false);
           setPayingInvoice(null);
-          resetFlow();
           load();
+          if (selectedChildId) loadInvoices(selectedChildId);
+          setHistoryRefreshKey((key) => key + 1);
         }}
       />
     </div>

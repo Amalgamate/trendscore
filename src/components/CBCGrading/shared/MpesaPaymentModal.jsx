@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, CreditCard, Phone, Loader2, CheckCircle2,
   AlertCircle, Smartphone, ShieldCheck
@@ -14,6 +14,18 @@ const MpesaPaymentModal = ({ isOpen, onClose, invoice, parentPhone, onPaymentSuc
   const [checkoutId, setCheckoutId] = useState(null);
   const [error, setError] = useState(null);
   const [statusMessage, setStatusMessage] = useState('Waiting for confirmation from M-Pesa…');
+  const activeInvoiceId = useRef(invoice?.id || null);
+
+  useEffect(() => {
+    if (!invoice?.id || activeInvoiceId.current === invoice.id) return;
+    activeInvoiceId.current = invoice.id;
+    setStatus('idle');
+    setCheckoutId(null);
+    setError(null);
+    setLoading(false);
+    setStatusMessage('Waiting for confirmation from M-Pesa…');
+    setAmount(invoice.balance || 0);
+  }, [invoice?.id, invoice?.balance]);
 
   useEffect(() => {
     if (invoice?.balance) setAmount(invoice.balance);
@@ -101,10 +113,12 @@ const MpesaPaymentModal = ({ isOpen, onClose, invoice, parentPhone, onPaymentSuc
             </div>
             <h3 className="text-sm font-medium uppercase tracking-wider">Fee Payment</h3>
           </div>
-          <button 
-            onClick={onClose} 
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close fee payment"
+            title={status === 'pending' ? 'Close dialog; payment may still complete' : 'Close fee payment'}
             className="p-1.5 hover:bg-white/20 rounded-full transition-colors"
-            disabled={status === 'pending'}
           >
             <X size={20} />
           </button>
@@ -113,6 +127,13 @@ const MpesaPaymentModal = ({ isOpen, onClose, invoice, parentPhone, onPaymentSuc
         <div className="p-6">
           {status === 'idle' || status === 'initiating' ? (
             <form onSubmit={handleInitiate} className="space-y-5">
+              {invoice?.id && (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                  <p className="text-xs font-bold text-slate-900">{invoice.learnerName || 'Learner'}{invoice.invoiceNumber ? ` · ${invoice.invoiceNumber}` : ''}</p>
+                  {(invoice.term || invoice.academicYear) && <p className="mt-0.5 text-[11px] text-slate-600">{[invoice.term, invoice.academicYear].filter(Boolean).join(' · ')}</p>}
+                  <p className="mt-1 text-[11px] text-slate-700">Outstanding: KES {Number(invoice.balance || 0).toLocaleString()}</p>
+                </div>
+              )}
               <div className="space-y-1">
                 <label className="text-[10px] font-semibold uppercase tracking-widest text-slate-500 ml-1">Payment Amount (KES)</label>
                 <div className="relative group">
