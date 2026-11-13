@@ -1,0 +1,57 @@
+{
+  "modules": [
+    { "slug": "student-registry", "name": "Student Registry" },
+    { "slug": "fee-management", "name": "Fees & Billing" },
+    { "slug": "attendance", "name": "Attendance" },
+    { "slug": "gradebook", "name": "Gradebook" },
+    { "slug": "exams", "name": "Reports & Exams" },
+    { "slug": "planner", "name": "Planner" },
+    { "slug": "timetable", "name": "Timetable" },
+    { "slug": "curriculum", "name": "Curriculum" },
+    { "slug": "sms-notifications", "name": "Messages" },
+    { "slug": "announcements", "name": "Notices & Announcements" },
+    { "slug": "user-management", "name": "User Management" },
+    { "slug": "school-settings", "name": "School Settings" },
+    { "slug": "approvals", "name": "Approvals" },
+    { "slug": "transport", "name": "Transport" },
+    { "slug": "inventory", "name": "Inventory" },
+    { "slug": "staff-hr", "name": "Staff HR" },
+    { "slug": "payroll", "name": "Payroll" },
+    { "slug": "accounting", "name": "Accounting" },
+    { "slug": "lms", "name": "Learning Management" },
+    { "slug": "lms-professional", "name": "Learning Hub" },
+    { "slug": "library", "name": "Library" },
+    { "slug": "biometric", "name": "Biometric Attendance" },
+    { "slug": "tertiary-modules", "name": "Tertiary Modules" }
+  ],
+  "packages": {
+    "starter": {
+      "name": "Starter",
+      "description": "Core school operations for schools starting with student records, attendance, assessment and communication.",
+      "active": [
+        "student-registry", "attendance", "gradebook", "exams", "planner",
+        "timetable", "curriculum", "sms-notifications", "announcements",
+        "user-management", "school-settings"
+      ],
+      "mandatory": ["student-registry", "user-management", "school-settings"]
+    },
+    "standard": {
+      "name": "Standard",
+      "description": "Starter plus fees, transport, inventory and approvals.",
+      "active": ["fee-management", "transport", "inventory", "approvals"],
+      "mandatory": ["student-registry", "user-management", "school-settings"]
+    },
+    "professional": {
+      "name": "Professional",
+      "description": "Standard plus HR, accounting, LMS, library and biometric support.",
+      "active": ["staff-hr", "payroll", "accounting", "lms", "lms-professional", "library", "biometric"],
+      "mandatory": ["student-registry", "user-management", "school-settings"]
+    },
+    "enterprise": {
+      "name": "Enterprise",
+      "description": "Professional plus tertiary workflows and full app catalog support.",
+      "active": ["tertiary-modules"],
+      "mandatory": ["student-registry", "user-management", "school-settings"]
+    }
+  }
+}

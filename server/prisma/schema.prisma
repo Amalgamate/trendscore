@@ -181,6 +181,8 @@ model School {
   faviconUrl                             String?
   pwaLogoUrl                             String?
   schoolType                             String?
+  accommodationType                     String?
+  provisioningApplicationId              String?                    @unique
   motto                                  String?
   vision                                 String?
   mission                                String?

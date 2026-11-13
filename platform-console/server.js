@@ -12,6 +12,8 @@ const si = require('systeminformation');
 const { createBillingStore } = require('./billing-store');
 const { createAgentsStore } = require('./agents-store');
 const { createLeadsStore } = require('./leads-store');
+const modulePackageCatalog = require('../server/src/data/module-package-catalog.json');
+const { PUBLIC_APPLICATION_PACKAGES, publicPackageOptions } = require('./application-catalog');
 const { quotePdfBuffer, invoicePdfBuffer, paymentReceiptPdfBuffer } = require('./billing-documents');
 const { SCHOOL_TYPES, calculateCatalogueQuote, normalizeProductInput } = require('./billing-pricing');
 const { createBillingService } = require('./services/billing');
@@ -49,6 +51,7 @@ const PORT = process.env.PORT || 3100;
 const CONSOLE_ENV_FILE = path.resolve(process.env.CONSOLE_ENV_FILE || '/srv/zawadi/apps/.env.console');
 const COOKIE_NAME = 'trends_core_token';
 const COOKIE_SECURE = process.env.CONSOLE_COOKIE_SECURE === 'true';
+const publicApplicationAttempts = new Map();
 const docker = process.env.DOCKER_HOST
   ? new Docker({ host: 'localhost', port: 2375, protocol: 'http' })
   : new Docker();
@@ -631,6 +634,143 @@ function requireRole(...allowedRoles) {
     next();
   };
 }
+
+function publicApplicationRateLimit(req, res, next) {
+  const key = String(req.ip || req.socket.remoteAddress || 'unknown');
+  const now = Date.now();
+  const recent = (publicApplicationAttempts.get(key) || []).filter(time => now - time < 15 * 60 * 1000);
+  if (recent.length >= 5) return res.status(429).json({ ok: false, error: 'Too many applications. Try again later.' });
+  recent.push(now);
+  publicApplicationAttempts.set(key, recent);
+  next();
+}
+
+
+
+function encryptActivationToken(token) {
+  const key = crypto.createHash('sha256').update(String(JWT_SECRET || 'development-only-activation-key')).digest();
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const encrypted = Buffer.concat([cipher.update(String(token), 'utf8'), cipher.final()]);
+  return [iv, cipher.getAuthTag(), encrypted].map(part => part.toString('hex')).join(':');
+}
+
+function decryptActivationToken(value) {
+  const [ivHex, tagHex, encryptedHex] = String(value || '').split(':');
+  if (!ivHex || !tagHex || !encryptedHex) throw new Error('Activation link is unavailable; contact platform support.');
+  const key = crypto.createHash('sha256').update(String(JWT_SECRET || 'development-only-activation-key')).digest();
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivHex, 'hex'));
+  decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
+  return Buffer.concat([decipher.update(Buffer.from(encryptedHex, 'hex')), decipher.final()]).toString('utf8');
+}
+
+function escapeEmailHtml(value) {
+  return String(value || '').replace(/[&<>"']/g, char => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[char]));
+}
+
+async function sendApplicationActivationEmail(application, activationUrl) {
+  const apiKey = process.env.RESEND_API_KEY;
+  const fromEmail = process.env.BILLING_FROM_EMAIL || process.env.EMAIL_FROM || process.env.SMTP_FROM;
+  if (!apiKey || !fromEmail) throw new Error('Activation email is not configured. Set RESEND_API_KEY and BILLING_FROM_EMAIL (or EMAIL_FROM).');
+  const name = escapeEmailHtml(application.name);
+  const school = escapeEmailHtml(application.school);
+  const link = escapeEmailHtml(activationUrl);
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from: `${process.env.BILLING_FROM_NAME || process.env.EMAIL_FROM_NAME || 'TrendSCORE'} <${fromEmail}>`,
+      to: [application.applicationEmail],
+      subject: `Your ${school} TrendSCORE account is ready`,
+      html: `<p>Hello ${name},</p><p>Your TrendSCORE installation for ${school} is ready.</p><p><a href="${link}">Activate your account and set a password</a></p><p>This one-time link expires in seven days. If it expires, contact the TrendSCORE team for help.</p>`,
+    }),
+    signal: AbortSignal.timeout(15000),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.message || `Activation email provider returned HTTP ${response.status}`);
+  return payload.id || '';
+}
+
+function parseProvisioningResult(stdout) {
+  const lines = String(stdout || '').split(/\r?\n/).filter(Boolean);
+  for (const line of lines.reverse()) {
+    try {
+      const payload = JSON.parse(line);
+      if (payload?.ok && payload.projectName) return payload;
+    } catch {}
+  }
+  throw new Error('Provisioning completed without a valid result record.');
+}
+
+app.get('/api/public/application-catalog', (req, res) => {
+  const schoolType = String(req.query.schoolType || '').trim().toUpperCase();
+  return res.json({
+    ok: true,
+    packages: publicPackageOptions(schoolType),
+    modules: modulePackageCatalog.modules,
+  });
+});
+
+app.get('/api/public/agents', (_req, res) => {
+  return res.json({ ok: true, agents: leadsStore.listPublicAgents() });
+});
+
+app.post('/api/public/applications', publicApplicationRateLimit, (req, res) => {
+  const body = req.body || {};
+  const value = (key, max) => typeof body[key] === 'string' ? body[key].trim().slice(0, max) : '';
+  const schoolType = value('schoolType', 40).toUpperCase().replace(/[\s-]+/g, '_');
+  const name = value('name', 120);
+  const school = value('school', 180);
+  const email = value('email', 254).toLowerCase();
+  const phone = value('phone', 30);
+  const address = value('address', 240);
+  const county = value('county', 100);
+  const accommodationType = value('accommodationType', 30).toUpperCase();
+  const packageId = value('packageId', 30).toLowerCase();
+  const agentId = value('agentId', 80);
+
+  if (name.length < 2 || school.length < 2 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+      || !/^\+?[0-9][0-9 ()-]{7,18}$/.test(phone) || !address || !county) {
+    return res.status(400).json({ ok: false, error: 'Complete the contact, school, address, county, and valid email and phone fields.' });
+  }
+  if (!['PUBLIC_PRIMARY', 'PRIVATE_PRIMARY', 'PUBLIC_SECONDARY', 'PRIVATE_SECONDARY'].includes(schoolType)) {
+    return res.status(400).json({ ok: false, error: 'Choose a valid public/private Primary or Secondary school type.' });
+  }
+  if (!['DAY', 'BOARDING', 'DAY_AND_BOARDING'].includes(accommodationType)) {
+    return res.status(400).json({ ok: false, error: 'Choose a valid day/boarding profile.' });
+  }
+  if (typeof body.transportNeeded !== 'boolean') {
+    return res.status(400).json({ ok: false, error: 'Select whether the school needs transport.' });
+  }
+  const primary = schoolType.endsWith('PRIMARY');
+  if (primary && !PUBLIC_APPLICATION_PACKAGES.includes(packageId)) {
+    return res.status(400).json({ ok: false, error: 'Choose Starter, Standard, or Professional for Primary.' });
+  }
+  if (!primary && packageId) {
+    return res.status(400).json({ ok: false, error: 'Secondary applications do not select a package yet.' });
+  }
+  try {
+    const result = leadsStore.submitApplication({
+      name, school, email, phone, address, county,
+      subCounty: value('subCounty', 100),
+      ward: value('ward', 100),
+      schoolType, accommodationType, transportNeeded: body.transportNeeded,
+      packageId, agentId,
+    });
+    pushAudit('APPLICATION_SUBMITTED', school, 'applicant', `Received school application ${result.application.id}`);
+    return res.status(201).json({
+      ok: true,
+      reference: result.application.id,
+      possibleDuplicate: result.possibleDuplicate,
+      message: 'Your application has been submitted for internal review. No school account is created until approval and installation.',
+    });
+  } catch (error) {
+    const status = /active agent/i.test(error.message) ? 400 : 500;
+    return res.status(status).json({ ok: false, error: status === 400 ? error.message : 'The application could not be saved. Please try again later.' });
+  }
+});
 
 // ── Login hardening (F-04): constant-time password compare + lockout ──────
 // This does not require the Stage-2 console database: it's an in-memory,
@@ -1393,6 +1533,9 @@ app.post('/api/instances/create', requireAuth, requireRole('super_admin'), async
   }
 
   const normalizedAppType = String(appType || 'school').toLowerCase();
+  if (normalizedAppType === 'school') {
+    return res.status(409).json({ error: 'School installations must be started from an approved application in the Applications queue.' });
+  }
   const appRange = APP_PORT_RANGES[normalizedAppType] || APP_PORT_RANGES.school;
   if (!APP_TYPE_SET.has(normalizedAppType)) {
     return res.status(400).json({ error: 'Unsupported appType.' });
@@ -1441,7 +1584,7 @@ app.post('/api/instances/create', requireAuth, requireRole('super_admin'), async
     name,
     domain: autoAssigned.domain,
     type: type || institutionType || 'PRIMARY_CBC',
-    planId: planId || 'professional',
+    planId: planId || '',
     version,
     image,
     adminEmail,
@@ -1662,6 +1805,209 @@ app.get('/api/deployments', requireAuth, (_req, res) => {
 });
 
 // ── Leads endpoints ───────────────────────────────────────────────────────
+app.get('/api/applications', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  const status = String(req.query.status || '').trim();
+  try {
+    return res.json({ ok: true, applications: leadsStore.listApplications({ status }) });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: error.message || 'Could not load applications.' });
+  }
+});
+
+app.get('/api/applications/:id', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  const application = leadsStore.getApplication(req.params.id);
+  if (!application) return res.status(404).json({ ok: false, error: 'Application not found.' });
+  return res.json({ ok: true, application, events: leadsStore.listApplicationEvents(req.params.id) });
+});
+
+app.put('/api/applications/:id/review', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  try {
+    const application = leadsStore.reviewApplication(req.params.id, req.body || {}, req.user.email);
+    pushAudit('APPLICATION_REVIEW', application.school, req.user.email, `Reviewed application ${application.id}`);
+    return res.json({ ok: true, application });
+  } catch (error) {
+    const status = /not found/i.test(error.message) ? 404 : /changed during review/i.test(error.message) ? 409 : 400;
+    return res.status(status).json({ ok: false, error: error.message || 'Could not update application review.' });
+  }
+});
+
+app.post('/api/applications/:id/approve', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  try {
+    const application = leadsStore.approveApplication(req.params.id, req.user.email);
+    pushAudit('APPLICATION_APPROVE', application.school, req.user.email, `Approved application ${application.id}`);
+    return res.json({ ok: true, application });
+  } catch (error) {
+    const status = /not found/i.test(error.message) ? 404 : /changed|already/i.test(error.message) ? 409 : 400;
+    return res.status(status).json({ ok: false, error: error.message || 'Could not approve application.' });
+  }
+});
+
+app.post('/api/applications/:id/reject', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
+  const reason = billingText(req.body?.reason, 1000);
+  if (!reason) return res.status(400).json({ ok: false, error: 'Provide a reason for rejection.' });
+  try {
+    const application = leadsStore.rejectApplication(req.params.id, reason, req.user.email);
+    pushAudit('APPLICATION_REJECT', application.school, req.user.email, `Rejected application ${application.id}`);
+    return res.json({ ok: true, application });
+  } catch (error) {
+    const status = /not found/i.test(error.message) ? 404 : 400;
+    return res.status(status).json({ ok: false, error: error.message || 'Could not reject application.' });
+  }
+});
+
+app.post('/api/applications/:id/provision', requireAuth, requireRole('super_admin'), async (req, res) => {
+  let application;
+  try {
+    const started = leadsStore.startApplicationProvisioning(req.params.id, req.user.email);
+    if (started.alreadyProvisioning) {
+      return res.status(409).json({ ok: false, error: 'Provisioning is already in progress for this application.' });
+    }
+    application = started.application;
+    if (!INSTANCE_PROVISION_SCRIPT) throw new Error('Instance provisioning script is not configured.');
+
+    const appRange = APP_PORT_RANGES.school;
+    const { instances } = await collectRuntime();
+    const allocation = await buildAutoAllocation({
+      name: application.school,
+      appType: 'school',
+      appRange,
+      instances,
+    });
+    const [adminFirstName, ...adminLastParts] = String(application.name || '').trim().split(/\s+/);
+    const payload = JSON.stringify({
+      applicationId: application.id,
+      appType: 'school',
+      name: application.school,
+      domain: allocation.domain,
+      type: application.educationLevel === 'SECONDARY' ? 'SECONDARY' : 'PRIMARY_CBC',
+      schoolType: application.schoolType,
+      accommodationType: application.accommodationType,
+      educationLevel: application.educationLevel,
+      transportNeeded: application.transportNeeded,
+      address: application.schoolAddress,
+      county: application.county,
+      subCounty: application.subCounty,
+      ward: application.ward,
+      schoolPhone: application.phone,
+      schoolEmail: application.applicationEmail,
+      packageId: application.approvedPackageId,
+      moduleSlugs: application.approvedModuleSlugs,
+      adminEmail: application.applicationEmail,
+      adminFirstName: adminFirstName || 'School',
+      adminLastName: adminLastParts.join(' ') || 'Administrator',
+      adminPhone: application.phone,
+      version: 'latest',
+      fePort: allocation.fePort,
+      bePort: allocation.bePort,
+      requestedBy: req.user.email,
+    });
+
+    const { stdout } = await execFileAsync(INSTANCE_PROVISION_SCRIPT, [payload], { timeout: 8 * 60 * 1000 });
+    const result = parseProvisioningResult(stdout);
+    if (!result.activationToken || !result.domain || !result.schoolId) {
+      throw new Error('Provisioning result is missing the school or activation details.');
+    }
+    const credentialsReadyAt = new Date().toISOString();
+    const tenantKey = String(result.projectName).toLowerCase().replace(/[^a-z0-9._-]+/g, '-').slice(0, 160);
+    let customer = billingStore.getCustomerByTenantKey(tenantKey);
+    if (!customer) {
+      customer = billingStore.createCustomer({
+        ...normalizeBillingCustomer({
+          name: application.school,
+          legalName: application.school,
+          tenantKey,
+          billingEmail: application.applicationEmail,
+          billingPhone: application.phone,
+          billingAddress: application.schoolAddress,
+          status: 'active',
+        }),
+        id: crypto.randomUUID(),
+      });
+    }
+
+    const contractReference = `SCHOOL-APP-${application.id}`;
+    let contract = billingStore.listContracts(customer.id).find(item => item.reference === contractReference);
+    if (!contract) {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Africa/Nairobi', year: 'numeric', month: '2-digit', day: '2-digit',
+      }).formatToParts(new Date(credentialsReadyAt));
+      const date = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+      contract = billingStore.createContract({
+        id: crypto.randomUUID(),
+        customerId: customer.id,
+        reference: contractReference,
+        serviceDescription: 'TrendSCORE school subscription; commercial terms pending',
+        cadence: 'custom',
+        startDate: `${date.year}-${date.month}-${date.day}`,
+        endDate: '',
+        renewalDate: '',
+        termsNote: 'Pending commercial terms. No priced contract lines; do not invoice until terms are confirmed.',
+        status: 'active',
+        lines: [],
+      });
+    }
+
+    const readyApplication = leadsStore.markApplicationReady(application.id, {
+      tenantKey,
+      domain: result.domain,
+      schoolId: result.schoolId,
+      customerId: customer.id,
+      contractId: contract.id,
+      encryptedActivationToken: encryptActivationToken(result.activationToken),
+      readyAt: credentialsReadyAt,
+    }, req.user.email);
+    if (application.agentId) {
+      leadsStore.syncProvisionedTenant({ leadId: application.id, tenantKey });
+    }
+    let activationEmailStatus = 'sent';
+    try {
+      const activationUrl = `https://${result.domain}/auth/reset-password?token=${encodeURIComponent(result.activationToken)}`;
+      await sendApplicationActivationEmail(readyApplication, activationUrl);
+      leadsStore.recordActivationEmail(application.id, { status: 'sent' }, req.user.email);
+    } catch (error) {
+      activationEmailStatus = 'failed';
+      leadsStore.recordActivationEmail(application.id, { status: 'failed', error: error.message }, req.user.email);
+      pushAudit('APPLICATION_ACTIVATION_EMAIL_FAILED', application.school, req.user.email, `Activation email failed for ${application.id}: ${billingText(error.message, 240)}`, 'Warning');
+    }
+    pushAudit('APPLICATION_READY', application.school, req.user.email, `Application ${application.id} installation completed; subscription starts today.`);
+    return res.json({
+      ok: true,
+      application: leadsStore.getApplication(application.id),
+      activationEmailStatus,
+      message: activationEmailStatus === 'sent'
+        ? 'Installation is ready and the activation link was emailed.'
+        : 'Installation is ready, but the activation email failed. Retry delivery after checking email settings.',
+    });
+  } catch (error) {
+    if (application) {
+      try { leadsStore.failApplicationProvisioning(application.id, error.message, req.user.email); } catch {}
+    }
+    pushAudit('APPLICATION_PROVISION_FAILED', application?.school || req.params.id, req.user.email, `Application provisioning failed: ${billingText(error.message, 240)}`, 'Warning');
+    return res.status(500).json({ ok: false, error: error.message || 'Application provisioning failed.' });
+  }
+});
+
+app.post('/api/applications/:id/retry-activation', requireAuth, requireRole('super_admin'), async (req, res) => {
+  const application = leadsStore.getApplication(req.params.id);
+  if (!application) return res.status(404).json({ ok: false, error: 'Application not found.' });
+  if (application.applicationStatus !== 'ready' || application.activationEmailStatus !== 'failed') {
+    return res.status(409).json({ ok: false, error: 'Only a ready application with a failed activation email can be retried.' });
+  }
+  if (!application.readyAt || Date.now() - Date.parse(application.readyAt) > 7 * 24 * 60 * 60 * 1000) {
+    return res.status(409).json({ ok: false, error: 'The activation link has expired. Issue a new activation link from the tenant before retrying.' });
+  }
+  try {
+    const token = decryptActivationToken(leadsStore.getApplicationSecret(req.params.id));
+    const activationUrl = `https://${application.provisioningDomain}/auth/reset-password?token=${encodeURIComponent(token)}`;
+    await sendApplicationActivationEmail(application, activationUrl);
+    leadsStore.recordActivationEmail(req.params.id, { status: 'sent' }, req.user.email);
+    return res.json({ ok: true, application: leadsStore.getApplication(req.params.id) });
+  } catch (error) {
+    leadsStore.recordActivationEmail(req.params.id, { status: 'failed', error: error.message }, req.user.email);
+    return res.status(502).json({ ok: false, error: error.message || 'Activation email could not be sent.' });
+  }
+});
+
 app.get('/api/leads', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
   try {
     const leads = leadsSvc.listLeads({
@@ -3854,6 +4200,10 @@ function runAutomaticTermRenewals() {
 const termRenewalTimer = setInterval(runAutomaticTermRenewals, 60 * 60 * 1000);
 if (termRenewalTimer.unref) termRenewalTimer.unref();
 runAutomaticTermRenewals();
+
+app.get('/apply', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'apply.html'));
+});
 
 // Only the public/ dir is served statically — server.js, auth-config.js, .env,
 // data/*.store.json and everything else in __dirname stay unreachable over HTTP.

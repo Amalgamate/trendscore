@@ -24,6 +24,21 @@ function normalizePhone(phone) {
   return digits;
 }
 
+const APPLICATION_STATUSES = new Set([
+  'submitted', 'under_review', 'approved', 'provisioning', 'ready', 'rejected', 'withdrawn',
+]);
+const APPLICATION_PACKAGE_IDS = new Set(['starter', 'standard', 'professional']);
+const APPLICATION_OPTIONAL_MODULES = new Set(['transport']);
+
+function parseStringArray(value) {
+  try {
+    const parsed = JSON.parse(value || '[]');
+    return Array.isArray(parsed) ? parsed.filter(item => typeof item === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
 function createLeadsStore(dataDir, options = {}) {
   fs.mkdirSync(dataDir, { recursive: true });
   const db = new DatabaseSync(path.join(dataDir, 'platform-billing.sqlite'));
@@ -105,7 +120,40 @@ function createLeadsStore(dataDir, options = {}) {
     ['acceptance_method', 'TEXT'], ['acceptance_evidence_file', 'TEXT'], ['accepted_at', 'TEXT'],
     ['accepted_by', 'TEXT'], ['converted_at', 'TEXT'], ['converted_customer_id', 'TEXT'],
     ['converted_contract_id', 'TEXT'], ['converted_invoice_id', 'TEXT'],
+    ['application_status', 'TEXT'], ['application_email', "TEXT NOT NULL DEFAULT ''"],
+    ['school_address', "TEXT NOT NULL DEFAULT ''"], ['sub_county', "TEXT NOT NULL DEFAULT ''"],
+    ['ward', "TEXT NOT NULL DEFAULT ''"], ['education_level', "TEXT NOT NULL DEFAULT ''"],
+    ['accommodation_type', "TEXT NOT NULL DEFAULT ''"], ['transport_needed', 'INTEGER NOT NULL DEFAULT 0'],
+    ['requested_package_id', "TEXT NOT NULL DEFAULT ''"], ['requested_module_slugs', "TEXT NOT NULL DEFAULT '[]'"],
+    ['approved_package_id', "TEXT NOT NULL DEFAULT ''"], ['approved_module_slugs', "TEXT NOT NULL DEFAULT '[]'"],
+    ['requested_agent_id', "TEXT NOT NULL DEFAULT ''"], ['potential_duplicate', 'INTEGER NOT NULL DEFAULT 0'],
+    ['application_submitted_at', "TEXT NOT NULL DEFAULT ''"], ['reviewed_at', "TEXT NOT NULL DEFAULT ''"],
+    ['reviewed_by', "TEXT NOT NULL DEFAULT ''"], ['review_notes', "TEXT NOT NULL DEFAULT ''"],
+    ['approved_at', "TEXT NOT NULL DEFAULT ''"], ['approved_by', "TEXT NOT NULL DEFAULT ''"],
+    ['rejected_at', "TEXT NOT NULL DEFAULT ''"], ['rejected_by', "TEXT NOT NULL DEFAULT ''"],
+    ['rejection_reason', "TEXT NOT NULL DEFAULT ''"], ['provisioning_started_at', "TEXT NOT NULL DEFAULT ''"],
+    ['provisioning_tenant_key', "TEXT NOT NULL DEFAULT ''"], ['provisioning_domain', "TEXT NOT NULL DEFAULT ''"],
+    ['provisioned_school_id', "TEXT NOT NULL DEFAULT ''"], ['billing_customer_id', "TEXT NOT NULL DEFAULT ''"],
+    ['billing_contract_id', "TEXT NOT NULL DEFAULT ''"], ['ready_at', "TEXT NOT NULL DEFAULT ''"],
+    ['activation_token_encrypted', "TEXT NOT NULL DEFAULT ''"], ['activation_email_status', "TEXT NOT NULL DEFAULT ''"],
+    ['activation_email_sent_at', "TEXT NOT NULL DEFAULT ''"], ['activation_email_error', "TEXT NOT NULL DEFAULT ''"],
+    ['activation_email_attempts', 'INTEGER NOT NULL DEFAULT 0'], ['last_provision_error', "TEXT NOT NULL DEFAULT ''"],
   ]) ensureLeadColumn(name, definition);
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS leads_application_status_idx ON leads(application_status, application_submitted_at);
+    CREATE INDEX IF NOT EXISTS leads_application_email_idx ON leads(application_email);
+    CREATE TABLE IF NOT EXISTS application_events (
+      id TEXT PRIMARY KEY,
+      application_id TEXT NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+      event_type TEXT NOT NULL,
+      from_status TEXT NOT NULL DEFAULT '',
+      to_status TEXT NOT NULL DEFAULT '',
+      actor TEXT NOT NULL DEFAULT '',
+      details_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS application_events_application_idx ON application_events(application_id, created_at);
+  `);
 
   function formatLeadRow(row) {
     if (!row) return null;
@@ -136,6 +184,42 @@ function createLeadsStore(dataDir, options = {}) {
       agent_school_id: row.agent_school_id || null,
       agentName: row.agent_name || null,
       schoolType: row.school_type || '',
+      applicationStatus: row.application_status || '',
+      applicationEmail: row.application_email || '',
+      schoolAddress: row.school_address || '',
+      county: row.county || '',
+      subCounty: row.sub_county || '',
+      ward: row.ward || '',
+      educationLevel: row.education_level || '',
+      accommodationType: row.accommodation_type || '',
+      transportNeeded: Boolean(row.transport_needed),
+      requestedPackageId: row.requested_package_id || '',
+      requestedModuleSlugs: parseStringArray(row.requested_module_slugs),
+      approvedPackageId: row.approved_package_id || '',
+      approvedModuleSlugs: parseStringArray(row.approved_module_slugs),
+      requestedAgentId: row.requested_agent_id || '',
+      potentialDuplicate: Boolean(row.potential_duplicate),
+      applicationSubmittedAt: row.application_submitted_at || '',
+      reviewedAt: row.reviewed_at || '',
+      reviewedBy: row.reviewed_by || '',
+      reviewNotes: row.review_notes || '',
+      approvedAt: row.approved_at || '',
+      approvedBy: row.approved_by || '',
+      rejectedAt: row.rejected_at || '',
+      rejectedBy: row.rejected_by || '',
+      rejectionReason: row.rejection_reason || '',
+      provisioningStartedAt: row.provisioning_started_at || '',
+      provisioningTenantKey: row.provisioning_tenant_key || '',
+      provisioningDomain: row.provisioning_domain || '',
+      provisionedSchoolId: row.provisioned_school_id || '',
+      billingCustomerId: row.billing_customer_id || '',
+      billingContractId: row.billing_contract_id || '',
+      readyAt: row.ready_at || '',
+      activationEmailStatus: row.activation_email_status || '',
+      activationEmailSentAt: row.activation_email_sent_at || '',
+      activationEmailError: row.activation_email_error || '',
+      activationEmailAttempts: Number(row.activation_email_attempts || 0),
+      lastProvisionError: row.last_provision_error || '',
       billingEmail: row.billing_email || '',
       billingPhone: row.billing_phone || '',
       acceptanceMethod: row.acceptance_method || '',
@@ -301,6 +385,290 @@ function createLeadsStore(dataDir, options = {}) {
   backfillMissingAgentLeads();
 
   const store = {
+    listPublicAgents() {
+      return db.prepare(`
+        SELECT id, full_name AS name, county, base_location AS serviceArea
+        FROM agents WHERE status='active' ORDER BY full_name COLLATE NOCASE
+      `).all();
+    },
+
+    submitApplication(data) {
+      const schoolType = String(data.schoolType || '').trim().toUpperCase();
+      const primary = schoolType.endsWith('PRIMARY');
+      const packageId = String(data.packageId || '').trim().toLowerCase();
+      if (!['PUBLIC_PRIMARY', 'PRIVATE_PRIMARY', 'PUBLIC_SECONDARY', 'PRIVATE_SECONDARY'].includes(schoolType)) {
+        throw new Error('Choose a valid school type');
+      }
+      if (primary && !APPLICATION_PACKAGE_IDS.has(packageId)) {
+        throw new Error('Primary applications require Starter, Standard, or Professional');
+      }
+      if (!primary && packageId) throw new Error('Secondary applications cannot select a Primary package');
+      if (!['DAY', 'BOARDING', 'DAY_AND_BOARDING'].includes(data.accommodationType)) {
+        throw new Error('Choose a valid accommodation profile');
+      }
+      const requestedAgentId = String(data.agentId || '').trim();
+      const requestedAgent = requestedAgentId
+        ? db.prepare("SELECT id, agent_code FROM agents WHERE id=? AND status='active'").get(requestedAgentId)
+        : null;
+      if (requestedAgentId && !requestedAgent) throw new Error('Choose an active agent or leave the application unassigned');
+
+      const now = new Date().toISOString();
+      const id = `A${crypto.randomBytes(6).toString('hex').toUpperCase()}`;
+      const schoolName = String(data.school || '').trim();
+      const phone = String(data.phone || '').trim();
+      const comparableSchool = normalizeSchoolName(schoolName);
+      const comparablePhone = normalizePhone(phone);
+      const possibleDuplicate = db.prepare('SELECT school, phone FROM leads').all().some(row =>
+        (comparableSchool && normalizeSchoolName(row.school) === comparableSchool)
+        || (comparablePhone && normalizePhone(row.phone) === comparablePhone));
+
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        db.prepare(`
+          INSERT INTO leads (
+            id,name,school,phone,stage,priority,students,tags,systems,notes,next_activity,source,
+            agent_id,agent_code,created_at,updated_at,school_type,county,billing_email,billing_phone,
+            principal_name,application_status,application_email,school_address,sub_county,ward,education_level,
+            accommodation_type,transport_needed,requested_package_id,requested_module_slugs,requested_agent_id,
+            potential_duplicate,application_submitted_at
+          ) VALUES (
+            @id,@name,@school,@phone,'new','1',0,'[\"application\"]','{}','',
+            'Review school application','public_application',@agentId,@agentCode,@now,@now,@schoolType,
+            @county,@email,@phone,@name,'submitted',@email,@address,@subCounty,@ward,@educationLevel,
+            @accommodationType,@transportNeeded,@packageId,'[]',@requestedAgentId,@potentialDuplicate,@now
+          )
+        `).run({
+          id, name: String(data.name).trim(), school: schoolName, phone, now, agentId: requestedAgent?.id || null,
+          agentCode: requestedAgent?.agent_code || '', schoolType, county: String(data.county || '').trim(),
+          email: String(data.email).trim().toLowerCase(), address: String(data.address || '').trim(),
+          subCounty: String(data.subCounty || '').trim(), ward: String(data.ward || '').trim(),
+          educationLevel: schoolType.endsWith('PRIMARY') ? 'PRIMARY' : 'SECONDARY',
+          accommodationType: data.accommodationType, transportNeeded: data.transportNeeded ? 1 : 0,
+          packageId, requestedAgentId, potentialDuplicate: possibleDuplicate ? 1 : 0,
+        });
+        db.prepare(`INSERT INTO application_events
+          (id,application_id,event_type,to_status,actor,details_json,created_at)
+          VALUES (?,?, 'submitted','submitted','applicant',?,?)`)
+          .run(crypto.randomUUID(), id, JSON.stringify({ source: 'public' }), now);
+        db.exec('COMMIT');
+      } catch (error) {
+        try { db.exec('ROLLBACK'); } catch {}
+        throw error;
+      }
+      return { application: this.getApplication(id), possibleDuplicate };
+    },
+
+    listApplications({ status = '' } = {}) {
+      let sql = `SELECT l.*, a.full_name AS agent_name FROM leads l
+        LEFT JOIN agents a ON a.id=l.agent_id WHERE l.application_status IS NOT NULL`;
+      const params = {};
+      if (status && APPLICATION_STATUSES.has(status)) {
+        sql += ' AND l.application_status=@status';
+        params.status = status;
+      }
+      sql += ' ORDER BY CASE l.application_status WHEN \'submitted\' THEN 0 WHEN \'under_review\' THEN 1 WHEN \'approved\' THEN 2 WHEN \'provisioning\' THEN 3 ELSE 4 END, l.application_submitted_at';
+      return db.prepare(sql).all(params).map(formatLeadRow);
+    },
+
+    getApplication(id) {
+      const row = db.prepare(`SELECT l.*, a.full_name AS agent_name FROM leads l
+        LEFT JOIN agents a ON a.id=l.agent_id
+        WHERE l.id=? AND l.application_status IS NOT NULL`).get(String(id));
+      return formatLeadRow(row);
+    },
+
+    listApplicationEvents(id) {
+      return db.prepare(`SELECT id,event_type AS eventType,from_status AS fromStatus,to_status AS toStatus,
+        actor,details_json AS detailsJson,created_at AS createdAt
+        FROM application_events WHERE application_id=? ORDER BY created_at,id`).all(String(id))
+        .map(event => ({ ...event, details: JSON.parse(event.detailsJson || '{}') }));
+    },
+
+    reviewApplication(id, data, actor) {
+      const app = db.prepare('SELECT * FROM leads WHERE id=? AND application_status IS NOT NULL').get(String(id));
+      if (!app) throw new Error('Application not found');
+      if (!['submitted', 'under_review'].includes(app.application_status)) throw new Error('Application is not open for review');
+
+      const agentId = String(data.agentId || '').trim();
+      if (agentId && !db.prepare("SELECT id FROM agents WHERE id=? AND status='active'").get(agentId)) {
+        throw new Error('Choose an active agent or leave the application unassigned');
+      }
+      const approvedPackageId = String(data.packageId ?? app.requested_package_id ?? '').trim().toLowerCase();
+      const primary = String(app.school_type || '').endsWith('PRIMARY');
+      if (primary && !APPLICATION_PACKAGE_IDS.has(approvedPackageId)) {
+        throw new Error('Primary applications require Starter, Standard, or Professional');
+      }
+      if (!primary && approvedPackageId) throw new Error('Secondary applications cannot use a Primary package');
+      const modules = Array.isArray(data.moduleSlugs) ? [...new Set(data.moduleSlugs.map(String))] : [];
+      if (modules.some(slug => !APPLICATION_OPTIONAL_MODULES.has(slug))) throw new Error('Only Transport can be confirmed as an optional module');
+      if (modules.length && !app.transport_needed) throw new Error('Transport can only be confirmed when the applicant requested transport');
+
+      const now = new Date().toISOString();
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        const fromStatus = app.application_status;
+        const update = db.prepare(`UPDATE leads SET application_status='under_review',agent_id=?,agent_code=?,
+          approved_package_id=?,approved_module_slugs=?,reviewed_at=?,reviewed_by=?,review_notes=?,updated_at=?
+          WHERE id=? AND application_status IN ('submitted','under_review')`)
+          .run(agentId || null,
+            agentId ? db.prepare('SELECT agent_code FROM agents WHERE id=?').get(agentId).agent_code : '',
+            approvedPackageId, JSON.stringify(modules), now, String(actor || ''), String(data.reviewNotes || '').trim(), now, String(id));
+        if (!update.changes) throw new Error('Application changed during review; reload and try again');
+        db.prepare(`INSERT INTO application_events
+          (id,application_id,event_type,from_status,to_status,actor,details_json,created_at)
+          VALUES (?,?,?,?,?,?,?,?)`).run(crypto.randomUUID(), String(id), 'review_updated',
+            fromStatus, 'under_review', String(actor || ''), JSON.stringify({ packageId: approvedPackageId, moduleSlugs: modules, agentId }), now);
+        db.exec('COMMIT');
+      } catch (error) {
+        try { db.exec('ROLLBACK'); } catch {}
+        throw error;
+      }
+      return this.getApplication(id);
+    },
+
+    approveApplication(id, actor) {
+      const now = new Date().toISOString();
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        const app = db.prepare('SELECT * FROM leads WHERE id=? AND application_status IS NOT NULL').get(String(id));
+        if (!app) throw new Error('Application not found');
+        if (app.application_status === 'approved') {
+          db.exec('COMMIT');
+          return this.getApplication(id);
+        }
+        if (app.application_status !== 'under_review') throw new Error('Review the application before approval');
+        const update = db.prepare(`UPDATE leads SET application_status='approved',approved_at=?,approved_by=?,updated_at=?
+          WHERE id=? AND application_status='under_review'`).run(now, String(actor || ''), now, String(id));
+        if (!update.changes) throw new Error('Application changed before approval');
+        db.prepare(`INSERT INTO application_events
+          (id,application_id,event_type,from_status,to_status,actor,created_at)
+          VALUES (?,?, 'approved','under_review','approved',?,?)`)
+          .run(crypto.randomUUID(), String(id), String(actor || ''), now);
+        db.exec('COMMIT');
+      } catch (error) {
+        try { db.exec('ROLLBACK'); } catch {}
+        throw error;
+      }
+      return this.getApplication(id);
+    },
+
+    rejectApplication(id, reason, actor) {
+      const now = new Date().toISOString();
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        const app = db.prepare('SELECT application_status FROM leads WHERE id=? AND application_status IS NOT NULL').get(String(id));
+        if (!app) throw new Error('Application not found');
+        if (!['submitted', 'under_review'].includes(app.application_status)) throw new Error('Only an open application can be rejected');
+        db.prepare(`UPDATE leads SET application_status='rejected',rejected_at=?,rejected_by=?,rejection_reason=?,updated_at=?
+          WHERE id=? AND application_status IN ('submitted','under_review')`)
+          .run(now, String(actor || ''), String(reason || '').trim(), now, String(id));
+        db.prepare(`INSERT INTO application_events
+          (id,application_id,event_type,from_status,to_status,actor,details_json,created_at)
+          VALUES (?,?, 'rejected',?,'rejected',?,?,?)`)
+          .run(crypto.randomUUID(), String(id), app.application_status, String(actor || ''), JSON.stringify({ reason: String(reason || '').trim() }), now);
+        db.exec('COMMIT');
+      } catch (error) {
+        try { db.exec('ROLLBACK'); } catch {}
+        throw error;
+      }
+      return this.getApplication(id);
+    },
+
+    startApplicationProvisioning(id, actor) {
+      const now = new Date().toISOString();
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        const app = db.prepare('SELECT * FROM leads WHERE id=? AND application_status IS NOT NULL').get(String(id));
+        if (!app) throw new Error('Application not found');
+        if (app.application_status === 'provisioning') {
+          db.exec('COMMIT');
+          return { application: this.getApplication(id), alreadyProvisioning: true };
+        }
+        if (app.application_status !== 'approved') throw new Error('Only an approved application can be provisioned');
+        db.prepare(`UPDATE leads SET application_status='provisioning',provisioning_started_at=?,last_provision_error='',updated_at=?
+          WHERE id=? AND application_status='approved'`).run(now, now, String(id));
+        db.prepare(`INSERT INTO application_events
+          (id,application_id,event_type,from_status,to_status,actor,created_at)
+          VALUES (?,?, 'provisioning_started','approved','provisioning',?,?)`)
+          .run(crypto.randomUUID(), String(id), String(actor || ''), now);
+        db.exec('COMMIT');
+      } catch (error) {
+        try { db.exec('ROLLBACK'); } catch {}
+        throw error;
+      }
+      return { application: this.getApplication(id), alreadyProvisioning: false };
+    },
+
+    failApplicationProvisioning(id, message, actor) {
+      const now = new Date().toISOString();
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        const app = db.prepare('SELECT application_status FROM leads WHERE id=? AND application_status IS NOT NULL').get(String(id));
+        if (!app || app.application_status !== 'provisioning') throw new Error('Application is not provisioning');
+        db.prepare(`UPDATE leads SET application_status='approved',last_provision_error=?,updated_at=? WHERE id=? AND application_status='provisioning'`)
+          .run(String(message || 'Provisioning failed').slice(0, 1000), now, String(id));
+        db.prepare(`INSERT INTO application_events
+          (id,application_id,event_type,from_status,to_status,actor,details_json,created_at)
+          VALUES (?,?, 'provisioning_failed','provisioning','approved',?,?,?)`)
+          .run(crypto.randomUUID(), String(id), String(actor || ''), JSON.stringify({ message: String(message || '').slice(0, 1000) }), now);
+        db.exec('COMMIT');
+      } catch (error) {
+        try { db.exec('ROLLBACK'); } catch {}
+        throw error;
+      }
+      return this.getApplication(id);
+    },
+
+    markApplicationReady(id, { tenantKey, domain, schoolId, customerId, contractId, encryptedActivationToken, readyAt }, actor) {
+      const now = new Date().toISOString();
+      const credentialsReadyAt = String(readyAt || now);
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        const app = db.prepare('SELECT application_status FROM leads WHERE id=? AND application_status IS NOT NULL').get(String(id));
+        if (!app) throw new Error('Application not found');
+        if (app.application_status === 'ready') {
+          db.exec('COMMIT');
+          return this.getApplication(id);
+        }
+        if (app.application_status !== 'provisioning') throw new Error('Application is not provisioning');
+        db.prepare(`UPDATE leads SET application_status='ready',provisioning_tenant_key=?,provisioning_domain=?,
+          provisioned_school_id=?,billing_customer_id=?,billing_contract_id=?,ready_at=?,
+          activation_token_encrypted=?,activation_email_status='pending',activation_email_error='',updated_at=?
+          WHERE id=? AND application_status='provisioning'`)
+          .run(String(tenantKey || ''), String(domain || ''), String(schoolId || ''), String(customerId || ''),
+            String(contractId || ''), credentialsReadyAt, String(encryptedActivationToken || ''), now, String(id));
+        db.prepare(`INSERT INTO application_events
+          (id,application_id,event_type,from_status,to_status,actor,details_json,created_at)
+          VALUES (?,?, 'ready','provisioning','ready',?,?,?)`)
+          .run(crypto.randomUUID(), String(id), String(actor || ''), JSON.stringify({ tenantKey, domain, schoolId, customerId, contractId, readyAt: credentialsReadyAt }), now);
+        db.exec('COMMIT');
+      } catch (error) {
+        try { db.exec('ROLLBACK'); } catch {}
+        throw error;
+      }
+      return this.getApplication(id);
+    },
+
+    getApplicationSecret(id) {
+      return db.prepare('SELECT activation_token_encrypted FROM leads WHERE id=? AND application_status=\'ready\'')
+        .get(String(id))?.activation_token_encrypted || '';
+    },
+
+    recordActivationEmail(id, { status, error = '' }, actor) {
+      const app = db.prepare('SELECT application_status,activation_email_attempts FROM leads WHERE id=? AND application_status IS NOT NULL').get(String(id));
+      if (!app) throw new Error('Application not found');
+      if (app.application_status !== 'ready') throw new Error('Activation is available only when an application is ready');
+      const now = new Date().toISOString();
+      db.prepare(`UPDATE leads SET activation_email_status=?,activation_email_sent_at=?,activation_email_error=?,
+        activation_email_attempts=activation_email_attempts+1,updated_at=? WHERE id=?`)
+        .run(status, status === 'sent' ? now : '', String(error).slice(0, 1000), now, String(id));
+      db.prepare(`INSERT INTO application_events
+        (id,application_id,event_type,from_status,to_status,actor,details_json,created_at)
+        VALUES (?,?, 'activation_email', 'ready','ready',?,?,?)`)
+        .run(crypto.randomUUID(), String(id), String(actor || ''), JSON.stringify({ status, error: String(error).slice(0, 1000) }), now);
+      return this.getApplication(id);
+    },
+
     normalizeSchoolName,
     normalizePhone,
 
@@ -680,11 +1048,28 @@ function createLeadsStore(dataDir, options = {}) {
     syncProvisionedTenant({ leadId, tenantKey }) {
       if (!tenantKey || !leadId) return false;
       const now = new Date().toISOString();
-      const lead = db.prepare(`SELECT id, agent_school_id FROM leads WHERE id=?`).get(String(leadId));
+      const lead = db.prepare(`SELECT id, agent_id, agent_school_id, name, school, phone FROM leads WHERE id=?`).get(String(leadId));
       if (!lead) return false;
-      if (lead.agent_school_id) db.prepare(`UPDATE agent_schools SET tenant_key=?,status='onboarded',updated_at=? WHERE id=?`).run(tenantKey, now, lead.agent_school_id);
-      else db.prepare(`UPDATE agent_schools SET tenant_key=?,status='onboarded',updated_at=? WHERE lead_id=?`).run(tenantKey, now, String(leadId));
-      db.prepare(`UPDATE leads SET next_activity='Instance provisioned',updated_at=? WHERE id=?`).run(now, String(leadId));
+      let schoolId = lead.agent_school_id;
+      if (schoolId) {
+        db.prepare(`UPDATE agent_schools SET tenant_key=?,status='onboarded',updated_at=? WHERE id=?`)
+          .run(tenantKey, now, schoolId);
+      } else {
+        const linkedSchool = db.prepare(`SELECT id FROM agent_schools WHERE lead_id=? LIMIT 1`).get(String(leadId));
+        if (linkedSchool) {
+          schoolId = linkedSchool.id;
+          db.prepare(`UPDATE agent_schools SET tenant_key=?,status='onboarded',updated_at=? WHERE id=?`)
+            .run(tenantKey, now, schoolId);
+        } else if (lead.agent_id) {
+          schoolId = `ags_${crypto.randomBytes(8).toString('hex')}`;
+          db.prepare(`INSERT INTO agent_schools (
+            id,agent_id,school_name,tenant_key,lead_id,contact_person,contact_phone,status,notes,created_at,updated_at
+          ) VALUES (?,?,?,?,?,?,?,'onboarded','Provisioned from school application',?,?)`)
+            .run(schoolId, lead.agent_id, lead.school, tenantKey, String(leadId), lead.name, lead.phone, now, now);
+        }
+      }
+      db.prepare(`UPDATE leads SET agent_school_id=COALESCE(agent_school_id,?),next_activity='Instance provisioned',updated_at=? WHERE id=?`)
+        .run(schoolId, now, String(leadId));
       return true;
     },
 
@@ -701,4 +1086,3 @@ module.exports = {
   normalizeSchoolName,
   normalizePhone,
 };
-

@@ -2,8 +2,9 @@
 set -euo pipefail
 
 # Provision one application stack from JSON payload.
-# Payload keys:
-#   name, domain, type, appType, version, image, fePort, bePort, db, requestedBy
+# School payloads are accepted only from an approved application:
+#   applicationId, name, domain, type, schoolType, accommodationType, packageId,
+#   moduleSlugs, adminEmail, adminFirstName, adminLastName, adminPhone
 # Example:
 #   ./provision-instance.sh '{"name":"School D","domain":"schoold.trendscore.co.ke","fePort":3003,"bePort":5003,"db":"trends_core_school_d","requestedBy":"admin@trendscore.app"}'
 
@@ -66,7 +67,7 @@ mkdir -p "${ENV_DIR}"
 
 # Parse and sanitize payload via jq.
 mapfile -t PARSED < <(printf '%s' "${PAYLOAD_JSON}" | jq -r '
-  def clean: (tostring | gsub("^\\s+|\\s+$"; ""));
+  def clean: (tostring | gsub("[\\r\\n\\t]"; " ") | gsub("^\\s+|\\s+$"; ""));
   def slug:
     clean
     | ascii_downcase
@@ -96,11 +97,28 @@ mapfile -t PARSED < <(printf '%s' "${PAYLOAD_JSON}" | jq -r '
       $image,
       (if $dbName == "" then "zawadi_\($slug|gsub("-"; "_"))" else $dbName end),
       ((($p.fePort // 0) | tonumber? // 0) | tostring),
-      ((($p.bePort // 0) | tonumber? // 0) | tostring)
+      ((($p.bePort // 0) | tonumber? // 0) | tostring),
+      ($p.applicationId // "" | clean),
+      ($p.schoolType // "" | clean),
+      ($p.accommodationType // "" | clean),
+      ($p.educationLevel // "" | clean),
+      ($p.transportNeeded // false | tostring),
+      ($p.address // "" | clean),
+      ($p.county // "" | clean),
+      ($p.subCounty // "" | clean),
+      ($p.ward // "" | clean),
+      ($p.schoolPhone // "" | clean),
+      ($p.schoolEmail // "" | clean),
+      ($p.adminEmail // "" | clean),
+      ($p.adminFirstName // "" | clean),
+      ($p.adminLastName // "" | clean),
+      ($p.adminPhone // "" | clean),
+      ($p.packageId // "" | clean),
+      ($p.moduleSlugs // [] | tojson)
     ][]
 ')
 
-if [[ "${#PARSED[@]}" -lt 11 ]]; then
+if [[ "${#PARSED[@]}" -lt 28 ]]; then
   echo "invalid json payload" >&2
   exit 2
 fi
@@ -116,10 +134,41 @@ APP_IMAGE="${PARSED[7]}"
 DB_NAME="${PARSED[8]}"
 REQ_FE_PORT="${PARSED[9]}"
 REQ_BE_PORT="${PARSED[10]}"
+APPLICATION_ID="${PARSED[11]}"
+SCHOOL_PROFILE_TYPE="${PARSED[12]}"
+SCHOOL_ACCOMMODATION_TYPE="${PARSED[13]}"
+SCHOOL_EDUCATION_LEVEL="${PARSED[14]}"
+SCHOOL_TRANSPORT_NEEDED="${PARSED[15]}"
+SCHOOL_ADDRESS="${PARSED[16]}"
+SCHOOL_COUNTY="${PARSED[17]}"
+SCHOOL_SUB_COUNTY="${PARSED[18]}"
+SCHOOL_WARD="${PARSED[19]}"
+SCHOOL_PHONE="${PARSED[20]}"
+SCHOOL_EMAIL="${PARSED[21]}"
+SUPER_ADMIN_EMAIL="${PARSED[22]}"
+SUPER_ADMIN_FIRST_NAME="${PARSED[23]}"
+SUPER_ADMIN_LAST_NAME="${PARSED[24]}"
+SUPER_ADMIN_PHONE="${PARSED[25]}"
+APPLICATION_PACKAGE_ID="${PARSED[26]}"
+APPLICATION_MODULE_SLUGS="${PARSED[27]}"
 
 if [[ "${APP_TYPE}" != "school" && "${APP_TYPE}" != "odoo" && "${APP_TYPE}" != "wordpress" ]]; then
   echo "unsupported appType: ${APP_TYPE}" >&2
   exit 2
+fi
+if [[ "${APP_TYPE}" == "school" ]]; then
+  if [[ -z "${APPLICATION_ID}" || -z "${SUPER_ADMIN_EMAIL}" ]]; then
+    echo "school provisioning requires an approved application id and admin email" >&2
+    exit 2
+  fi
+  if [[ "${SCHOOL_EDUCATION_LEVEL}" == "PRIMARY" && "${APPLICATION_PACKAGE_ID}" != "starter" && "${APPLICATION_PACKAGE_ID}" != "standard" && "${APPLICATION_PACKAGE_ID}" != "professional" ]]; then
+    echo "Primary school application has an invalid package" >&2
+    exit 2
+  fi
+  if [[ "${SCHOOL_EDUCATION_LEVEL}" == "SECONDARY" && -n "${APPLICATION_PACKAGE_ID}" ]]; then
+    echo "Secondary school applications cannot use a Primary package" >&2
+    exit 2
+  fi
 fi
 
 if [[ -z "${APP_IMAGE}" ]]; then
@@ -144,6 +193,13 @@ fi
 if [[ -f "${ENV_FILE}" ]]; then
   REUSED_ENV_FILE=true
   echo "[provision] reusing existing env file: ${ENV_FILE}"
+  if [[ "${APP_TYPE}" == "school" ]]; then
+    existing_application_id="$(grep -E '^APPLICATION_ID=' "${ENV_FILE}" | tail -n1 | cut -d= -f2- | tr -d '\r' || true)"
+    if [[ "${existing_application_id}" != "${APPLICATION_ID}" ]]; then
+      echo "existing school environment belongs to a different application" >&2
+      exit 2
+    fi
+  fi
 fi
 
 port_in_use() {
@@ -223,6 +279,14 @@ bootstrap_odoo_base_if_needed() {
 read FE_MIN FE_MAX < <(range_for_app "${APP_TYPE}" fe)
 read BE_MIN BE_MAX < <(range_for_app "${APP_TYPE}" be)
 
+if [[ "${REUSED_ENV_FILE}" == "true" && "${APP_TYPE}" == "school" ]]; then
+  FE_PORT="$(env_value FRONTEND_PORT)"
+  BE_PORT="$(env_value BACKEND_PORT)"
+  if ! port_in_range "${FE_PORT}" "${FE_MIN}" "${FE_MAX}" || ! port_in_range "${BE_PORT}" "${BE_MIN}" "${BE_MAX}"; then
+    echo "existing application ports are missing or outside the supported range" >&2
+    exit 4
+  fi
+else
 if [[ "${REQ_FE_PORT}" =~ ^[0-9]+$ ]] && [[ "${REQ_FE_PORT}" -gt 0 ]]; then
   FE_PORT="${REQ_FE_PORT}"
   if ! port_in_range "${FE_PORT}" "${FE_MIN}" "${FE_MAX}"; then
@@ -246,7 +310,9 @@ else
     BE_PORT="0"
   fi
 fi
+fi
 
+if [[ "${REUSED_ENV_FILE}" != "true" || "${APP_TYPE}" != "school" ]]; then
 if [[ "${FE_PORT}" == "${BE_PORT}" ]]; then
   BE_PORT="$(next_free_port $((BE_PORT+1)) "${BE_MAX}")"
 fi
@@ -258,6 +324,7 @@ fi
 if [[ "${APP_TYPE}" == "school" ]] && port_in_use "${BE_PORT}"; then
   echo "backend port already in use: ${BE_PORT}" >&2
   exit 4
+fi
 fi
 
 ensure_biometric_key_in_env() {
@@ -288,6 +355,11 @@ JWT_REFRESH_SECRET="$(openssl rand -hex 32)"
 ENCRYPTION_KEY="$(openssl rand -hex 32)"
 BIOMETRIC_ENCRYPTION_KEY="${ZAWADI_BIOMETRIC_ENCRYPTION_KEY}"
 BIOMETRIC_KEY_VERSION="1"
+SUPER_ADMIN_PASSWORD="$(openssl rand -hex 32)"
+SUPER_ADMIN_ACTIVATION_TOKEN=""
+if [[ "${APP_TYPE}" == "school" ]]; then
+  SUPER_ADMIN_ACTIVATION_TOKEN="$(openssl rand -hex 32)"
+fi
 
 FRONTEND_URL="http://${DEFAULT_HOST_IP}:${FE_PORT}"
 API_URL="http://${DEFAULT_HOST_IP}:${BE_PORT}/api"
@@ -317,8 +389,26 @@ JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
 ENCRYPTION_KEY=${ENCRYPTION_KEY}
 BIOMETRIC_ENCRYPTION_KEY=${BIOMETRIC_ENCRYPTION_KEY}
 BIOMETRIC_KEY_VERSION=${BIOMETRIC_KEY_VERSION}
-SUPER_ADMIN_EMAIL=admin@trendscore.app
-SUPER_ADMIN_PASSWORD=Admin@123!
+APPLICATION_ID=${APPLICATION_ID}
+SCHOOL_NAME=${SCHOOL_NAME}
+SCHOOL_TYPE=${SCHOOL_PROFILE_TYPE}
+SCHOOL_ACCOMMODATION_TYPE=${SCHOOL_ACCOMMODATION_TYPE}
+SCHOOL_INSTITUTION_TYPE=${SCHOOL_EDUCATION_LEVEL}
+SCHOOL_TRANSPORT_NEEDED=${SCHOOL_TRANSPORT_NEEDED}
+SCHOOL_ADDRESS=${SCHOOL_ADDRESS}
+SCHOOL_COUNTY=${SCHOOL_COUNTY}
+SCHOOL_SUB_COUNTY=${SCHOOL_SUB_COUNTY}
+SCHOOL_WARD=${SCHOOL_WARD}
+SCHOOL_PHONE=${SCHOOL_PHONE}
+SCHOOL_EMAIL=${SCHOOL_EMAIL}
+APPLICATION_PACKAGE_ID=${APPLICATION_PACKAGE_ID}
+APPLICATION_MODULE_SLUGS=${APPLICATION_MODULE_SLUGS}
+SUPER_ADMIN_EMAIL=${SUPER_ADMIN_EMAIL}
+SUPER_ADMIN_FIRST_NAME=${SUPER_ADMIN_FIRST_NAME}
+SUPER_ADMIN_LAST_NAME=${SUPER_ADMIN_LAST_NAME}
+SUPER_ADMIN_PHONE=${SUPER_ADMIN_PHONE}
+SUPER_ADMIN_PASSWORD=${SUPER_ADMIN_PASSWORD}
+SUPER_ADMIN_ACTIVATION_TOKEN=${SUPER_ADMIN_ACTIVATION_TOKEN}
 CREATE_EXTRA_DEMO_USERS=false
 DEMO_USER_PASSWORD=Demo@123!
 FRONTEND_URL=${FRONTEND_URL}
@@ -347,6 +437,13 @@ else
   FE_PORT="$(env_value FRONTEND_PORT "${FE_PORT}")"
   BE_PORT="$(env_value BACKEND_PORT "${BE_PORT}")"
   DB_NAME="$(env_value DB_NAME "${DB_NAME}")"
+  if [[ "${APP_TYPE}" == "school" ]]; then
+    SUPER_ADMIN_ACTIVATION_TOKEN="$(env_value SUPER_ADMIN_ACTIVATION_TOKEN)"
+    if [[ -z "${SUPER_ADMIN_ACTIVATION_TOKEN}" ]]; then
+      echo "existing school environment has no activation token; operator recovery is required" >&2
+      exit 2
+    fi
+  fi
 fi
 
 if [[ "${APP_TYPE}" == "school" ]]; then
@@ -533,7 +630,9 @@ RESULT_JSON=$(jq -n \
   --argjson backendPort "$(if [[ "${APP_TYPE}" == "school" ]]; then echo "${BE_PORT}"; else echo "null"; fi)" \
   --arg dbName "${DB_NAME}" \
   --arg requestedBy "${REQUESTED_BY}" \
+  --arg schoolId "${SCHOOL_SLUG}" \
+  --arg activationToken "${SUPER_ADMIN_ACTIVATION_TOKEN:-}" \
   --argjson reusedEnvFile "$( [[ "${REUSED_ENV_FILE}" == "true" ]] && echo true || echo false )" \
-  '{ok:true, projectName:$projectName, envFile:$envFile, schoolName:$schoolName, domain:$domain, institutionType:$institutionType, appType:$appType, appVersion:$appVersion, appImage:$appImage, frontendPort:$frontendPort, backendPort:$backendPort, dbName:$dbName, requestedBy:$requestedBy, reusedEnvFile:$reusedEnvFile}')
+  '{ok:true, projectName:$projectName, schoolId:$schoolId, activationToken:$activationToken, envFile:$envFile, schoolName:$schoolName, domain:$domain, institutionType:$institutionType, appType:$appType, appVersion:$appVersion, appImage:$appImage, frontendPort:$frontendPort, backendPort:$backendPort, dbName:$dbName, requestedBy:$requestedBy, reusedEnvFile:$reusedEnvFile}')
 
 echo "${RESULT_JSON}"

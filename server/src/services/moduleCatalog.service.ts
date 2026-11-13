@@ -1,5 +1,6 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import prisma from '../config/database';
+import packageCatalog from '../data/module-package-catalog.json';
 
 export type ModulePackageId = 'starter' | 'standard' | 'professional' | 'enterprise';
 export type SchoolTypeClassification =
@@ -36,44 +37,10 @@ export const APP_CATALOG = [
   { slug: 'tertiary-modules', name: 'Tertiary Modules', description: 'Programs, departments, units and tertiary workflows.', category: 'Academics', icon: 'graduation-cap', sortOrder: 220 },
 ];
 
-export const MODULE_PACKAGES: Record<ModulePackageId, { name: string; description: string; active: string[]; mandatory: string[] }> = {
-  starter: {
-    name: 'Starter',
-    description: 'Core school operations for schools starting with student records, attendance, assessment and communication.',
-    active: [
-      'student-registry',
-      'attendance',
-      'gradebook',
-      'exams',
-      'planner',
-      'timetable',
-      'curriculum',
-      'sms-notifications',
-      'announcements',
-      'user-management',
-      'school-settings',
-    ],
-    mandatory: ['student-registry', 'user-management', 'school-settings'],
-  },
-  standard: {
-    name: 'Standard',
-    description: 'Starter plus fees, transport, inventory and approvals.',
-    active: ['fee-management', 'transport', 'inventory', 'approvals'],
-    mandatory: ['student-registry', 'user-management', 'school-settings'],
-  },
-  professional: {
-    name: 'Professional',
-    description: 'Standard plus HR, accounting, LMS, library and biometric support.',
-    active: ['staff-hr', 'payroll', 'accounting', 'lms', 'lms-professional', 'library', 'biometric'],
-    mandatory: ['student-registry', 'user-management', 'school-settings'],
-  },
-  enterprise: {
-    name: 'Enterprise',
-    description: 'Professional plus tertiary workflows and full app catalog support.',
-    active: ['tertiary-modules'],
-    mandatory: ['student-registry', 'user-management', 'school-settings'],
-  },
-};
+export const MODULE_PACKAGES = packageCatalog.packages as Record<
+  ModulePackageId,
+  { name: string; description: string; active: string[]; mandatory: string[] }
+>;
 
 const PACKAGE_ORDER: ModulePackageId[] = ['starter', 'standard', 'professional', 'enterprise'];
 const NON_STARTER_ACTIVE_SLUGS = new Set([
@@ -202,6 +169,62 @@ export const applyModulePackageToSchool = async (
   return packageDefinition;
 };
 
+export const initializeUnassignedSchoolModules = async (
+  schoolId: string,
+  client: TxClient = prisma,
+) => {
+  await ensureAppCatalog(client);
+  const apps = await client.app.findMany({ where: { isSystem: false } });
+
+  for (const app of apps) {
+    await client.schoolAppConfig.upsert({
+      where: { schoolId_appId: { schoolId, appId: app.id } },
+      update: {
+        isActive: false,
+        isMandatory: false,
+        isVisible: true,
+      },
+      create: {
+        schoolId,
+        appId: app.id,
+        isActive: false,
+        isMandatory: false,
+        isVisible: true,
+      },
+    });
+  }
+};
+
+export const enableOptionalSchoolModules = async (
+  schoolId: string,
+  slugs: readonly string[],
+  client: TxClient = prisma,
+) => {
+  if (slugs.length === 0) return;
+
+  await ensureAppCatalog(client);
+  const apps = await client.app.findMany({
+    where: { isSystem: false, slug: { in: [...slugs] } },
+  });
+  if (apps.length !== new Set(slugs).size) {
+    throw new Error('One or more requested optional modules are unavailable');
+  }
+
+  for (const app of apps) {
+    await client.schoolAppConfig.upsert({
+      where: { schoolId_appId: { schoolId, appId: app.id } },
+      update: { isActive: true, isMandatory: false, isVisible: true },
+      create: {
+        schoolId,
+        appId: app.id,
+        isActive: true,
+        isMandatory: false,
+        isVisible: true,
+      },
+    });
+  }
+};
+
 export const ensureSchoolModuleConfigs = async (schoolId: string, packageId?: ModulePackageId | null) => {
   await ensureAppCatalog();
   const configured = await prisma.schoolAppConfig.findMany({
@@ -229,6 +252,15 @@ export const ensureSchoolModuleConfigs = async (schoolId: string, packageId?: Mo
         },
       });
     }
+    return;
+  }
+
+  const school = await prisma.school.findUnique({
+    where: { id: schoolId },
+    select: { institutionType: true },
+  });
+  if (school?.institutionType === 'SECONDARY' || school?.institutionType === 'TERTIARY') {
+    await initializeUnassignedSchoolModules(schoolId);
     return;
   }
 

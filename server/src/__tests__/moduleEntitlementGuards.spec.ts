@@ -180,6 +180,20 @@ describe('module entitlement guards', () => {
       .toMatchObject({ isActive: true });
   });
 
+  it('does not assign Starter modules when a Secondary school has no package config', async () => {
+    mockedPrisma.schoolAppConfig.findMany.mockResolvedValue([]);
+    mockedPrisma.school.findUnique.mockResolvedValue({ institutionType: 'SECONDARY' });
+    mockedPrisma.app.findMany.mockResolvedValue(APP_CATALOG.map((app, index) => ({ ...app, id: `app-${index}` })));
+
+    await ensureSchoolModuleConfigs('school-1');
+
+    const rows = mockedPrisma.schoolAppConfig.upsert.mock.calls.map(([args]) => args.create);
+    expect(rows).toHaveLength(APP_CATALOG.length);
+    expect(rows.every((row) => row.isActive === false)).toBe(true);
+    expect(rows.some((row) => row.isActive && row.appId === `app-${APP_CATALOG.findIndex((app) => app.slug === 'student-registry')}`))
+      .toBe(false);
+  });
+
   it('adds newly catalogued modules to partial configs as disabled', async () => {
     mockedPrisma.schoolAppConfig.findMany.mockResolvedValue([{ appId: 'existing-app' }]);
     mockedPrisma.app.findMany.mockResolvedValue([{ id: 'existing-app' }, { id: 'new-app' }]);

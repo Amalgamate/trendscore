@@ -187,7 +187,7 @@
 
   // ── Role-based UI restrictions ───────────────────────────────────────────
   function applyRoleRestrictions(role, access) {
-    const allSections = ['overview', 'instances', 'storage', 'deployments', 'controls', 'billing', 'communications', 'logs', 'leads', 'agents', 'settings'];
+    const allSections = ['overview', 'instances', 'storage', 'deployments', 'controls', 'billing', 'communications', 'logs', 'leads', 'applications', 'agents', 'settings'];
 
     allSections.forEach(section => {
       const navItem = document.querySelector(`.nav-item[data-section="${section}"]`);

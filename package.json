@@ -102,6 +102,7 @@
     "eslint-config-prettier": "^10.1.8",
     "eslint-config-react-app": "^7.0.1",
     "husky": "^9.1.7",
+    "jsdom": "^16.7.0",
     "lint-staged": "^16.2.7",
     "postcss": "^8.4.24",
     "prettier": "^3.8.0",
