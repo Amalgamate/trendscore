@@ -27,7 +27,7 @@ import {
     Heart, Star, Sparkles, Rocket, Wallet
 } from 'lucide-react';
 
-const focusModules = ['dashboard', 'learners', 'teachers', 'attendance', 'assessment', 'finance', 'communications', 'planner', 'digital-learning', 'learning-hub', 'docs-center', 'settings', 'hr', 'inventory', 'transport', 'pathway-planner'];
+const focusModules = ['dashboard', 'learners', 'teachers', 'attendance', 'assessment', 'finance', 'communications', 'planner', 'digital-learning', 'learning-hub', 'lms', 'docs-center', 'settings', 'hr', 'inventory', 'library', 'transport', 'pathway-planner'];
 const SCHOOL_SECTION_ORDER = ['learners', 'students', 'teachers', 'lecturers', 'attendance', 'assessment', 'secondary-assessment', 'tertiary-assessment'];
 
 const STUDENT_PORTAL_ITEMS = [
@@ -54,47 +54,6 @@ const orderSectionsById = (sections = [], preferredOrder = SCHOOL_SECTION_ORDER)
         const bIndex = orderIndex.has(b.id) ? orderIndex.get(b.id) : Number.MAX_SAFE_INTEGER;
         return aIndex - bIndex;
     });
-};
-
-const RESTRICTED_SIDEBAR_HOSTS = new Set([
-    'kambigarba-cs.trendscore.co.ke',
-    'merti-cs.trendscore.co.ke'
-]);
-const RESTRICTED_SIDEBAR_SECTION_IDS = new Set(['dashboard', 'learners', 'teachers', 'assessment', 'planner', 'communications', 'settings']);
-const RESTRICTED_SIDEBAR_SECTION_LABELS = {
-    learners: 'Students',
-    teachers: 'Tutors',
-    assessment: 'Assessments',
-    planner: 'Planner',
-    communications: 'Communications',
-    settings: 'Settings'
-};
-
-const isRestrictedSidebarHost = () => (
-    typeof window !== 'undefined' &&
-    RESTRICTED_SIDEBAR_HOSTS.has(window.location.hostname.toLowerCase())
-);
-
-const restrictNavSections = (nav, allowedIds, labelsById = {}) => {
-    const withRestrictedLabel = (section) => (
-        section ? { ...section, label: labelsById[section.id] || section.label } : section
-    );
-    const isAllowed = (section) => section && allowedIds.has(section.id);
-    const filterSections = (sections = []) => sections.filter(isAllowed).map(withRestrictedLabel);
-
-    return {
-        ...nav,
-        isSidebarRestricted: true,
-        navSections: filterSections(nav.navSections),
-        dashboardSection: isAllowed(nav.dashboardSection) ? withRestrictedLabel(nav.dashboardSection) : null,
-        communicationSection: isAllowed(nav.communicationSection) ? withRestrictedLabel(nav.communicationSection) : null,
-        schoolSections: filterSections(nav.schoolSections),
-        lmsSection: isAllowed(nav.lmsSection) ? withRestrictedLabel(nav.lmsSection) : null,
-        studentLmsSection: isAllowed(nav.studentLmsSection) ? withRestrictedLabel(nav.studentLmsSection) : null,
-        backOfficeSections: filterSections(nav.backOfficeSections),
-        docsCenterSection: isAllowed(nav.docsCenterSection) ? withRestrictedLabel(nav.docsCenterSection) : null,
-        systemAdminSections: filterSections(nav.systemAdminSections)
-    };
 };
 
 const filterItemsByModule = (items = [], accessUser, isModuleEnabled) => items.reduce((acc, item) => {
@@ -785,7 +744,6 @@ export const useNavigation = () => {
     const { user, institutionType } = useAuth();
     const { activeSlugs, isModuleEnabled } = useModuleAccess();
     const labels = useInstitutionLabels();
-    const restrictSidebarForSchool = isRestrictedSidebarHost();
     const accessUser = useMemo(() => ({ ...(user || {}), enabledApps: activeSlugs }), [activeSlugs, user]);
     const accountantNav = useMemo(() => {
         const financeItems = accountantFinanceNavigation.filter(item => !item.permission || can(item.permission));
@@ -1170,15 +1128,12 @@ export const useNavigation = () => {
 
         const visibleNav = filterNavByModules(builtNav, accessUser, isModuleEnabled);
 
-        return restrictSidebarForSchool
-            ? restrictNavSections(visibleNav, RESTRICTED_SIDEBAR_SECTION_IDS, RESTRICTED_SIDEBAR_SECTION_LABELS)
-            : visibleNav;
+        return visibleNav;
     }, [
         accessUser,
         institutionType,
         isModuleEnabled,
         role,
-        restrictSidebarForSchool,
         accountantNav,
         secondaryNav,
         tertiaryNav,

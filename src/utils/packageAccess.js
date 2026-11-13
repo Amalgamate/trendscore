@@ -35,6 +35,13 @@ export const getEnabledAppsForUser = (user) => normalizeEnabledApps(
   user?.enabledApps || user?.activeModules || user?.school?.enabledApps || user?.school?.activeModules
 );
 
+export const hasEnabledAppsData = (user) => [
+  user?.enabledApps,
+  user?.activeModules,
+  user?.school?.enabledApps,
+  user?.school?.activeModules,
+].some(Array.isArray);
+
 export const isStarterPackageApps = (apps) => {
   const enabled = normalizeEnabledApps(apps);
   if (enabled.length === 0) return false;

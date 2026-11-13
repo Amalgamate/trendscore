@@ -23,7 +23,7 @@ describe('appAccess', () => {
     expect(hasPageAccess({ role: 'ADMIN' }, 'dashboard')).toBe(true);
   });
 
-  it('keeps legacy app gates open for every user', () => {
+  it('keeps gates open for legacy users without entitlement data', () => {
     const user = { role: 'ADMIN' };
     expect(hasAppAccess(user, 'inventory')).toBe(true);
     expect(hasPageAccess(user, 'learners-list')).toBe(true);
@@ -31,6 +31,12 @@ describe('appAccess', () => {
     expect(hasPageAccess(user, 'attendance-configuration')).toBe(true);
     expect(hasPageAccess(user, 'inventory-items')).toBe(true);
     expect(hasPageAccess(user, 'assess-summative-report')).toBe(true);
+  });
+
+  it('denies app access when entitlement data is present but empty or excludes the app', () => {
+    expect(hasAppAccess({ role: 'ADMIN', enabledApps: [] }, 'inventory')).toBe(false);
+    expect(hasAppAccess({ role: 'ADMIN', enabledApps: ['attendance'] }, 'inventory')).toBe(false);
+    expect(hasPageAccess({ role: 'ADMIN', enabledApps: [] }, 'inventory-items')).toBe(false);
   });
 
   it('allows super admins through every app gate', () => {
@@ -108,6 +114,7 @@ describe('appAccess', () => {
     expect(resolveDashboardPage({ role: 'STUDENT' })).toBe('dashboard');
     expect(resolveDashboardPage({ role: 'TEACHER' })).toBe('digital-diary');
     expect(resolveDashboardPage({ role: 'TEACHER', enabledApps: ['attendance'] })).toBe('dashboard');
+    expect(resolveDashboardPage({ role: 'TEACHER', enabledApps: [] })).toBe('dashboard');
     expect(resolveDashboardPage({ role: 'ADMIN' })).toBe('dashboard');
     expect(userHasParentPortalAccess({ role: 'ADMIN' })).toBe(false);
   });
