@@ -15,6 +15,7 @@ import { requireRole, auditLog } from '../middleware/permissions.middleware';
 import { BROADCAST_MANAGER_ROLES } from '../config/permissions';
 import { validate } from '../middleware/validation.middleware';
 import { rateLimit } from '../middleware/enhanced-rateLimit.middleware';
+import { requireApp } from '../middleware/requireApp';
 
 const router = express.Router();
 
@@ -65,6 +66,7 @@ const deliveryLogSchema = z.object({
  */
 router.use(authenticate);
 router.use(requireSchoolContext);
+router.use(requireApp('sms-notifications'));
 
 /**
  * Broadcast Routes

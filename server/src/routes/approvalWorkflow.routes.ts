@@ -27,6 +27,7 @@ import { Router } from 'express';
 import { authenticate } from '../middleware/auth.middleware';
 import { schoolContextMiddleware } from '../middleware/schoolContext.middleware';
 import { requireRole } from '../middleware/permissions.middleware';
+import { requireApp } from '../middleware/requireApp';
 import {
   listWorkflows,
   createWorkflow,
@@ -44,6 +45,7 @@ const router = Router();
 // standalone or tested in isolation.
 router.use(authenticate);
 router.use(schoolContextMiddleware);
+router.use(requireApp('approvals'));
 
 // ── Role restriction — all workflow management endpoints are ADMIN/SUPER_ADMIN ─
 // R1.2: only administrators may create, view, edit, or toggle approval workflows.

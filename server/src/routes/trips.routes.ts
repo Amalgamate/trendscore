@@ -8,14 +8,15 @@
  */
 
 import { Router } from 'express';
-import { authenticate } from '../middleware/auth.middleware';
 import { requireAnyPermission, requirePermission } from '../middleware/permissions.middleware';
+import { requireApp } from '../middleware/requireApp';
 import { asyncHandler } from '../utils/async.util';
 import { tripController } from '../domains/transport/trip.controller';
 
 const router = Router();
 
 // All routes require authentication (registered after authenticate in index.ts)
+router.use(requireApp('transport'));
 
 /**
  * @route POST /api/v1/transport/trips
