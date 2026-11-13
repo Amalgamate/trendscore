@@ -181,19 +181,23 @@ const SummaryTab = ({ stats }) => {
   );
 
   const rows = [
-    { label: 'Total Books in Catalog',   value: stats.totalBooks ?? '—' },
-    { label: 'Total Physical Copies',    value: stats.totalCopies ?? '—' },
-    { label: 'Available Copies',         value: stats.availableCopies ?? '—' },
-    { label: 'Borrowed Copies',          value: stats.borrowedCopies ?? '—' },
-    { label: 'Damaged Copies',           value: stats.damagedCopies ?? '—' },
-    { label: 'Lost Copies',              value: stats.lostCopies ?? '—' },
-    { label: 'Total Members',            value: stats.totalMembers ?? '—' },
-    { label: 'Active Members',           value: stats.activeMembers ?? '—' },
-    { label: 'Total Loans (All Time)',   value: stats.totalLoans ?? '—' },
-    { label: 'Active Loans',             value: stats.activeLoans ?? '—' },
-    { label: 'Overdue Loans',            value: stats.overdueLoans ?? '—' },
-    { label: 'Total Fines Collected',    value: stats.totalFinesCollected != null ? KES(stats.totalFinesCollected) : '—' },
-    { label: 'Pending Fines',            value: stats.pendingFines != null ? KES(stats.pendingFines) : '—' },
+    { label: 'Total Books in Catalog', value: stats.books?.total ?? '—' },
+    { label: 'Available Books', value: stats.books?.available ?? '—' },
+    { label: 'Out-of-stock Books', value: stats.books?.outOfStock ?? '—' },
+    { label: 'Limited Books', value: stats.books?.limited ?? '—' },
+    { label: 'Total Physical Copies', value: stats.books?.totalCopies ?? '—' },
+    { label: 'Available Copies', value: stats.books?.availableCopies ?? '—' },
+    { label: 'Active Loans', value: stats.loans?.active ?? '—' },
+    { label: 'Overdue Loans', value: stats.loans?.overdue ?? '—' },
+    { label: 'Loans Issued Today', value: stats.loans?.issuedToday ?? '—' },
+    { label: 'Loans Returned Today', value: stats.loans?.returnedToday ?? '—' },
+    { label: 'Total Members', value: stats.members?.total ?? '—' },
+    { label: 'Active Members', value: stats.members?.active ?? '—' },
+    { label: 'Suspended Members', value: stats.members?.suspended ?? '—' },
+    { label: 'Expired Members', value: stats.members?.expired ?? '—' },
+    { label: 'Unpaid Fines', value: stats.fines?.totalUnpaidCount ?? '—' },
+    { label: 'Unpaid Fines Amount', value: stats.fines?.totalUnpaidAmount != null ? KES(stats.fines.totalUnpaidAmount) : '—' },
+    { label: 'Fines Collected This Month', value: stats.fines?.totalPaidThisMonth != null ? KES(stats.fines.totalPaidThisMonth) : '—' },
   ];
 
   return (
@@ -212,20 +216,112 @@ const SummaryTab = ({ stats }) => {
   );
 };
 
+const reportConfig = {
+  inventory: {
+    title: 'Inventory Report',
+    columns: [
+      ['title', 'Book'], ['author', 'Author'], ['category', 'Category'], ['status', 'Status'],
+      ['totalCopies', 'Copies'], ['availableCopies', 'Available'], ['borrowedCopies', 'Borrowed'],
+      ['damagedCopies', 'Damaged'], ['lostCopies', 'Lost'], ['allTimeLoanCount', 'All-time loans'],
+    ],
+  },
+  categories: {
+    title: 'Category Report',
+    columns: [
+      ['category', 'Category'], ['totalBooks', 'Books'], ['totalCopies', 'Copies'],
+      ['availableCopies', 'Available'], ['activeLoans', 'Active loans'],
+      ['allTimeLoanCount', 'All-time loans'], ['unpaidFinesTotal', 'Unpaid fines', KES],
+    ],
+  },
+  copyAudit: {
+    title: 'Copy Condition Audit',
+    columns: [['condition', 'Condition'], ['location', 'Location'], ['count', 'Copies']],
+  },
+  circulation: {
+    title: 'Daily Circulation',
+    columns: [
+      ['date', 'Date'], ['newLoans', 'New loans'], ['returns', 'Returns'],
+      ['renewals', 'Renewals'], ['overdueMarked', 'Overdue marked'],
+    ],
+  },
+  members: {
+    title: 'Member Activity',
+    columns: [
+      ['memberNumber', 'Member #'], ['fullName', 'Member'], ['memberType', 'Type'], ['status', 'Status'],
+      ['activeLoans', 'Active loans'], ['overdueLoans', 'Overdue loans'],
+      ['totalLoansAllTime', 'All-time loans'], ['unpaidFines', 'Unpaid fines', KES],
+    ],
+  },
+  fines: {
+    title: 'Overdue Fines',
+    columns: [
+      ['memberNumber', 'Member #'], ['memberName', 'Member'], ['bookTitle', 'Book'],
+      ['dueDate', 'Due date', fmt], ['daysOverdue', 'Days overdue'],
+      ['fineAmount', 'Amount', KES], ['agingBucket', 'Age'],
+    ],
+  },
+};
+
+const ReportTable = ({ report, rows, total, loading, error }) => {
+  if (loading) return <div role="status" className="py-16 text-center text-slate-500">Loading {report.title.toLowerCase()}…</div>;
+  if (error) return <div role="alert" className="rounded-xl border border-red-100 bg-red-50 p-5 text-sm text-red-700">{error}</div>;
+  if (!rows.length) return <div className="py-16 text-center text-slate-400">No {report.title.toLowerCase()} data available</div>;
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-x-auto">
+      <>
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50/60">
+            <tr>{report.columns.map(([, label]) => <th key={label} className="whitespace-nowrap px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-500">{label}</th>)}</tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {rows.map((row, index) => (
+              <tr key={row.id || row.memberId || row.fineId || row.date || `${row.category || row.condition}-${row.location || index}`} className="hover:bg-slate-50/50">
+                {report.columns.map(([key, , format]) => {
+                  const value = row[key];
+                  return <td key={key} className="whitespace-nowrap px-4 py-3 text-slate-700">{value == null || value === '' ? '—' : format ? format(value) : value}</td>;
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {total != null && <p className="border-t border-slate-100 px-4 py-3 text-xs text-slate-500">{report.title === 'Member Activity' ? `Showing ${rows.length} of ${total} members` : `${total} records`}</p>}
+      </>
+    </div>
+  );
+};
+
 // ─── Main Component ────────────────────────────────────────────────────────────
 const InventoryReports = () => {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('summary');
   const [refreshKey, setRefreshKey] = useState(0);
+  const [reportData, setReportData] = useState({});
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState('');
+  const [memberPage, setMemberPage] = useState(1);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await libraryAPI.getStats();
-      setStats(res?.data || res || null);
+      const res = await libraryAPI.getDashboardSummary();
+      const summary = res?.data || res || {};
+      setStats({
+        ...summary,
+        totalBooks: summary.books?.total,
+        totalCopies: summary.books?.totalCopies,
+        availableCopies: summary.books?.availableCopies,
+        activeLoans: summary.loans?.active,
+        overdueLoans: summary.loans?.overdue,
+        totalMembers: summary.members?.total,
+        activeMembers: summary.members?.active,
+        totalFinesCollected: summary.fines?.totalPaidThisMonth,
+        pendingFines: summary.fines?.totalUnpaidAmount,
+      });
     } catch {
-      toast.error('Failed to load library statistics');
+      setStats(null);
+      toast.error('Failed to load library dashboard');
     } finally {
       setLoading(false);
     }
@@ -233,8 +329,50 @@ const InventoryReports = () => {
 
   useEffect(() => { load(); }, [load, refreshKey]);
 
+  useEffect(() => {
+    if (!reportConfig[tab]) return;
+
+    let active = true;
+    const requests = {
+      inventory: () => libraryAPI.getInventoryReport(),
+      categories: () => libraryAPI.getCategoryReport(),
+      copyAudit: () => libraryAPI.getCopyAuditReport(),
+      circulation: () => libraryAPI.getCirculationReport(),
+      members: () => libraryAPI.getMemberActivityReport({ page: memberPage, limit: 50 }),
+      fines: () => libraryAPI.getOverdueFinesReport(),
+    };
+
+    setReportLoading(true);
+    setReportError('');
+    requests[tab]()
+      .then((res) => {
+        if (!active) return;
+        const rows = res?.data ?? res ?? [];
+        setReportData((current) => ({
+          ...current,
+          [tab]: {
+            rows: Array.isArray(rows) ? rows : [],
+            total: res?.total ?? res?.totalBooks ?? res?.totalCount ?? (Array.isArray(rows) ? rows.length : 0),
+          },
+        }));
+      })
+      .catch((err) => {
+        if (!active) return;
+        setReportError(err?.message || `Failed to load ${reportConfig[tab].title.toLowerCase()}`);
+      })
+      .finally(() => { if (active) setReportLoading(false); });
+
+    return () => { active = false; };
+  }, [tab, refreshKey, memberPage]);
+
   const tabs = [
     { id: 'summary',  label: 'Summary',       icon: List },
+    { id: 'inventory', label: 'Inventory', icon: BookOpen },
+    { id: 'categories', label: 'Categories', icon: List },
+    { id: 'copyAudit', label: 'Copy audit', icon: AlertTriangle },
+    { id: 'circulation', label: 'Circulation', icon: TrendingUp },
+    { id: 'members', label: 'Members', icon: Users },
+    { id: 'fines', label: 'Overdue fines', icon: DollarSign },
     { id: 'popular',  label: 'Popular Books',  icon: Award },
     { id: 'overdue',  label: 'Overdue Loans',  icon: AlertTriangle },
   ];
@@ -286,6 +424,29 @@ const InventoryReports = () => {
       {/* Tab Content */}
       <div>
         {tab === 'summary'  && <SummaryTab stats={stats} />}
+        {reportConfig[tab] && (
+          <ReportTable
+            report={reportConfig[tab]}
+            rows={reportData[tab]?.rows || []}
+            total={reportData[tab]?.total}
+            loading={reportLoading}
+            error={reportError}
+          />
+        )}
+        {tab === 'members' && reportData.members && !reportLoading && !reportError && (
+          <div className="mt-3 flex items-center justify-between">
+            <button type="button" onClick={() => setMemberPage((page) => page - 1)} disabled={memberPage <= 1}
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600 disabled:opacity-50">
+              Previous
+            </button>
+            <span className="text-sm text-slate-500">Page {memberPage}</span>
+            <button type="button" onClick={() => setMemberPage((page) => page + 1)}
+              disabled={memberPage * 50 >= reportData.members.total}
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600 disabled:opacity-50">
+              Next
+            </button>
+          </div>
+        )}
         {tab === 'popular'  && <PopularBooksTab />}
         {tab === 'overdue'  && <OverdueLoansTab />}
       </div>
