@@ -2,7 +2,7 @@ import { Response, NextFunction } from 'express';
 import { AuthRequest } from './permissions.middleware';
 import prisma from '../config/database';
 import { ApiError } from '../utils/error.util';
-import { isStarterLikeActiveSlugs } from '../services/moduleCatalog.service';
+import { isPrivatePrimarySchool, isStarterLikeActiveSlugs } from '../services/moduleCatalog.service';
 
 export const requireApp = (slug: string) => {
   return async (req: AuthRequest, _res: Response, next: NextFunction): Promise<void> => {
@@ -60,7 +60,11 @@ export const requireApp = (slug: string) => {
           select: { app: { select: { slug: true } } },
         });
         const activeSlugs = activeConfigs.map((item) => item.app.slug);
-        if (isStarterLikeActiveSlugs(activeSlugs)) {
+        const school = await prisma.school.findUnique({
+          where: { id: schoolId },
+          select: { schoolType: true },
+        });
+        if (isStarterLikeActiveSlugs(activeSlugs) && !isPrivatePrimarySchool(school?.schoolType)) {
           return next(
             new ApiError(403, 'Fees & Billing is not available on the Starter package').withCode('APP_DISABLED')
           );

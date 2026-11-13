@@ -2,6 +2,11 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import prisma from '../config/database';
 
 export type ModulePackageId = 'starter' | 'standard' | 'professional' | 'enterprise';
+export type SchoolTypeClassification =
+  | 'PUBLIC_PRIMARY'
+  | 'PRIVATE_PRIMARY'
+  | 'PUBLIC_SECONDARY'
+  | 'PRIVATE_SECONDARY';
 
 type TxClient = Prisma.TransactionClient | PrismaClient;
 
@@ -85,6 +90,17 @@ const NON_STARTER_ACTIVE_SLUGS = new Set([
 ]);
 const STARTER_CORE_ACTIVE_SLUGS = new Set(MODULE_PACKAGES.starter.active);
 
+export const normalizeSchoolTypeClassification = (raw?: string | null): SchoolTypeClassification | null => {
+  const normalized = String(raw || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+  return ['PUBLIC_PRIMARY', 'PRIVATE_PRIMARY', 'PUBLIC_SECONDARY', 'PRIVATE_SECONDARY']
+    .includes(normalized)
+    ? normalized as SchoolTypeClassification
+    : null;
+};
+
+export const isPrivatePrimarySchool = (schoolType?: string | null) =>
+  normalizeSchoolTypeClassification(schoolType) === 'PRIVATE_PRIMARY';
+
 export const normalizePackageId = (raw?: string | null): ModulePackageId => {
   const normalized = String(raw || 'starter').toLowerCase();
   return (PACKAGE_ORDER.includes(normalized as ModulePackageId) ? normalized : 'starter') as ModulePackageId;
@@ -98,7 +114,7 @@ export const isStarterLikeActiveSlugs = (slugs: string[] = []) => {
   return hasStarterCore && !hasNonStarterApp;
 };
 
-export const getPackageDefinition = (packageId: ModulePackageId) => {
+export const getPackageDefinition = (packageId: ModulePackageId, schoolType?: string | null) => {
   const targetIndex = PACKAGE_ORDER.indexOf(packageId);
   const active = new Set<string>();
   const mandatory = new Set<string>();
@@ -107,6 +123,10 @@ export const getPackageDefinition = (packageId: ModulePackageId) => {
     MODULE_PACKAGES[id].active.forEach((slug) => active.add(slug));
     MODULE_PACKAGES[id].mandatory.forEach((slug) => mandatory.add(slug));
   });
+
+  if (packageId === 'starter' && isPrivatePrimarySchool(schoolType)) {
+    active.add('fee-management');
+  }
 
   return {
     id: packageId,
@@ -151,7 +171,10 @@ export const applyModulePackageToSchool = async (
   updatedById?: string | null,
 ) => {
   await ensureAppCatalog(client);
-  const packageDefinition = getPackageDefinition(packageId);
+  const school = packageId === 'starter'
+    ? await client.school.findUnique({ where: { id: schoolId }, select: { schoolType: true } })
+    : null;
+  const packageDefinition = getPackageDefinition(packageId, school?.schoolType);
   const active = new Set(packageDefinition.active);
   const mandatory = new Set(packageDefinition.mandatory);
   const apps = await client.app.findMany({ where: { isSystem: false } });
@@ -214,6 +237,10 @@ export const ensureSchoolModuleConfigs = async (schoolId: string, packageId?: Mo
 
 export const listSchoolModules = async (schoolId: string) => {
   await ensureSchoolModuleConfigs(schoolId);
+  const school = await prisma.school.findUnique({
+    where: { id: schoolId },
+    select: { schoolType: true },
+  });
   const configs = await prisma.schoolAppConfig.findMany({
     where: { schoolId },
     include: { app: true },
@@ -238,14 +265,14 @@ export const listSchoolModules = async (schoolId: string) => {
     }));
 
   const rawActiveSlugs = modules.filter((module) => module.isActive && module.isVisible).map((module) => module.slug);
-  const activeSlugs = isStarterLikeActiveSlugs(rawActiveSlugs)
+  const activeSlugs = isStarterLikeActiveSlugs(rawActiveSlugs) && !isPrivatePrimarySchool(school?.schoolType)
     ? rawActiveSlugs.filter((slug) => slug !== 'fee-management')
     : rawActiveSlugs;
 
   return {
     packages: Object.fromEntries(
       PACKAGE_ORDER.map((id) => {
-        const definition = getPackageDefinition(id);
+        const definition = getPackageDefinition(id, school?.schoolType);
         return [id, {
           id,
           name: definition.name,
