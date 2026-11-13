@@ -2,7 +2,6 @@ import {
   getEnabledAppsForUser,
   hasEnabledAppsData,
   hasFeeModuleAccess,
-  isStarterPackageApps,
 } from '../../../utils/packageAccess';
 
 const PAGE_APP_REQUIREMENTS = {
@@ -402,7 +401,7 @@ export const hasPageAccess = (user, page) => {
   if (
     requiredApp === 'fee-management' &&
     enabledApps.length > 0 &&
-    (!hasFeeModuleAccess(enabledApps) || isStarterPackageApps(enabledApps))
+    !hasFeeModuleAccess(enabledApps)
   ) {
     return false;
   }
