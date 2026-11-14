@@ -71,6 +71,7 @@ _cache/
 .cache/
 todelete/
 .agents/
+.codex/
 .claude/
 .reasonix/
 .friday/

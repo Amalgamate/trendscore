@@ -1,7 +1,7 @@
 jest.mock('../config/database', () => ({
   __esModule: true,
   default: {
-    school: { findFirst: jest.fn(), findMany: jest.fn() },
+    school: { findFirst: jest.fn(), findMany: jest.fn(), findUnique: jest.fn() },
     app: { upsert: jest.fn(), findMany: jest.fn() },
     schoolAppConfig: {
       count: jest.fn(),
@@ -17,10 +17,15 @@ import prisma from '../config/database';
 import { requireApp } from '../middleware/requireApp';
 import { AuthRequest } from '../middleware/permissions.middleware';
 import { requireSingleSchoolContext } from '../middleware/school.middleware';
-import { APP_CATALOG, ensureSchoolModuleConfigs } from '../services/moduleCatalog.service';
+import {
+  APP_CATALOG,
+  applyModulePackageToSchool,
+  ensureSchoolModuleConfigs,
+  enableOptionalSchoolModules,
+} from '../services/moduleCatalog.service';
 
 const mockedPrisma = prisma as unknown as {
-  school: { findFirst: jest.Mock; findMany: jest.Mock };
+  school: { findFirst: jest.Mock; findMany: jest.Mock; findUnique: jest.Mock };
   app: { upsert: jest.Mock; findMany: jest.Mock };
   schoolAppConfig: {
     count: jest.Mock;
@@ -73,6 +78,130 @@ describe('module entitlement guards', () => {
     expect(next.mock.calls[0][0]).toMatchObject({ statusCode: 403, code: 'APP_DISABLED' });
   });
 
+  it.each([
+    ['Public Primary', false],
+    ['Private Primary', true],
+    ['Private Secondary', false],
+    [null, false],
+    ['Unclassified', false],
+  ])('applies Starter fees only for private primary schools (school type: %s)', async (schoolType, feeEnabled) => {
+    mockedPrisma.school.findUnique.mockResolvedValue({ schoolType });
+    mockedPrisma.app.findMany.mockResolvedValue(
+      APP_CATALOG.map((app, index) => ({ id: `app-${index}`, slug: app.slug }))
+    );
+
+    await applyModulePackageToSchool('school-1', 'starter');
+
+    const feeAppId = `app-${APP_CATALOG.findIndex((app) => app.slug === 'fee-management')}`;
+    const feeConfig = mockedPrisma.schoolAppConfig.upsert.mock.calls
+      .map(([args]) => args.create)
+      .find((config) => config.appId === feeAppId);
+    expect(feeConfig).toMatchObject({ isActive: feeEnabled });
+  });
+
+  it.each([
+    ['standard', ['fee-management', 'inventory', 'approvals']],
+    ['professional', ['fee-management', 'accounting', 'library']],
+    ['enterprise', ['fee-management', 'tertiary-modules']],
+  ] as const)('preserves %s package entitlements', async (packageId, expectedSlugs) => {
+    mockedPrisma.app.findMany.mockResolvedValue(
+      APP_CATALOG.map((app, index) => ({ id: `app-${index}`, slug: app.slug }))
+    );
+
+    await applyModulePackageToSchool('school-1', packageId);
+
+    const activeSlugs = new Set(mockedPrisma.schoolAppConfig.upsert.mock.calls
+      .map(([args]) => args.create)
+      .filter((config) => config.isActive)
+      .map((config) => APP_CATALOG.find((app, index) => `app-${index}` === config.appId)?.slug));
+    expectedSlugs.forEach((slug) => expect(activeSlugs.has(slug)).toBe(true));
+    if (packageId === 'standard' || packageId === 'professional') {
+      expect(activeSlugs.has('transport')).toBe(false);
+    }
+  });
+
+  it('enables Transport only when separately confirmed as an optional module', async () => {
+    mockedPrisma.app.findMany.mockResolvedValue(
+      APP_CATALOG.map((app, index) => ({ id: `app-${index}`, slug: app.slug }))
+    );
+
+    await applyModulePackageToSchool('school-1', 'standard');
+
+    const transportAppId = `app-${APP_CATALOG.findIndex((app) => app.slug === 'transport')}`;
+    const packageTransportConfig = mockedPrisma.schoolAppConfig.upsert.mock.calls
+      .map(([args]) => args.create)
+      .find((config) => config.appId === transportAppId);
+    expect(packageTransportConfig).toMatchObject({ isActive: false });
+
+    mockedPrisma.app.findMany.mockResolvedValue([
+      { id: transportAppId, slug: 'transport' },
+    ]);
+    await enableOptionalSchoolModules('school-1', ['transport']);
+
+    expect(mockedPrisma.schoolAppConfig.upsert).toHaveBeenLastCalledWith({
+      where: { schoolId_appId: { schoolId: 'school-1', appId: transportAppId } },
+      update: { isActive: true, isMandatory: false, isVisible: true },
+      create: {
+        schoolId: 'school-1',
+        appId: transportAppId,
+        isActive: true,
+        isMandatory: false,
+        isVisible: true,
+      },
+    });
+  });
+
+  it('allows the fee module for private-primary Starter schools', async () => {
+    mockedPrisma.school.findUnique.mockResolvedValue({ schoolType: 'PRIVATE_PRIMARY' });
+    mockedPrisma.schoolAppConfig.count.mockResolvedValue(1);
+    mockedPrisma.schoolAppConfig.findFirst.mockResolvedValue({
+      isActive: true,
+      isVisible: true,
+      app: { name: 'Fees & Billing' },
+    });
+    mockedPrisma.schoolAppConfig.findMany.mockResolvedValue([
+      { app: { slug: 'student-registry' } },
+      { app: { slug: 'attendance' } },
+      { app: { slug: 'fee-management' } },
+    ]);
+    const next = jest.fn();
+
+    await requireApp('fee-management')(
+      makeRequest({ school: { id: 'school-1' }, user: { role: 'ADMIN' } }),
+      {} as Response,
+      next
+    );
+
+    expect(next).toHaveBeenCalledWith();
+  });
+
+  it.each([['Public Primary'], [null], ['Unclassified']])(
+    'rejects Starter fees when school type is not private primary (%s)',
+    async (schoolType) => {
+      mockedPrisma.school.findUnique.mockResolvedValue({ schoolType });
+      mockedPrisma.schoolAppConfig.count.mockResolvedValue(1);
+      mockedPrisma.schoolAppConfig.findFirst.mockResolvedValue({
+        isActive: true,
+        isVisible: true,
+        app: { name: 'Fees & Billing' },
+      });
+      mockedPrisma.schoolAppConfig.findMany.mockResolvedValue([
+        { app: { slug: 'student-registry' } },
+        { app: { slug: 'attendance' } },
+        { app: { slug: 'fee-management' } },
+      ]);
+      const next = jest.fn();
+
+      await requireApp('fee-management')(
+        makeRequest({ school: { id: 'school-1' }, user: { role: 'ADMIN' } }),
+        {} as Response,
+        next
+      );
+
+      expect(next.mock.calls[0][0]).toMatchObject({ statusCode: 403, code: 'APP_DISABLED' });
+    }
+  );
+
   it('does not expose add-on modules when initializing a school with no config rows', async () => {
     mockedPrisma.schoolAppConfig.findMany.mockResolvedValue([]);
     mockedPrisma.app.findMany.mockResolvedValue(APP_CATALOG.map((app, index) => ({ ...app, id: `app-${index}` })));
@@ -84,6 +213,20 @@ describe('module entitlement guards', () => {
       .toMatchObject({ isActive: false });
     expect(rows.find((row) => row.appId === `app-${APP_CATALOG.findIndex((app) => app.slug === 'student-registry')}`))
       .toMatchObject({ isActive: true });
+  });
+
+  it('does not assign Starter modules when a Secondary school has no package config', async () => {
+    mockedPrisma.schoolAppConfig.findMany.mockResolvedValue([]);
+    mockedPrisma.school.findUnique.mockResolvedValue({ institutionType: 'SECONDARY' });
+    mockedPrisma.app.findMany.mockResolvedValue(APP_CATALOG.map((app, index) => ({ ...app, id: `app-${index}` })));
+
+    await ensureSchoolModuleConfigs('school-1');
+
+    const rows = mockedPrisma.schoolAppConfig.upsert.mock.calls.map(([args]) => args.create);
+    expect(rows).toHaveLength(APP_CATALOG.length);
+    expect(rows.every((row) => row.isActive === false)).toBe(true);
+    expect(rows.some((row) => row.isActive && row.appId === `app-${APP_CATALOG.findIndex((app) => app.slug === 'student-registry')}`))
+      .toBe(false);
   });
 
   it('adds newly catalogued modules to partial configs as disabled', async () => {

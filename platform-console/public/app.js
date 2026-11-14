@@ -2598,7 +2598,7 @@ function runConsoleDeploy() {
 }
 
 // Navigation
-const SECTIONS = ['overview', 'instances', 'settings', 'billing', 'logs', 'leads', 'agents'];
+const SECTIONS = ['overview', 'instances', 'settings', 'billing', 'logs', 'leads', 'applications', 'agents'];
 const SETTINGS_TABS = ['controls', 'deployments', 'storage', 'communications'];
 const SETTINGS_TAB_LABELS = {
   controls: 'Instance Controls',

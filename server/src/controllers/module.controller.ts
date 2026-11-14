@@ -4,6 +4,8 @@ import { AuthRequest } from '../middleware/permissions.middleware';
 import { ApiError } from '../utils/error.util';
 import {
   applyModulePackageToSchool,
+  isPrivatePrimarySchool,
+  isStarterLikeActiveSlugs,
   listSchoolModules,
   normalizePackageId,
 } from '../services/moduleCatalog.service';
@@ -65,6 +67,17 @@ export const updateSchoolModules = async (req: AuthRequest, res: Response) => {
       const nextActive = typeof update.isActive === 'boolean' ? update.isActive : existing.isActive;
       const nextVisible = typeof update.isVisible === 'boolean' ? update.isVisible : existing.isVisible;
 
+      if (slug === 'fee-management' && nextActive && !isPrivatePrimarySchool(school.schoolType)) {
+        const activeConfigs = await tx.schoolAppConfig.findMany({
+          where: { schoolId: school.id, isActive: true, isVisible: true },
+          select: { app: { select: { slug: true } } },
+        });
+        const activeSlugs = activeConfigs.map((item) => item.app.slug);
+        if (isStarterLikeActiveSlugs([...activeSlugs, slug])) {
+          throw new ApiError(400, 'Fees & Billing is not available on the Starter package');
+        }
+      }
+
       await tx.schoolAppConfig.update({
         where: { id: existing.id },
         data: {
@@ -94,4 +107,3 @@ export const updateSchoolModules = async (req: AuthRequest, res: Response) => {
   const data = await listSchoolModules(school.id);
   res.status(200).json({ success: true, message: 'Module configuration updated', data });
 };
-

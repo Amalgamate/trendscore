@@ -1,7 +1,13 @@
 import { Prisma, PrismaClient } from '@prisma/client';
 import prisma from '../config/database';
+import packageCatalog from '../data/module-package-catalog.json';
 
 export type ModulePackageId = 'starter' | 'standard' | 'professional' | 'enterprise';
+export type SchoolTypeClassification =
+  | 'PUBLIC_PRIMARY'
+  | 'PRIVATE_PRIMARY'
+  | 'PUBLIC_SECONDARY'
+  | 'PRIVATE_SECONDARY';
 
 type TxClient = Prisma.TransactionClient | PrismaClient;
 
@@ -31,44 +37,10 @@ export const APP_CATALOG = [
   { slug: 'tertiary-modules', name: 'Tertiary Modules', description: 'Programs, departments, units and tertiary workflows.', category: 'Academics', icon: 'graduation-cap', sortOrder: 220 },
 ];
 
-export const MODULE_PACKAGES: Record<ModulePackageId, { name: string; description: string; active: string[]; mandatory: string[] }> = {
-  starter: {
-    name: 'Starter',
-    description: 'Core school operations for schools starting with student records, attendance, assessment and communication.',
-    active: [
-      'student-registry',
-      'attendance',
-      'gradebook',
-      'exams',
-      'planner',
-      'timetable',
-      'curriculum',
-      'sms-notifications',
-      'announcements',
-      'user-management',
-      'school-settings',
-    ],
-    mandatory: ['student-registry', 'user-management', 'school-settings'],
-  },
-  standard: {
-    name: 'Standard',
-    description: 'Starter plus fees, transport, inventory and approvals.',
-    active: ['fee-management', 'transport', 'inventory', 'approvals'],
-    mandatory: ['student-registry', 'user-management', 'school-settings'],
-  },
-  professional: {
-    name: 'Professional',
-    description: 'Standard plus HR, accounting, LMS, library and biometric support.',
-    active: ['staff-hr', 'payroll', 'accounting', 'lms', 'lms-professional', 'library', 'biometric'],
-    mandatory: ['student-registry', 'user-management', 'school-settings'],
-  },
-  enterprise: {
-    name: 'Enterprise',
-    description: 'Professional plus tertiary workflows and full app catalog support.',
-    active: ['tertiary-modules'],
-    mandatory: ['student-registry', 'user-management', 'school-settings'],
-  },
-};
+export const MODULE_PACKAGES = packageCatalog.packages as Record<
+  ModulePackageId,
+  { name: string; description: string; active: string[]; mandatory: string[] }
+>;
 
 const PACKAGE_ORDER: ModulePackageId[] = ['starter', 'standard', 'professional', 'enterprise'];
 const NON_STARTER_ACTIVE_SLUGS = new Set([
@@ -85,6 +57,17 @@ const NON_STARTER_ACTIVE_SLUGS = new Set([
 ]);
 const STARTER_CORE_ACTIVE_SLUGS = new Set(MODULE_PACKAGES.starter.active);
 
+export const normalizeSchoolTypeClassification = (raw?: string | null): SchoolTypeClassification | null => {
+  const normalized = String(raw || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+  return ['PUBLIC_PRIMARY', 'PRIVATE_PRIMARY', 'PUBLIC_SECONDARY', 'PRIVATE_SECONDARY']
+    .includes(normalized)
+    ? normalized as SchoolTypeClassification
+    : null;
+};
+
+export const isPrivatePrimarySchool = (schoolType?: string | null) =>
+  normalizeSchoolTypeClassification(schoolType) === 'PRIVATE_PRIMARY';
+
 export const normalizePackageId = (raw?: string | null): ModulePackageId => {
   const normalized = String(raw || 'starter').toLowerCase();
   return (PACKAGE_ORDER.includes(normalized as ModulePackageId) ? normalized : 'starter') as ModulePackageId;
@@ -98,7 +81,7 @@ export const isStarterLikeActiveSlugs = (slugs: string[] = []) => {
   return hasStarterCore && !hasNonStarterApp;
 };
 
-export const getPackageDefinition = (packageId: ModulePackageId) => {
+export const getPackageDefinition = (packageId: ModulePackageId, schoolType?: string | null) => {
   const targetIndex = PACKAGE_ORDER.indexOf(packageId);
   const active = new Set<string>();
   const mandatory = new Set<string>();
@@ -107,6 +90,10 @@ export const getPackageDefinition = (packageId: ModulePackageId) => {
     MODULE_PACKAGES[id].active.forEach((slug) => active.add(slug));
     MODULE_PACKAGES[id].mandatory.forEach((slug) => mandatory.add(slug));
   });
+
+  if (packageId === 'starter' && isPrivatePrimarySchool(schoolType)) {
+    active.add('fee-management');
+  }
 
   return {
     id: packageId,
@@ -151,7 +138,10 @@ export const applyModulePackageToSchool = async (
   updatedById?: string | null,
 ) => {
   await ensureAppCatalog(client);
-  const packageDefinition = getPackageDefinition(packageId);
+  const school = packageId === 'starter'
+    ? await client.school.findUnique({ where: { id: schoolId }, select: { schoolType: true } })
+    : null;
+  const packageDefinition = getPackageDefinition(packageId, school?.schoolType);
   const active = new Set(packageDefinition.active);
   const mandatory = new Set(packageDefinition.mandatory);
   const apps = await client.app.findMany({ where: { isSystem: false } });
@@ -177,6 +167,62 @@ export const applyModulePackageToSchool = async (
   }
 
   return packageDefinition;
+};
+
+export const initializeUnassignedSchoolModules = async (
+  schoolId: string,
+  client: TxClient = prisma,
+) => {
+  await ensureAppCatalog(client);
+  const apps = await client.app.findMany({ where: { isSystem: false } });
+
+  for (const app of apps) {
+    await client.schoolAppConfig.upsert({
+      where: { schoolId_appId: { schoolId, appId: app.id } },
+      update: {
+        isActive: false,
+        isMandatory: false,
+        isVisible: true,
+      },
+      create: {
+        schoolId,
+        appId: app.id,
+        isActive: false,
+        isMandatory: false,
+        isVisible: true,
+      },
+    });
+  }
+};
+
+export const enableOptionalSchoolModules = async (
+  schoolId: string,
+  slugs: readonly string[],
+  client: TxClient = prisma,
+) => {
+  if (slugs.length === 0) return;
+
+  await ensureAppCatalog(client);
+  const apps = await client.app.findMany({
+    where: { isSystem: false, slug: { in: [...slugs] } },
+  });
+  if (apps.length !== new Set(slugs).size) {
+    throw new Error('One or more requested optional modules are unavailable');
+  }
+
+  for (const app of apps) {
+    await client.schoolAppConfig.upsert({
+      where: { schoolId_appId: { schoolId, appId: app.id } },
+      update: { isActive: true, isMandatory: false, isVisible: true },
+      create: {
+        schoolId,
+        appId: app.id,
+        isActive: true,
+        isMandatory: false,
+        isVisible: true,
+      },
+    });
+  }
 };
 
 export const ensureSchoolModuleConfigs = async (schoolId: string, packageId?: ModulePackageId | null) => {
@@ -209,11 +255,24 @@ export const ensureSchoolModuleConfigs = async (schoolId: string, packageId?: Mo
     return;
   }
 
+  const school = await prisma.school.findUnique({
+    where: { id: schoolId },
+    select: { institutionType: true },
+  });
+  if (school?.institutionType === 'SECONDARY' || school?.institutionType === 'TERTIARY') {
+    await initializeUnassignedSchoolModules(schoolId);
+    return;
+  }
+
   await applyModulePackageToSchool(schoolId, packageId || 'starter');
 };
 
 export const listSchoolModules = async (schoolId: string) => {
   await ensureSchoolModuleConfigs(schoolId);
+  const school = await prisma.school.findUnique({
+    where: { id: schoolId },
+    select: { schoolType: true },
+  });
   const configs = await prisma.schoolAppConfig.findMany({
     where: { schoolId },
     include: { app: true },
@@ -238,14 +297,14 @@ export const listSchoolModules = async (schoolId: string) => {
     }));
 
   const rawActiveSlugs = modules.filter((module) => module.isActive && module.isVisible).map((module) => module.slug);
-  const activeSlugs = isStarterLikeActiveSlugs(rawActiveSlugs)
+  const activeSlugs = isStarterLikeActiveSlugs(rawActiveSlugs) && !isPrivatePrimarySchool(school?.schoolType)
     ? rawActiveSlugs.filter((slug) => slug !== 'fee-management')
     : rawActiveSlugs;
 
   return {
     packages: Object.fromEntries(
       PACKAGE_ORDER.map((id) => {
-        const definition = getPackageDefinition(id);
+        const definition = getPackageDefinition(id, school?.schoolType);
         return [id, {
           id,
           name: definition.name,
