@@ -40,6 +40,7 @@ TrendScore brings the everyday work of a school into one secure, role-aware plat
 | Module | Readiness | Current position |
 | --- | --- | --- |
 | Institution setup, branding, users, roles, and permissions | **Complete** | School setup, role-aware navigation, module access, account lifecycle, and authentication flows are implemented. |
+| Public school applications and onboarding | **Complete** | Primary applicants select a supported bundle before account activation; staff review and approve applications before provisioning. |
 | Learners, guardians, admissions, classes, streams, and documents | **Complete** | Core learner and family operating records are implemented. |
 | CBE academics, assessment, grading, and report cards | **Complete** | Formative and summative workflows, scoring, status codes, reporting, and score governance are implemented. |
 | Guided Pathways | **WIP** | Full Grade 7–9 learner, parent, counsellor, and admin lifecycle is implemented; ongoing UAT, catalogue quality, and rollout hardening remain. |
@@ -63,6 +64,7 @@ TrendScore brings the everyday work of a school into one secure, role-aware plat
 
 | Who it helps | What they can do |
 | --- | --- |
+| School applicants | Submit a school profile and, for Primary schools, choose a supported package before staff review. |
 | School leaders | Monitor operations, performance, finance, approvals, and school-wide activity. |
 | Teachers and counsellors | Manage classes, attendance, assessments, reports, learner guidance, and review queues. |
 | Parents and guardians | Follow learner progress, fees, notices, reports, and pathway decisions. |
@@ -117,10 +119,20 @@ TrendScore brings the everyday work of a school into one secure, role-aware plat
 
 | Area | Capabilities |
 | --- | --- |
+| Public school applications | Applicants provide school and contact details, school type, day/boarding profile, transport needs, and (for Primary schools) a Starter, Standard, or Professional package choice. |
 | Institution setup | School profile, branding, academic years, terms, institution types, module gating, first-login setup, and school-specific settings. |
 | Identity and access | Superadmin bootstrap, user lifecycle management, roles, permissions, role preview, account switching, session controls, and protected routes. |
 | Learner and family records | Admissions, learner profiles, guardian links, class and stream placement, progression, exits, documents, and account synchronisation. |
 | Dashboards | Responsive dashboards and role-specific views for owners, administrators, teachers, accountants, parents, and learners. |
+
+### School application and onboarding
+
+- Public applications support Public/Private Primary and Secondary schools. Primary applications require Starter, Standard, or Professional; Enterprise and prices are not shown in this selector.
+- Secondary applications remain available without a Primary package. They are not assigned a Primary bundle by default.
+- Starter's Fees & Billing entitlement depends on school type: it is excluded for Public Primary and included for Private Primary.
+- Applicants can request Transport, but the request is a recommendation—not an entitlement. Staff must confirm optional modules during review before they are enabled.
+- Applications pass through staff review and approval before provisioning. The administrator then provisions the school and sends its one-time account activation link.
+- Day/boarding details are onboarding profile information; they do not replace or overload the school's public/private and primary/secondary type.
 
 ### Academics and CBE assessment
 
@@ -144,7 +156,7 @@ TrendScore includes an end-to-end Grade 7–9 decision workflow that turns learn
 6. Teachers or counsellors add guidance, action plans, and review decisions.
 7. Administrators monitor the funnel, correct reference data, approve, and lock final decisions.
 
-The workflow keeps submission snapshots, revision history, notifications, role boundaries, audit records, and locked-plan protection. See [the Pathways end-to-end scenario](pathways/E2E-Pathways-G7-G9-Test-Scenario.md) for UAT coverage across Grade 7, 8, and 9 journeys.
+The workflow keeps submission snapshots, revision history, notifications, role boundaries, audit records, and locked-plan protection.
 
 ### Finance, accounting, and payments
 
@@ -327,11 +339,15 @@ TrendScore is maintained as a modular monorepo.
 | --- | --- |
 | [`src/`](src) | React application, UI components, state stores, API clients, and role-based experiences. |
 | [`server/`](server) | Express API, Prisma schema, routes, services, controllers, jobs, scripts, and tests. |
+| [`platform-console/`](platform-console) | Platform administration, application review, school provisioning, billing, and agent operations. |
 | [`public/`](public) | Application assets, PWA metadata, service-worker files, branding, and screenshots. |
-| [`pathways/`](pathways) | Pathways UAT scenarios and implementation-supporting material. |
 | [`deploy/`](deploy) | Instance manifest and school deployment operating documentation. |
 | [`.github/workflows/`](.github/workflows) | CI, Docker publishing, promotion, storage maintenance, and biometric verification workflows. |
-| [`docs/`](docs) | Architecture, audit, and product documentation. |
+| [`docs/`](docs) | Maintained architecture, operational, audit, and product reference documentation. |
+
+### Repository documentation policy
+
+The repository keeps the root README and documentation that helps users and maintainers understand, operate, or support the product. Temporary implementation plans, generated task lists, and tool-specific AI-agent prompts or configuration do not belong in the tracked project tree; keep those in the relevant planning tool or local environment instead.
 
 ### Technology
 
@@ -435,9 +451,12 @@ Use seed data only in local, test, or explicitly approved demo environments.
 
 ## Deployment
 
-TrendScore separates image publishing from school deployment. GitHub Actions can build and publish Docker images, but school deployments are manual, target one approved instance at a time, and are checked against [`deploy/instances.manifest.json`](deploy/instances.manifest.json).
+TrendScore separates CI, image publishing, and school deployment:
 
-Before a promotion proceeds, the workflow validates the selected school, environment, and deployment permission, then runs a scoped migration, deployment, and health check.
+- CI builds and tests changes; it does not deploy them to a school server.
+- Docker images are published by GitHub Actions on pushes to `main` and version tags, or when that workflow is manually run.
+- School deployment is a separate, manually triggered **Deploy Schools** workflow. It validates the target against [`deploy/instances.manifest.json`](deploy/instances.manifest.json), then performs the scoped deployment and health check.
+- Merging a pull request—especially into a feature branch—does not by itself deploy the change to a private server. Confirm the image exists and run the approved deployment workflow for the intended target.
 
 Read the operating guides before deploying:
 
