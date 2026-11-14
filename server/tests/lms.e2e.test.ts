@@ -7,6 +7,7 @@ import lmsRoutes from '../src/routes/lms.routes';
 import prisma from '../src/config/database';
 import { generateAccessToken } from '../src/utils/jwt.util';
 import { UserRole, Gender, LearnerStatus } from '@prisma/client';
+import { enableOptionalSchoolModules } from '../src/services/moduleCatalog.service';
 
 process.env.NODE_ENV = 'test';
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret';
@@ -57,6 +58,7 @@ describe('LMS Courses, Enrollments & Student Portal API', () => {
         curriculumType: 'CBC_AND_EXAM',
       },
     });
+    await enableOptionalSchoolModules('lms-e2e-school-id', ['lms']);
 
     // 1. Create a Head Teacher User
     const user = await prisma.user.upsert({
