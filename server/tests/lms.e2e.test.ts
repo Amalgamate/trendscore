@@ -8,6 +8,8 @@ import prisma from '../src/config/database';
 import { generateAccessToken } from '../src/utils/jwt.util';
 import { UserRole, Gender, LearnerStatus } from '@prisma/client';
 import { enableOptionalSchoolModules } from '../src/services/moduleCatalog.service';
+import { errorHandler } from '../src/middleware/error.middleware';
+import { requireApp } from '../src/middleware/requireApp';
 
 process.env.NODE_ENV = 'test';
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret';
@@ -19,7 +21,8 @@ app.use((req: any, _res, next) => {
   req.school = { id: 'lms-e2e-school-id', name: 'LMS E2E Academy', institutionType: 'SECONDARY' };
   next();
 });
-app.use('/api/lms', lmsRoutes);
+app.use('/api/lms', requireApp('lms-professional'), lmsRoutes);
+app.use(errorHandler);
 
 describe('LMS Courses, Enrollments & Student Portal API', () => {
   const testUserEmail = 'test-lms-creator@local.test';
