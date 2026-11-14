@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth.middleware';
 import { requireAnyPermission, requirePermission } from '../middleware/permissions.middleware';
-import { requireSchoolContext } from '../middleware/school.middleware';
+import { requireSingleSchoolContext } from '../middleware/school.middleware';
 import { rateLimit } from '../middleware/enhanced-rateLimit.middleware';
 import { auditLog } from '../middleware/permissions.middleware';
 import * as refundController from '../controllers/refund.controller';
@@ -10,7 +10,7 @@ import { asyncHandler } from '../utils/async.util';
 const router = Router();
 
 // All refund routes require authentication + school context
-router.use(authenticate, requireSchoolContext);
+router.use(authenticate, requireSingleSchoolContext);
 
 // ─── Submit Refund ──────────────────────────────────────────────────────────
 // Finance staff and linked parents can submit refund requests.

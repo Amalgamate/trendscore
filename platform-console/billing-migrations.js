@@ -647,6 +647,111 @@ const MIGRATIONS = [
       `);
     },
   },
+  {
+    version: 19,
+    name: 'school-applications',
+    notes: 'Drop application_events and the school-application columns/indexes from leads; preserve CRM leads and billing records.',
+    up(db) {
+      const tableExists = name => Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name));
+      const ensureColumn = (table, column, definition) => {
+        if (tableExists(table) && !db.prepare(`PRAGMA table_info(${table})`).all().some(item => item.name === column)) {
+          db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+        }
+      };
+
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS leads (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          school TEXT NOT NULL,
+          phone TEXT NOT NULL,
+          stage TEXT NOT NULL DEFAULT 'new' CHECK (stage IN ('new','contacted','interested','converted','lost')),
+          priority TEXT NOT NULL DEFAULT '1',
+          students INTEGER NOT NULL DEFAULT 0,
+          tags TEXT NOT NULL DEFAULT '[]',
+          systems TEXT NOT NULL DEFAULT '{}',
+          notes TEXT NOT NULL DEFAULT '',
+          next_activity TEXT NOT NULL DEFAULT '',
+          source TEXT NOT NULL DEFAULT 'direct',
+          agent_id TEXT DEFAULT NULL,
+          agent_code TEXT NOT NULL DEFAULT '',
+          agent_school_id TEXT DEFAULT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+      `);
+
+      for (const [column, definition] of [
+        ['school_type', 'TEXT'],
+        ['county', 'TEXT'],
+        ['billing_email', 'TEXT'],
+        ['billing_phone', 'TEXT'],
+        ['principal_name', 'TEXT'],
+        ['modules', 'TEXT'],
+        ['own_sms_provider', 'INTEGER NOT NULL DEFAULT 0'],
+        ['acceptance_method', 'TEXT'],
+        ['acceptance_evidence_file', 'TEXT'],
+        ['accepted_at', 'TEXT'],
+        ['accepted_by', 'TEXT'],
+        ['converted_at', 'TEXT'],
+        ['converted_customer_id', 'TEXT'],
+        ['converted_contract_id', 'TEXT'],
+        ['converted_invoice_id', 'TEXT'],
+        ['application_status', "TEXT CHECK (application_status IS NULL OR application_status IN ('submitted','under_review','approved','provisioning','ready','rejected','withdrawn'))"],
+        ['application_email', "TEXT NOT NULL DEFAULT ''"],
+        ['school_address', "TEXT NOT NULL DEFAULT ''"],
+        ['sub_county', "TEXT NOT NULL DEFAULT ''"],
+        ['ward', "TEXT NOT NULL DEFAULT ''"],
+        ['education_level', "TEXT NOT NULL DEFAULT ''"],
+        ['accommodation_type', "TEXT NOT NULL DEFAULT ''"],
+        ['transport_needed', 'INTEGER NOT NULL DEFAULT 0'],
+        ['requested_package_id', "TEXT NOT NULL DEFAULT ''"],
+        ['requested_module_slugs', "TEXT NOT NULL DEFAULT '[]'"],
+        ['approved_package_id', "TEXT NOT NULL DEFAULT ''"],
+        ['approved_module_slugs', "TEXT NOT NULL DEFAULT '[]'"],
+        ['requested_agent_id', "TEXT NOT NULL DEFAULT ''"],
+        ['potential_duplicate', 'INTEGER NOT NULL DEFAULT 0'],
+        ['application_submitted_at', "TEXT NOT NULL DEFAULT ''"],
+        ['reviewed_at', "TEXT NOT NULL DEFAULT ''"],
+        ['reviewed_by', "TEXT NOT NULL DEFAULT ''"],
+        ['review_notes', "TEXT NOT NULL DEFAULT ''"],
+        ['approved_at', "TEXT NOT NULL DEFAULT ''"],
+        ['approved_by', "TEXT NOT NULL DEFAULT ''"],
+        ['rejected_at', "TEXT NOT NULL DEFAULT ''"],
+        ['rejected_by', "TEXT NOT NULL DEFAULT ''"],
+        ['rejection_reason', "TEXT NOT NULL DEFAULT ''"],
+        ['provisioning_started_at', "TEXT NOT NULL DEFAULT ''"],
+        ['provisioning_tenant_key', "TEXT NOT NULL DEFAULT ''"],
+        ['provisioning_domain', "TEXT NOT NULL DEFAULT ''"],
+        ['provisioned_school_id', "TEXT NOT NULL DEFAULT ''"],
+        ['billing_customer_id', "TEXT NOT NULL DEFAULT ''"],
+        ['billing_contract_id', "TEXT NOT NULL DEFAULT ''"],
+        ['ready_at', "TEXT NOT NULL DEFAULT ''"],
+        ['activation_token_encrypted', "TEXT NOT NULL DEFAULT ''"],
+        ['activation_email_status', "TEXT NOT NULL DEFAULT ''"],
+        ['activation_email_sent_at', "TEXT NOT NULL DEFAULT ''"],
+        ['activation_email_error', "TEXT NOT NULL DEFAULT ''"],
+        ['activation_email_attempts', 'INTEGER NOT NULL DEFAULT 0'],
+        ['last_provision_error', "TEXT NOT NULL DEFAULT ''"],
+      ]) ensureColumn('leads', column, definition);
+
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS leads_application_status_idx ON leads(application_status, application_submitted_at);
+        CREATE INDEX IF NOT EXISTS leads_application_email_idx ON leads(application_email);
+        CREATE TABLE IF NOT EXISTS application_events (
+          id TEXT PRIMARY KEY,
+          application_id TEXT NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+          event_type TEXT NOT NULL,
+          from_status TEXT NOT NULL DEFAULT '',
+          to_status TEXT NOT NULL DEFAULT '',
+          actor TEXT NOT NULL DEFAULT '',
+          details_json TEXT NOT NULL DEFAULT '{}',
+          created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS application_events_application_idx ON application_events(application_id, created_at);
+      `);
+    },
+  },
 ];
 
 module.exports = { MIGRATIONS };

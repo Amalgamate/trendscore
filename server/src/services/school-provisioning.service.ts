@@ -7,6 +7,7 @@ import { resolveCurrentSchool } from './school-resolver.service';
 
 export interface SchoolProvisioningData {
   schoolName: string;
+  schoolType?: string;
   adminEmail: string;
   adminFirstName: string;
   adminLastName: string;
@@ -59,6 +60,7 @@ export async function provisionNewSchool(data: SchoolProvisioningData): Promise<
     const school = await tx.school.create({
       data: {
         name: data.schoolName,
+        schoolType: data.schoolType?.trim() || null,
         admissionFormatType: 'NO_BRANCH',
         registrationNo: data.registrationNo,
         address: data.address,

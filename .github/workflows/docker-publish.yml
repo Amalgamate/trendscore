@@ -96,9 +96,11 @@ jobs:
           set -euo pipefail
           mkdir -p platform-console/deploy
           mkdir -p platform-console/scripts
+          mkdir -p platform-console/data
           cp deploy/deploy-release.sh platform-console/deploy/deploy-release.sh
           cp scripts/provision-instance.sh platform-console/scripts/provision-instance.sh
           cp deploy/instances.manifest.json platform-console/deploy/instances.manifest.json
+          cp server/src/data/module-package-catalog.json platform-console/data/module-package-catalog.json
 
       - name: Build and publish console
         uses: docker/build-push-action@v6

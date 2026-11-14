@@ -292,6 +292,7 @@ export class AuthController {
       data: {
         authVersion: { increment: 1 },
         password: hashedPassword,
+        emailVerified: true,
         passwordResetToken: null,   // Clears the mustChangePassword flag
         passwordResetExpiry: null,
         loginAttempts: 0,

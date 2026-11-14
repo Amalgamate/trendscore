@@ -5,6 +5,7 @@ import { authenticate } from '../middleware/auth.middleware';
 import { requirePermission, auditLog } from '../middleware/permissions.middleware';
 import { validate } from '../middleware/validation.middleware';
 import { rateLimit } from '../middleware/enhanced-rateLimit.middleware';
+import { requireApp } from '../middleware/requireApp';
 
 const router = Router();
 const bookController = new BookController();
@@ -26,7 +27,7 @@ const assignBookSchema = z.object({
 });
 
 // All book routes require authentication
-router.use(authenticate);
+router.use(authenticate, requireApp('library'));
 
 /**
  * @route   GET /api/books

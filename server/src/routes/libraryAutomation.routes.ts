@@ -23,11 +23,12 @@ import { authenticate } from '../middleware/auth.middleware';
 import { requirePermission, auditLog } from '../middleware/permissions.middleware';
 import { rateLimit } from '../middleware/enhanced-rateLimit.middleware';
 import { LibraryAutomationController } from '../controllers/libraryAutomation.controller';
+import { requireApp } from '../middleware/requireApp';
 
 const router = Router();
 const ctrl   = new LibraryAutomationController();
 
-router.use(authenticate);
+router.use(authenticate, requireApp('library'));
 
 // ─── Phase 4: Automation ─────────────────────────────────────────────────────
 

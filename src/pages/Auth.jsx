@@ -146,8 +146,6 @@ function Auth({ onAuthSuccess, brandingSettings, basePath = '/auth' }) {
             <PageTransition key="register">
               <RegisterForm
                 onSwitchToLogin={toLogin}
-                onRegisterSuccess={handleRegisterSuccess}
-                brandingSettings={brandingSettings}
               />
             </PageTransition>
           )}
