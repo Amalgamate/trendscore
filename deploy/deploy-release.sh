@@ -65,6 +65,7 @@ bind_school_domain() {
   local project="${BIND_COMPOSE_PROJECT:-}"
   local cert_email="${BIND_CERT_EMAIL:-admin@trendscore.app}"
   local label site available_site nginx_conf cert_path key_path compose_file
+  local cert_attempt cert_attempts certificate_issued
 
   [[ -n "$domain" && "$domain" == *".${suffix}" ]] || fail "School domain must be a subdomain of ${suffix}."
   label="${domain%.${suffix}}"
@@ -114,9 +115,23 @@ EOF
     run_as_root systemctl enable --now nginx
   fi
 
-  certbot certonly --webroot --webroot-path /var/www/letsencrypt \
-    --non-interactive --agree-tos --email "$cert_email" \
-    --keep-until-expiring --cert-name "$domain" -d "$domain"
+  cert_attempt=1
+  cert_attempts=3
+  certificate_issued=false
+  while (( cert_attempt <= cert_attempts )); do
+    if certbot certonly --webroot --webroot-path /var/www/letsencrypt \
+      --non-interactive --agree-tos --email "$cert_email" \
+      --keep-until-expiring --cert-name "$domain" -d "$domain"; then
+      certificate_issued=true
+      break
+    fi
+    if (( cert_attempt < cert_attempts )); then
+      log "Certificate request attempt ${cert_attempt}/${cert_attempts} failed; retrying after a short wait."
+      sleep $((cert_attempt * 15))
+    fi
+    cert_attempt=$((cert_attempt + 1))
+  done
+  [[ "$certificate_issued" == true ]] || fail "Certificate request failed after ${cert_attempts} attempts; inspect the Certbot log and retry when DNS or the certificate service is available."
   [[ -s "$cert_path" && -s "$key_path" ]] || fail "Certificate issuance did not create a usable certificate for ${domain}."
 
   cat > "$nginx_conf" <<EOF
