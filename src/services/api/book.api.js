@@ -50,6 +50,16 @@ export const libraryAPI = {
   getStats:        ()              => fetchWithAuth('/library/reports/stats'),
   getPopularBooks: (limit = 10)   => fetchWithAuth(`/library/reports/popular?limit=${limit}`),
   getOverdueLoans: ()             => fetchWithAuth('/library/reports/overdue'),
+
+  // ── Library automation & detailed reports ───────────────────────────────
+  runAutomationJob: (job) => fetchWithAuth(`/library/automation/run/${encodeURIComponent(job)}`, { method: 'POST' }),
+  getInventoryReport: (params = {}) => fetchWithAuth(`/library/reports/inventory${qs(params)}`),
+  getCategoryReport: () => fetchWithAuth('/library/reports/categories'),
+  getCopyAuditReport: () => fetchWithAuth('/library/reports/copy-audit'),
+  getCirculationReport: (params = {}) => fetchWithAuth(`/library/reports/circulation${qs(params)}`),
+  getMemberActivityReport: (params = {}) => fetchWithAuth(`/library/reports/members${qs(params)}`),
+  getOverdueFinesReport: () => fetchWithAuth('/library/reports/fines'),
+  getDashboardSummary: () => fetchWithAuth('/library/reports/dashboard'),
 };
 
 // Keep legacy bookAPI alias so existing index.js reference doesn't break

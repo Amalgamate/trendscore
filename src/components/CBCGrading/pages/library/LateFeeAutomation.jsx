@@ -13,7 +13,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   DollarSign, Send, Plus, X, Loader2, Search,
-  CheckCircle2, XCircle, AlertTriangle, RefreshCw, User, Hash,
+  CheckCircle2, XCircle, User,
 } from 'lucide-react';
 import { libraryAPI } from '../../../../services/api/book.api';
 import toast from 'react-hot-toast';
@@ -212,7 +212,7 @@ const LateFeeAutomation = () => {
   const handleSendReminders = async () => {
     setSendingReminders(true);
     try {
-      const res = await libraryAPI.sendOverdueReminders();
+      const res = await libraryAPI.runAutomationJob('send-reminders');
       toast.success(res?.message || 'Overdue reminders sent');
     } catch (err) {
       toast.error(err?.message || 'Failed to send reminders');
