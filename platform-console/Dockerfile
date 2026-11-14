@@ -11,6 +11,7 @@ RUN npm ci --omit=dev
 COPY *.js ./
 COPY services/ ./services/
 COPY public/ ./public/
+COPY data/ ./data/
 COPY deploy/deploy-release.sh ./deploy/deploy-release.sh
 COPY deploy/instances.manifest.json ./deploy/instances.manifest.json
 COPY scripts/provision-instance.sh ./scripts/provision-instance.sh

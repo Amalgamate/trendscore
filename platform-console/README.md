@@ -55,9 +55,13 @@ Do not commit real console passwords or JWT secrets to GitHub.
 
 ## Running with Docker
 
+From the repository root, stage the shared package catalog before building:
+
 ```bash
-docker build -t zawadi-console:local .
-docker run --rm --env-file .env -p 3100:3100 zawadi-console:local
+mkdir -p platform-console/data
+cp server/src/data/module-package-catalog.json platform-console/data/module-package-catalog.json
+docker build -f platform-console/Dockerfile -t zawadi-console:local platform-console
+docker run --rm --env-file platform-console/.env -p 3100:3100 zawadi-console:local
 ```
 
 ---
