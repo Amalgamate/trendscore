@@ -951,6 +951,8 @@ deploy_console() {
   local console_port="${CONSOLE_PORT:-3100}"
   local console_env="${CONSOLE_ENV_FILE:-${APPS_DIR}/.env.console}"
   local console_data="${CONSOLE_DATA_DIR:-${APPS_DIR}/console-data}"
+  local previous_image
+  previous_image="$(docker_cmd inspect --format '{{.Config.Image}}' zawadi-console 2>/dev/null || true)"
 
   docker_cmd pull "${CONSOLE_IMAGE}"
   run_as_root mkdir -p "${console_data}"
@@ -975,6 +977,33 @@ deploy_console() {
     sleep 2
   done
   log "Console health check failed on :${console_port}"
+  docker_cmd logs --tail 40 zawadi-console 2>&1 || true
+
+  if [[ -n "${previous_image}" && "${previous_image}" != "${CONSOLE_IMAGE}" ]]; then
+    log "Rolling back console to ${previous_image}"
+    docker_cmd rm -f zawadi-console >/dev/null 2>&1 || true
+    docker_cmd run -d \
+      --name zawadi-console \
+      --restart always \
+      --label com.zawadi.service=platform-console \
+      --env-file "${console_env}" \
+      -e CONSOLE_DATA_DIR=/app/data \
+      -v /var/run/docker.sock:/var/run/docker.sock \
+      -v "${APPS_DIR}:${APPS_DIR}" \
+      -v "${console_data}:/app/data" \
+      -p "127.0.0.1:${console_port}:3100" \
+      "${previous_image}"
+
+    for attempt in $(seq 1 30); do
+      if curl -fsS "http://${HEALTH_HOST}:${console_port}/health" >/dev/null 2>&1; then
+        log "Console rollback health OK :${console_port}"
+        return 1
+      fi
+      sleep 2
+    done
+    log "Console rollback health check failed on :${console_port}"
+    docker_cmd logs --tail 40 zawadi-console 2>&1 || true
+  fi
   return 1
 }
 

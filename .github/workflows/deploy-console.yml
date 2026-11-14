@@ -41,9 +41,11 @@ jobs:
           set -euo pipefail
           mkdir -p platform-console/deploy
           mkdir -p platform-console/scripts
+          mkdir -p platform-console/data
           cp deploy/deploy-release.sh platform-console/deploy/deploy-release.sh
           cp scripts/provision-instance.sh platform-console/scripts/provision-instance.sh
           cp deploy/instances.manifest.json platform-console/deploy/instances.manifest.json
+          cp server/src/data/module-package-catalog.json platform-console/data/module-package-catalog.json
           cp public/favicon-32x32.png platform-console/public/favicon-32x32.png
           cp public/favicon-16x16.png platform-console/public/favicon-16x16.png
           cp public/apple-touch-icon.png platform-console/public/apple-touch-icon.png
@@ -77,6 +79,40 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=console
           cache-to: type=gha,mode=max,scope=console
+
+      - name: Smoke test published console image
+        env:
+          IMAGE_TAG: sha-${{ steps.revision.outputs.commit_sha }}
+        run: |
+          set -euo pipefail
+          image="${CONSOLE_IMAGE}:${IMAGE_TAG}"
+          container="trendscore-console-smoke"
+          smoke_data="/tmp/trendscore-console-smoke-data"
+          mkdir -p "${smoke_data}"
+          docker pull "${image}"
+          docker run -d --name "${container}" \
+            -p 127.0.0.1:13100:3100 \
+            -v "${smoke_data}:/app/data" \
+            -e PORT=3100 \
+            -e CONSOLE_DATA_DIR=/app/data \
+            -e CONSOLE_JWT_SECRET=console-image-smoke-test-secret-0123456789 \
+            -e CONSOLE_SUPER_ADMIN_EMAIL=smoke-admin@example.test \
+            -e CONSOLE_SUPER_ADMIN_PASSWORD=smoke-test-password-only \
+            "${image}" >/dev/null
+          cleanup() {
+            docker logs "${container}" || true
+            docker rm -f "${container}" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          for attempt in $(seq 1 45); do
+            if curl -fsS http://127.0.0.1:13100/health; then
+              echo "Console image health check passed (${IMAGE_TAG})"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Console image failed its local container health check"
+          exit 1
 
   deploy:
     runs-on: ubuntu-latest

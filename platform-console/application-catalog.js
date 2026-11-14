@@ -1,6 +1,6 @@
 'use strict';
 
-const modulePackageCatalog = require('../server/src/data/module-package-catalog.json');
+const modulePackageCatalog = require('./module-package-catalog');
 
 const PUBLIC_APPLICATION_PACKAGES = ['starter', 'standard', 'professional'];
 
