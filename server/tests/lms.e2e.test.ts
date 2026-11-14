@@ -63,7 +63,7 @@ describe('LMS Courses, Enrollments & Student Portal API', () => {
       },
     });
     testSchoolId = school.id;
-    await enableOptionalSchoolModules(testSchoolId, ['lms']);
+    await enableOptionalSchoolModules(testSchoolId, ['lms', 'lms-professional']);
 
     // 1. Create a Head Teacher User
     const user = await prisma.user.upsert({
