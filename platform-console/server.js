@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
+const dns = require('dns').promises;
 const { promisify } = require('util');
 const { execFile } = require('child_process');
 const Docker = require('dockerode');
@@ -52,6 +53,7 @@ const CONSOLE_ENV_FILE = path.resolve(process.env.CONSOLE_ENV_FILE || '/srv/zawa
 const COOKIE_NAME = 'trends_core_token';
 const COOKIE_SECURE = process.env.CONSOLE_COOKIE_SECURE === 'true';
 const publicApplicationAttempts = new Map();
+const applicationProvisionProgress = new Map();
 const docker = process.env.DOCKER_HOST
   ? new Docker({ host: 'localhost', port: 2375, protocol: 'http' })
   : new Docker();
@@ -431,7 +433,11 @@ async function runDeployRelease({ deployTarget, imageTag, schoolId }) {
 
 async function runDeployReleaseOnHost(scriptPath, env, extraScriptArgs = []) {
   const envPairs = Object.entries(env)
-    .filter(([key]) => ['DEPLOY_TARGET', 'IMAGE_TAG', 'MANIFEST_PATH', 'SCHOOL_ID', 'DEPLOY_CONSOLE', 'DEPLOY_CONSOLE_ONLY'].includes(key))
+    .filter(([key]) => [
+      'DEPLOY_TARGET', 'IMAGE_TAG', 'MANIFEST_PATH', 'SCHOOL_ID', 'DEPLOY_CONSOLE', 'DEPLOY_CONSOLE_ONLY',
+      'DOMAIN_BIND_ONLY', 'BIND_DOMAIN', 'BIND_DOMAIN_SUFFIX', 'BIND_FRONTEND_PORT',
+      'BIND_ENV_FILE', 'BIND_COMPOSE_PROJECT', 'BIND_CERT_EMAIL',
+    ].includes(key))
     .filter(([, value]) => value != null && String(value).length > 0);
 
   const envArgs = envPairs.map(([key, value]) => `${key}=${shellQuote(value)}`).join(' ');
@@ -462,6 +468,46 @@ async function runDeployReleaseOnHost(scriptPath, env, extraScriptArgs = []) {
     deployError.stderr = stderr;
     throw deployError;
   }
+}
+
+async function bindProvisionedSchoolDomain({ domain, frontendPort, envFile, projectName }) {
+  const scriptPath = CONSOLE_DEPLOY_SCRIPT;
+  if (!scriptPath || !fs.existsSync(scriptPath) || !shouldRunDeployOnHost(scriptPath)) {
+    throw new Error('Host domain binding is not installed. Deploy the current platform deployment assets, then retry installation.');
+  }
+  const normalizedDomain = String(domain || '').trim().toLowerCase();
+  const suffix = String(DEFAULT_DOMAIN_SUFFIX || 'trendscore.co.ke').trim().toLowerCase();
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*(?:\.[a-z0-9]+(?:-[a-z0-9]+)*)+$/.test(suffix)) {
+    throw new Error('The platform school-domain suffix is invalid. Check CONSOLE_DEFAULT_DOMAIN_SUFFIX.');
+  }
+  const label = normalizedDomain.endsWith(`.${suffix}`)
+    ? normalizedDomain.slice(0, -(suffix.length + 1))
+    : '';
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(label)) {
+    throw new Error(`The generated school domain ${normalizedDomain || '(empty)'} is not a valid subdomain of ${suffix}.`);
+  }
+  const port = Number(frontendPort);
+  if (!Number.isInteger(port) || port < 3000 || port > 3499) {
+    throw new Error('The provisioner returned an invalid school frontend port.');
+  }
+  const normalizedEnvFile = String(envFile || '');
+  if (!/^\/srv\/zawadi\/apps\/env\/[.][a-z0-9_-]+[.]env$/.test(normalizedEnvFile)) {
+    throw new Error('The provisioner returned an invalid school environment file path.');
+  }
+  const project = String(projectName || '');
+  if (!/^zawadi-[a-z0-9]+(?:[-_][a-z0-9]+)*$/.test(project)) {
+    throw new Error('The provisioner returned an invalid school compose project.');
+  }
+
+  return runDeployReleaseOnHost(scriptPath, {
+    DOMAIN_BIND_ONLY: 'true',
+    BIND_DOMAIN: normalizedDomain,
+    BIND_DOMAIN_SUFFIX: suffix,
+    BIND_FRONTEND_PORT: String(port),
+    BIND_ENV_FILE: normalizedEnvFile,
+    BIND_COMPOSE_PROJECT: project,
+    BIND_CERT_EMAIL: process.env.CONSOLE_CERT_EMAIL || 'admin@trendscore.app',
+  });
 }
 
 async function runDeployConsoleOnly(imageTag) {
@@ -702,6 +748,79 @@ function parseProvisioningResult(stdout) {
     } catch {}
   }
   throw new Error('Provisioning completed without a valid result record.');
+}
+
+function describeProvisioningFailure(error) {
+  const raw = [error?.stdout, error?.stderr, error?.message].filter(Boolean).join('\n');
+  const cleanLines = raw
+    .replace(/\u001b\[[0-9;]*m/g, '')
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(line => line && !/^Command failed:/i.test(line))
+    .filter(line => !/"applicationId"\s*:/.test(line))
+    .filter(line => !/^\s*at\s+.+\(.+\)$/.test(line));
+  const portCollision = /port is already allocated|address already in use|failed to bind/i.test(raw);
+  const summary = portCollision
+    ? 'Installation stopped because a server port is already in use. Retry the installation; it will choose an available port.'
+    : 'Installation could not complete. Open the technical details for the installer output, then retry or share it with support.';
+  const technicalDetails = (cleanLines.slice(-12).join('\n').slice(-1600)
+    || 'No additional installer output was captured.');
+  return { summary, technicalDetails };
+}
+
+function setApplicationProvisionProgress(id, update) {
+  const key = String(id);
+  const previous = applicationProvisionProgress.get(key) || {};
+  const next = { ...previous, ...update, updatedAt: new Date().toISOString() };
+  applicationProvisionProgress.set(key, next);
+  if (applicationProvisionProgress.size > 500) {
+    for (const [oldKey, value] of applicationProvisionProgress) {
+      if (applicationProvisionProgress.size <= 400) break;
+      if (value.status !== 'running') applicationProvisionProgress.delete(oldKey);
+    }
+  }
+  return next;
+}
+
+function trackProvisioningLogLine(id, line) {
+  const text = String(line || '').trim();
+  if (!text) return;
+  const stages = [
+    [/creating\/updating stack/i, 30, 'Starting school services', 'Bringing the school database, API and web app online.'],
+    [/applying prisma schema/i, 48, 'Preparing school records', 'Setting up the database structure for this school.'],
+    [/baselining migration history/i, 60, 'Preparing school records', 'Making the new database ready for future updates.'],
+    [/ensuring active school row/i, 70, 'Finishing school setup', 'Creating the school record and applying its approved setup.'],
+    [/restarting app containers/i, 72, 'Starting school services', 'Restarting the school app with its final settings.'],
+    [/backend health ok/i, 74, 'Checking the school app', 'The school API is responding. Checking the web app next.'],
+    [/frontend health ok/i, 76, 'Checking the school app', 'The school web app is responding.'],
+  ];
+  const match = stages.find(([pattern]) => pattern.test(text));
+  if (match) setApplicationProvisionProgress(id, { percent: match[1], step: match[2], message: match[3] });
+}
+
+function runApplicationProvisioner(applicationId, payload) {
+  return new Promise((resolve, reject) => {
+    let pending = '';
+    const child = execFile(INSTANCE_PROVISION_SCRIPT, [payload], {
+      timeout: 8 * 60 * 1000,
+      maxBuffer: 20 * 1024 * 1024,
+    }, (error, stdout, stderr) => {
+      if (error) {
+        error.stdout = String(stdout || '');
+        error.stderr = String(stderr || '');
+        reject(error);
+        return;
+      }
+      if (pending) trackProvisioningLogLine(applicationId, pending);
+      resolve({ stdout: String(stdout || ''), stderr: String(stderr || '') });
+    });
+    child.stdout?.on('data', chunk => {
+      pending += chunk.toString();
+      const lines = pending.split(/\r?\n/);
+      pending = lines.pop() || '';
+      lines.forEach(line => trackProvisioningLogLine(applicationId, line));
+    });
+  });
 }
 
 app.get('/api/public/application-catalog', (req, res) => {
@@ -1820,6 +1939,13 @@ app.get('/api/applications/:id', requireAuth, requireRole('super_admin', 'platfo
   return res.json({ ok: true, application, events: leadsStore.listApplicationEvents(req.params.id) });
 });
 
+app.get('/api/applications/:id/provision-progress', requireAuth, requireRole('super_admin'), (req, res) => {
+  const application = leadsStore.getApplication(req.params.id);
+  if (!application) return res.status(404).json({ ok: false, error: 'Application not found.' });
+  const progress = applicationProvisionProgress.get(String(req.params.id)) || null;
+  return res.json({ ok: true, progress, active: progress?.status === 'running' });
+});
+
 app.put('/api/applications/:id/review', requireAuth, requireRole('super_admin', 'platform_owner'), (req, res) => {
   try {
     const application = leadsStore.reviewApplication(req.params.id, req.body || {}, req.user.email);
@@ -1858,11 +1984,15 @@ app.post('/api/applications/:id/reject', requireAuth, requireRole('super_admin',
 app.post('/api/applications/:id/provision', requireAuth, requireRole('super_admin'), async (req, res) => {
   let application;
   try {
-    const started = leadsStore.startApplicationProvisioning(req.params.id, req.user.email);
-    if (started.alreadyProvisioning) {
+    const candidate = leadsStore.getApplication(req.params.id);
+    if (!candidate) return res.status(404).json({ ok: false, error: 'Application not found.' });
+    application = candidate;
+    if (candidate.applicationStatus === 'provisioning') {
       return res.status(409).json({ ok: false, error: 'Provisioning is already in progress for this application.' });
     }
-    application = started.application;
+    if (candidate.applicationStatus !== 'approved') {
+      return res.status(400).json({ ok: false, error: 'Only an approved application can be installed.' });
+    }
     if (!INSTANCE_PROVISION_SCRIPT) throw new Error('Instance provisioning script is not configured.');
 
     const appRange = APP_PORT_RANGES.school;
@@ -1872,6 +2002,60 @@ app.post('/api/applications/:id/provision', requireAuth, requireRole('super_admi
       appType: 'school',
       appRange,
       instances,
+      preferredDomain: candidate.provisioningDomain || '',
+    });
+    const manifestAddress = String(loadDeployManifest()?.defaults?.public_ipv4 || '').trim();
+    const requiredAddress = manifestAddress || process.env.DEFAULT_HOST_IP || '185.127.16.124';
+    if (!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(requiredAddress)) {
+      throw new Error('The deployment manifest does not contain a valid public_ipv4 address for school DNS verification.');
+    }
+    let dnsAddresses;
+    try {
+      dnsAddresses = await dns.resolve4(allocation.domain);
+    } catch (error) {
+      if (error.code === 'ENOTFOUND' || error.code === 'ENODATA') {
+        return res.status(409).json({
+          ok: false,
+          code: 'DNS_NOT_READY',
+          domain: allocation.domain,
+          requiredAddress,
+          error: `This school’s web address isn’t ready yet. Ask whoever manages your domain to add an A record for ${allocation.domain} pointing to ${requiredAddress}. Once it’s saved and DNS has updated, choose “Check DNS and try again”.`,
+        });
+      }
+      throw new Error(`Could not verify DNS for ${allocation.domain}: ${error.message}`);
+    }
+    if (!dnsAddresses.length) {
+      return res.status(409).json({
+        ok: false,
+        code: 'DNS_NOT_READY',
+        domain: allocation.domain,
+        requiredAddress,
+        error: `This school’s web address isn’t ready yet. Ask whoever manages your domain to add an A record for ${allocation.domain} pointing to ${requiredAddress}. Once it’s saved and DNS has updated, choose “Check DNS and try again”.`,
+      });
+    }
+    if (!dnsAddresses.includes(requiredAddress)) {
+      return res.status(409).json({
+        ok: false,
+        code: 'DNS_NOT_READY',
+        domain: allocation.domain,
+        requiredAddress,
+        error: `This school’s web address currently points to a different server. Ask whoever manages your domain to update the A record for ${allocation.domain} to ${requiredAddress}. Once DNS has updated, choose “Check DNS and try again”.`,
+      });
+    }
+
+    // Check DNS before changing lifecycle state so a missing record leaves the
+    // application approved and safe to retry after the applicant fixes DNS.
+    const started = leadsStore.startApplicationProvisioning(req.params.id, req.user.email, allocation.domain);
+    if (started.alreadyProvisioning) {
+      return res.status(409).json({ ok: false, error: 'Provisioning is already in progress for this application.' });
+    }
+    application = started.application;
+    setApplicationProvisionProgress(application.id, {
+      status: 'running',
+      percent: 16,
+      step: 'Preparing the school workspace',
+      message: 'Setting up the school environment and checking its existing services.',
+      startedAt: new Date().toISOString(),
     });
     const [adminFirstName, ...adminLastParts] = String(application.name || '').trim().split(/\s+/);
     const payload = JSON.stringify({
@@ -1902,11 +2086,30 @@ app.post('/api/applications/:id/provision', requireAuth, requireRole('super_admi
       requestedBy: req.user.email,
     });
 
-    const { stdout } = await execFileAsync(INSTANCE_PROVISION_SCRIPT, [payload], { timeout: 8 * 60 * 1000 });
+    const { stdout } = await runApplicationProvisioner(application.id, payload);
     const result = parseProvisioningResult(stdout);
     if (!result.activationToken || !result.domain || !result.schoolId) {
       throw new Error('Provisioning result is missing the school or activation details.');
     }
+    if (String(result.domain).toLowerCase() !== allocation.domain) {
+      throw new Error('The provisioner returned a different domain than the one checked before installation.');
+    }
+    setApplicationProvisionProgress(application.id, {
+      percent: 78,
+      step: 'Securing the school address',
+      message: 'Connecting the new subdomain, installing its security certificate and checking the route.',
+    });
+    await bindProvisionedSchoolDomain({
+      domain: result.domain,
+      frontendPort: result.frontendPort,
+      envFile: result.envFile,
+      projectName: result.projectName,
+    });
+    setApplicationProvisionProgress(application.id, {
+      percent: 92,
+      step: 'Finishing setup',
+      message: 'The secure address is working. Saving the subscription and preparing the administrator activation link.',
+    });
     const credentialsReadyAt = new Date().toISOString();
     const tenantKey = String(result.projectName).toLowerCase().replace(/[^a-z0-9._-]+/g, '-').slice(0, 160);
     let customer = billingStore.getCustomerByTenantKey(tenantKey);
@@ -1969,6 +2172,15 @@ app.post('/api/applications/:id/provision', requireAuth, requireRole('super_admi
       leadsStore.recordActivationEmail(application.id, { status: 'failed', error: error.message }, req.user.email);
       pushAudit('APPLICATION_ACTIVATION_EMAIL_FAILED', application.school, req.user.email, `Activation email failed for ${application.id}: ${billingText(error.message, 240)}`, 'Warning');
     }
+    setApplicationProvisionProgress(application.id, {
+      status: 'complete',
+      percent: 100,
+      step: 'School is ready',
+      message: activationEmailStatus === 'sent'
+        ? 'The school is online and its administrator activation link has been sent.'
+        : 'The school is online. The activation email needs to be retried from the application record.',
+      completedAt: new Date().toISOString(),
+    });
     pushAudit('APPLICATION_READY', application.school, req.user.email, `Application ${application.id} installation completed; subscription starts today.`);
     return res.json({
       ok: true,
@@ -1979,11 +2191,23 @@ app.post('/api/applications/:id/provision', requireAuth, requireRole('super_admi
         : 'Installation is ready, but the activation email failed. Retry delivery after checking email settings.',
     });
   } catch (error) {
-    if (application) {
-      try { leadsStore.failApplicationProvisioning(application.id, error.message, req.user.email); } catch {}
+    const failure = describeProvisioningFailure(error);
+    if (applicationProvisionProgress.has(String(application?.id || req.params.id))) {
+      setApplicationProvisionProgress(application?.id || req.params.id, {
+        status: 'failed',
+        step: 'Installation needs attention',
+        message: failure.summary,
+      });
     }
-    pushAudit('APPLICATION_PROVISION_FAILED', application?.school || req.params.id, req.user.email, `Application provisioning failed: ${billingText(error.message, 240)}`, 'Warning');
-    return res.status(500).json({ ok: false, error: error.message || 'Application provisioning failed.' });
+    if (application) {
+      try {
+        leadsStore.failApplicationProvisioning(
+          application.id, failure.summary, req.user.email, failure.technicalDetails,
+        );
+      } catch {}
+    }
+    pushAudit('APPLICATION_PROVISION_FAILED', application?.school || req.params.id, req.user.email, `Application provisioning failed: ${billingText(failure.summary, 240)}`, 'Warning');
+    return res.status(500).json({ ok: false, error: failure.summary, details: failure.technicalDetails });
   }
 });
 

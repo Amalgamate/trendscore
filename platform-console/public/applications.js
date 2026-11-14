@@ -5,6 +5,10 @@
   const errorBox = $('applications-error');
   let currentApplication = null;
   let activeAgents = [];
+  let provisionPollTimeout = null;
+  let provisionClockInterval = null;
+  let provisionStartedAt = null;
+  let currentProvisionProgress = null;
 
   const packageNames = { starter: 'Starter', standard: 'Standard', professional: 'Professional' };
   const statusNames = {
@@ -21,13 +25,144 @@
   async function request(url, options = {}) {
     const response = await fetch(url, { credentials: 'same-origin', ...options });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok || !payload.ok) throw new Error(payload.error || 'The application request failed.');
+    if (!response.ok || !payload.ok) {
+      const error = new Error(payload.error || 'The application request failed.');
+      error.code = payload.code || '';
+      error.domain = payload.domain || '';
+      error.requiredAddress = payload.requiredAddress || '';
+      error.details = payload.details || '';
+      throw error;
+    }
     return payload;
   }
 
   function setError(target, message) {
+    target.replaceChildren();
     target.textContent = message || '';
     target.hidden = !message;
+  }
+
+  function appendTechnicalDetails(parent, label, text) {
+    if (!text) return;
+    const details = document.createElement('details');
+    details.className = 'application-technical-details';
+    const summary = document.createElement('summary');
+    summary.textContent = label;
+    const pre = document.createElement('pre');
+    pre.textContent = text;
+    details.append(summary, pre);
+    parent.append(details);
+  }
+
+  function compactInstallerMessage(message) {
+    const text = String(message || '');
+    const portCollision = /port is already allocated|address already in use|failed to bind/i.test(text);
+    const summary = portCollision
+      ? 'Installation stopped because a server port was already in use.'
+      : 'Installation did not complete. Open technical details to review the installer output.';
+    const technicalDetails = text.split(/\r?\n/)
+      .map(line => line.trim())
+      .filter(line => line && !/^Command failed:/i.test(line) && !/"applicationId"\s*:/.test(line))
+      .slice(-12)
+      .join('\n')
+      .slice(-1600);
+    return { summary, technicalDetails };
+  }
+
+  function renderActionError(target, error) {
+    target.replaceChildren();
+    const summary = document.createElement('div');
+    summary.className = 'application-error-summary';
+    summary.textContent = error.message || 'The application request failed.';
+    target.append(summary);
+    appendTechnicalDetails(target, 'Technical details', error.details);
+    target.hidden = false;
+  }
+
+  function formatDuration(totalSeconds) {
+    const seconds = Math.max(0, Math.floor(totalSeconds));
+    const minutes = Math.floor(seconds / 60);
+    return `${minutes}:${String(seconds % 60).padStart(2, '0')}`;
+  }
+
+  function provisionStageIndex(percent) {
+    if (percent < 25) return 0;
+    if (percent < 47) return 1;
+    if (percent < 77) return 2;
+    if (percent < 90) return 3;
+    return 4;
+  }
+
+  function renderProvisionProgress(progress = {}) {
+    const panel = $('application-provision-status');
+    const percent = Math.max(0, Math.min(100, Number(progress.percent) || 0));
+    const status = progress.status || 'running';
+    const startedAt = progress.startedAt || provisionStartedAt;
+    const elapsed = startedAt ? Math.max(0, Math.floor((Date.now() - Date.parse(startedAt)) / 1000)) : 0;
+    const stageIndex = provisionStageIndex(percent);
+
+    panel.hidden = false;
+    panel.dataset.status = status;
+    $('application-provision-step').textContent = progress.step || 'Preparing the school workspace';
+    $('application-provision-message').textContent = progress.message || 'Preparing the school services.';
+    $('application-provision-percent').textContent = `${percent}%`;
+    $('application-provision-fill').style.width = `${percent}%`;
+    $('application-provision-bar').setAttribute('aria-valuenow', String(percent));
+    $('application-provision-spinner').hidden = status !== 'running';
+    $('application-provision-elapsed').textContent = `Elapsed ${formatDuration(elapsed)}`;
+
+    const eta = $('application-provision-eta');
+    if (status === 'complete') {
+      eta.textContent = 'Setup complete';
+    } else if (status === 'failed') {
+      eta.textContent = 'Review the note below';
+    } else if (elapsed > 240) {
+      eta.textContent = 'Taking longer than usual';
+    } else {
+      const remaining = Math.max(0, Math.ceil((240 * (1 - percent / 100)) - elapsed));
+      eta.textContent = remaining < 60
+        ? 'Estimated: under 1 min left'
+        : `Estimated: about ${Math.ceil(remaining / 60)} min left`;
+    }
+
+    document.querySelectorAll('#application-provision-steps [data-progress-step]').forEach((step, index) => {
+      step.classList.toggle('is-complete', status === 'complete' || index < stageIndex);
+      step.classList.toggle('is-current', status === 'running' && index === stageIndex);
+      step.classList.toggle('is-failed', status === 'failed' && index === stageIndex);
+    });
+  }
+
+  function stopProvisionProgressWatch() {
+    if (provisionPollTimeout) window.clearTimeout(provisionPollTimeout);
+    if (provisionClockInterval) window.clearInterval(provisionClockInterval);
+    provisionPollTimeout = null;
+    provisionClockInterval = null;
+  }
+
+  function watchProvisionProgress(applicationId) {
+    stopProvisionProgressWatch();
+    const poll = async () => {
+      try {
+        const payload = await request(`/api/applications/${encodeURIComponent(applicationId)}/provision-progress`);
+        if (payload.progress) {
+          currentProvisionProgress = payload.progress;
+          renderProvisionProgress(currentProvisionProgress);
+        }
+      } catch {
+        // The installation request still reports its final result if polling is interrupted.
+      }
+      if (!currentProvisionProgress || !['complete', 'failed'].includes(currentProvisionProgress.status)) {
+        provisionPollTimeout = window.setTimeout(poll, 1200);
+      }
+    };
+    provisionPollTimeout = window.setTimeout(poll, 350);
+    provisionClockInterval = window.setInterval(() => {
+      renderProvisionProgress(currentProvisionProgress || {
+        status: 'running', percent: 6, step: 'Checking the school address',
+        message: 'Confirming the school subdomain is ready before installation starts.',
+        startedAt: provisionStartedAt,
+      });
+    }, 1000);
   }
 
   function addText(parent, tag, text, className = '') {
@@ -178,6 +313,7 @@
     $('application-approve').hidden = !reviewable;
     $('application-reject').hidden = !reviewable;
     $('application-provision').hidden = application.applicationStatus !== 'approved';
+    $('application-provision').textContent = 'Start installation';
     $('application-retry-activation').hidden = !(application.applicationStatus === 'ready' && application.activationEmailStatus === 'failed');
   }
 
@@ -189,10 +325,20 @@
       return;
     }
     for (const event of events) {
-      const details = event.details && Object.keys(event.details).length
-        ? ` — ${Object.entries(event.details).map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : value}`).join('; ')}`
-        : '';
-      addText(list, 'li', `${formatDate(event.createdAt)} · ${event.eventType.replaceAll('_', ' ')}${event.actor ? ` by ${event.actor}` : ''}${details}`);
+      const item = document.createElement('li');
+      addText(item, 'div', `${formatDate(event.createdAt)} · ${event.eventType.replaceAll('_', ' ')}${event.actor ? ` by ${event.actor}` : ''}`, 'application-event-heading');
+      const values = event.details || {};
+      const legacyMessage = String(values.message || '');
+      const compacted = legacyMessage.length > 240 ? compactInstallerMessage(legacyMessage) : null;
+      if (legacyMessage) {
+        addText(item, 'div', compacted?.summary || legacyMessage, 'application-event-message');
+      }
+      const otherValues = Object.entries(values)
+        .filter(([key]) => !['message', 'technicalDetails'].includes(key))
+        .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : value}`);
+      if (otherValues.length) addText(item, 'div', otherValues.join('; '), 'application-event-meta');
+      appendTechnicalDetails(item, 'Technical details', values.technicalDetails || compacted?.technicalDetails);
+      list.append(item);
     }
   }
 
@@ -219,7 +365,9 @@
   }
 
   function closeModal() {
+    stopProvisionProgressWatch();
     overlay.style.display = 'none';
+    $('application-provision-status').hidden = true;
     currentApplication = null;
   }
 
@@ -250,6 +398,18 @@
     setError(error, '');
     const buttons = [...document.querySelectorAll('.application-review-actions button')];
     buttons.forEach(button => { button.disabled = true; });
+    const provisionStatus = $('application-provision-status');
+    if (action === 'provision') {
+      provisionStartedAt = new Date().toISOString();
+      currentProvisionProgress = null;
+      renderProvisionProgress({
+        status: 'running', percent: 6, step: 'Checking the school address',
+        message: 'Confirming the school subdomain is ready before installation starts.',
+        startedAt: provisionStartedAt,
+      });
+      watchProvisionProgress(currentApplication.id);
+      $('application-provision').textContent = 'Installing…';
+    }
     try {
       if (action === 'save' || action === 'approve') {
         await saveReview();
@@ -280,8 +440,22 @@
       }
       await loadApplications();
     } catch (requestError) {
-      setError(error, requestError.message);
+      renderActionError(error, requestError);
+      if (action === 'provision' && requestError.code === 'DNS_NOT_READY') {
+        $('application-provision').textContent = 'Check DNS and try again';
+        provisionStatus.hidden = true;
+      } else if (action === 'provision') {
+        $('application-provision').textContent = 'Retry installation';
+        if (currentProvisionProgress?.status !== 'failed') {
+          currentProvisionProgress = {
+            ...(currentProvisionProgress || {}),
+            status: 'failed', step: 'Installation needs attention', message: requestError.message,
+          };
+          renderProvisionProgress(currentProvisionProgress);
+        }
+      }
     } finally {
+      if (action === 'provision') stopProvisionProgressWatch();
       buttons.forEach(button => { button.disabled = false; });
     }
   }

@@ -30,6 +30,7 @@ fi
 DEPLOY_CONSOLE="${DEPLOY_CONSOLE:-false}"
 DEPLOY_CONSOLE_ONLY="${DEPLOY_CONSOLE_ONLY:-false}"
 DRY_RUN="${DRY_RUN:-false}"
+DOMAIN_BIND_ONLY="${DOMAIN_BIND_ONLY:-false}"
 
 log() { printf '[deploy] %s\n' "$*" >&2; }
 fail() { printf '[deploy] ERROR: %s\n' "$*" >&2; exit 1; }
@@ -55,6 +56,142 @@ run_as_root() {
 docker_cmd() {
   run_as_root docker "$@"
 }
+
+bind_school_domain() {
+  local domain="${BIND_DOMAIN:-}"
+  local suffix="${BIND_DOMAIN_SUFFIX:-trendscore.co.ke}"
+  local frontend_port="${BIND_FRONTEND_PORT:-}"
+  local env_file="${BIND_ENV_FILE:-}"
+  local project="${BIND_COMPOSE_PROJECT:-}"
+  local cert_email="${BIND_CERT_EMAIL:-admin@trendscore.app}"
+  local label site available_site nginx_conf cert_path key_path compose_file
+
+  [[ -n "$domain" && "$domain" == *".${suffix}" ]] || fail "School domain must be a subdomain of ${suffix}."
+  label="${domain%.${suffix}}"
+  [[ "$label" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]] || fail "School domain label is invalid."
+  [[ "$frontend_port" =~ ^[0-9]+$ ]] && (( frontend_port >= 3000 && frontend_port <= 3499 )) || fail "Frontend port must be in the school range 3000-3499."
+  [[ "$project" =~ ^zawadi-[a-z0-9]+([_-][a-z0-9]+)*$ ]] || fail "School compose project is invalid."
+  [[ "$env_file" == /srv/zawadi/apps/env/.*.env && -f "$env_file" ]] || fail "School environment file is missing or outside the school environment directory."
+  [[ "$cert_email" =~ ^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$ ]] || fail "Certificate contact email is invalid."
+
+  if ! command -v nginx >/dev/null 2>&1 || ! command -v certbot >/dev/null 2>&1; then
+    require_cmd apt-get
+    run_as_root apt-get update
+    run_as_root apt-get install -y nginx certbot
+  fi
+  require_cmd nginx
+  require_cmd certbot
+  require_cmd systemctl
+  require_cmd docker
+  if systemctl list-unit-files certbot.timer --no-legend 2>/dev/null | grep -q certbot.timer; then
+    run_as_root systemctl enable --now certbot.timer >/dev/null
+  fi
+
+  site="/etc/nginx/sites-available/${domain}"
+  available_site="/etc/nginx/sites-enabled/${domain}"
+  nginx_conf="/etc/nginx/sites-available/${domain}"
+  cert_path="/etc/letsencrypt/live/${domain}/fullchain.pem"
+  key_path="/etc/letsencrypt/live/${domain}/privkey.pem"
+  compose_file="/srv/zawadi/apps/docker-compose.stack.yml"
+  mkdir -p /var/www/letsencrypt/.well-known/acme-challenge /etc/nginx/sites-available /etc/nginx/sites-enabled
+
+  # Serve ACME HTTP-01 validation while certificates are being obtained. The
+  # generated application is still not marked ready until HTTPS is verified.
+  cat > "$site" <<EOF
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${domain};
+    location ^~ /.well-known/acme-challenge/ { root /var/www/letsencrypt; }
+    location / { proxy_pass http://127.0.0.1:${frontend_port}; proxy_http_version 1.1; proxy_set_header Host \$host; proxy_set_header X-Real-IP \$remote_addr; proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for; proxy_set_header X-Forwarded-Proto \$scheme; proxy_read_timeout 720s; proxy_connect_timeout 720s; proxy_send_timeout 720s; }
+}
+EOF
+  ln -sfn "$site" "$available_site"
+  nginx -t
+  if systemctl is-active --quiet nginx; then
+    run_as_root systemctl reload nginx
+  else
+    run_as_root systemctl enable --now nginx
+  fi
+
+  certbot certonly --webroot --webroot-path /var/www/letsencrypt \
+    --non-interactive --agree-tos --email "$cert_email" \
+    --keep-until-expiring --cert-name "$domain" -d "$domain"
+  [[ -s "$cert_path" && -s "$key_path" ]] || fail "Certificate issuance did not create a usable certificate for ${domain}."
+
+  cat > "$nginx_conf" <<EOF
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${domain};
+    location ^~ /.well-known/acme-challenge/ { root /var/www/letsencrypt; }
+    location / { return 301 https://\$host\$request_uri; }
+}
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name ${domain};
+    ssl_certificate ${cert_path};
+    ssl_certificate_key ${key_path};
+    ssl_protocols TLSv1.2 TLSv1.3;
+    client_max_body_size 100m;
+    proxy_read_timeout 720s;
+    proxy_connect_timeout 720s;
+    proxy_send_timeout 720s;
+    location / {
+        proxy_pass http://127.0.0.1:${frontend_port};
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_read_timeout 720s;
+        proxy_connect_timeout 720s;
+        proxy_send_timeout 720s;
+    }
+}
+EOF
+  ln -sfn "$site" "$available_site"
+  nginx -t
+  run_as_root systemctl reload nginx
+
+  curl --fail --show-error --silent --location --max-time 30 \
+    --resolve "${domain}:443:127.0.0.1" "https://${domain}/" --output /dev/null
+  openssl s_client -connect 127.0.0.1:443 -servername "$domain" </dev/null 2>/dev/null \
+    | openssl x509 -noout -checkhost "$domain" >/dev/null
+
+  set_env() {
+    local key="$1" value="$2"
+    if grep -q "^${key}=" "$env_file"; then
+      sed -i "s|^${key}=.*|${key}=${value}|" "$env_file"
+    else
+      printf '%s=%s\n' "$key" "$value" >> "$env_file"
+    fi
+  }
+  set_env FRONTEND_URL "https://${domain}"
+  set_env API_URL "https://${domain}/api"
+  set_env CORS_ORIGIN "https://${domain}"
+  set_env HTTPS_ONLY true
+  set_env SECURE_COOKIES true
+  set_env TRUST_PROXY_HOPS 1
+  set_env NODE_ENV production
+
+  docker_cmd compose --env-file "$env_file" -p "$project" -f "$compose_file" \
+    up -d --no-deps --force-recreate backend
+  for _ in $(seq 1 30); do
+    if curl --fail --show-error --silent --max-time 5 "https://${domain}/api/health" >/dev/null; then
+      printf '[domain] HTTPS route and backend health verified for %s\n' "$domain"
+      return 0
+    fi
+    sleep 2
+  done
+  fail "HTTPS is configured for ${domain}, but the school API did not become healthy."
+}
+
+if [[ "${DOMAIN_BIND_ONLY}" == "true" ]]; then
+  bind_school_domain
+  exit 0
+fi
 
 [[ -f "${MANIFEST_PATH}" ]] || fail "Manifest not found: ${MANIFEST_PATH}"
 
