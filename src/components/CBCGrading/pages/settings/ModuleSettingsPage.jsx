@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Check, Lock, Package, RefreshCw, Save, ShieldCheck, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Check, Eye, EyeOff, Lock, Package, RefreshCw, Save, ShieldCheck, ToggleLeft, ToggleRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { schoolAPI } from '../../../../services/api';
 import { useModuleAccess } from '../../../../contexts/ModuleAccessContext';
@@ -27,8 +27,8 @@ const ModuleSettingsPage = () => {
     setLoading(true);
     try {
       const response = await schoolAPI.getModules();
-      const data = response?.data || response;
-      setModules(data?.modules || []);
+      const data = response?.data?.data || response?.data || response;
+      setModules(Array.isArray(data?.modules) ? data.modules : []);
       setPackages(data?.packages || {});
     } catch (error) {
       toast.error(error.message || 'Failed to load module settings');
@@ -63,6 +63,12 @@ const ModuleSettingsPage = () => {
     )));
   };
 
+  const setModuleVisible = (slug, isVisible) => {
+    setModules((current) => current.map((module) => (
+      module.slug === slug ? { ...module, isVisible } : module
+    )));
+  };
+
   const save = async () => {
     setSaving(true);
     try {
@@ -73,8 +79,8 @@ const ModuleSettingsPage = () => {
           isVisible: module.isVisible,
         })),
       });
-      const data = response?.data || response;
-      setModules(data?.modules || modules);
+      const data = response?.data?.data || response?.data || response;
+      setModules(Array.isArray(data?.modules) ? data.modules : modules);
       await refreshModules();
       toast.success('Module configuration saved');
     } catch (error) {
@@ -89,8 +95,8 @@ const ModuleSettingsPage = () => {
     setSaving(true);
     try {
       const response = await schoolAPI.applyModulePackage(packageId);
-      const data = response?.data || response;
-      setModules(data?.modules || []);
+      const data = response?.data?.data || response?.data || response;
+      setModules(Array.isArray(data?.modules) ? data.modules : []);
       setPackages(data?.packages || packages);
       await refreshModules();
       toast.success(`${packages[packageId]?.name || packageId} package applied`);
@@ -203,19 +209,36 @@ const ModuleSettingsPage = () => {
                         <p className="mt-1 text-sm text-slate-500">{module.description}</p>
                         <p className="mt-1 text-xs text-slate-400">{module.slug}</p>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setModuleActive(module.slug, !module.isActive)}
-                        disabled={module.isMandatory || saving}
-                        className={`inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition md:w-32 ${
-                          module.isActive
-                            ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                        } disabled:cursor-not-allowed disabled:opacity-60`}
-                      >
-                        {module.isActive ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
-                        {module.isActive ? 'Enabled' : 'Disabled'}
-                      </button>
+                      <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row">
+                        <button
+                          type="button"
+                          aria-label={`${module.isVisible === false ? 'Show' : 'Hide'} ${module.name} in navigation`}
+                          aria-pressed={module.isVisible !== false}
+                          onClick={() => setModuleVisible(module.slug, module.isVisible === false)}
+                          disabled={saving}
+                          className={`inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition md:w-32 ${
+                            module.isVisible !== false
+                              ? 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          } disabled:cursor-not-allowed disabled:opacity-60`}
+                        >
+                          {module.isVisible !== false ? <Eye size={18} /> : <EyeOff size={18} />}
+                          {module.isVisible !== false ? 'Visible' : 'Hidden'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setModuleActive(module.slug, !module.isActive)}
+                          disabled={module.isMandatory || saving}
+                          className={`inline-flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition md:w-32 ${
+                            module.isActive
+                              ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          } disabled:cursor-not-allowed disabled:opacity-60`}
+                        >
+                          {module.isActive ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
+                          {module.isActive ? 'Enabled' : 'Disabled'}
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>

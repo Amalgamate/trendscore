@@ -23,7 +23,7 @@ vi.mock('../../../hooks/useInstitutionLabels', () => ({
 
 vi.mock('../../../contexts/ModuleAccessContext', () => ({
   useModuleAccess: () => ({
-    activeSlugs: ['biometric', 'student-registry', 'staff-hr', 'planner', 'timetable'],
+    activeSlugs: ['biometric', 'student-registry', 'staff-hr', 'planner', 'timetable', 'lms', 'library'],
     isModuleEnabled: () => true,
   }),
 }));
@@ -79,5 +79,12 @@ describe('useNavigation biometric access', () => {
       'tutors-timetable',
       'tutors-analysis',
     ]);
+  });
+
+  it('includes the classic LMS and Library modules in school navigation', () => {
+    const { result } = renderHook(() => useNavigation());
+
+    expect(result.current.lmsSection).toBeDefined();
+    expect(result.current.backOfficeSections.some((section) => section.id === 'library')).toBe(true);
   });
 });

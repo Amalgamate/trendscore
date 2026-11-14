@@ -6,33 +6,34 @@ const ModuleAccessContext = createContext({
   activeSlugs: [],
   loading: false,
   refreshModules: async () => {},
-  isModuleEnabled: () => true,
+  isModuleEnabled: () => false,
 });
 
 export const ModuleAccessProvider = ({ user, children }) => {
   const [modules, setModules] = useState([]);
   const [activeSlugs, setActiveSlugs] = useState([]);
   const [packages, setPackages] = useState({});
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(Boolean(user));
 
   const refreshModules = useCallback(async () => {
     if (!user) {
       setModules([]);
       setActiveSlugs([]);
       setPackages({});
+      setLoading(false);
       return null;
     }
 
     setLoading(true);
     try {
       const response = await schoolAPI.getModules();
-      const data = response?.data || response;
-      setModules(data?.modules || []);
-      setActiveSlugs(data?.activeSlugs || []);
+      const data = response?.data?.data || response?.data || response;
+      setModules(Array.isArray(data?.modules) ? data.modules : []);
+      setActiveSlugs(Array.isArray(data?.activeSlugs) ? data.activeSlugs : []);
       setPackages(data?.packages || {});
       return data;
     } catch (error) {
-      console.warn('[ModuleAccess] Failed to load module config; keeping modules open.', error);
+      console.warn('[ModuleAccess] Failed to load module config; module access is disabled.', error);
       setModules([]);
       setActiveSlugs([]);
       setPackages({});
@@ -56,7 +57,6 @@ export const ModuleAccessProvider = ({ user, children }) => {
     refreshModules,
     isModuleEnabled: (slug) => {
       if (!slug) return true;
-      if (!modules.length) return true;
       if (activeSet.has(slug)) return true;
       if (slug === 'lms-professional') return activeSet.has('lms');
       return false;

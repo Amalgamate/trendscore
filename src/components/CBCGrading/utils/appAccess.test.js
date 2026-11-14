@@ -23,7 +23,7 @@ describe('appAccess', () => {
     expect(hasPageAccess({ role: 'ADMIN' }, 'dashboard')).toBe(true);
   });
 
-  it('keeps legacy app gates open for every user', () => {
+  it('keeps gates open for legacy users without entitlement data', () => {
     const user = { role: 'ADMIN' };
     expect(hasAppAccess(user, 'inventory')).toBe(true);
     expect(hasPageAccess(user, 'learners-list')).toBe(true);
@@ -31,6 +31,12 @@ describe('appAccess', () => {
     expect(hasPageAccess(user, 'attendance-configuration')).toBe(true);
     expect(hasPageAccess(user, 'inventory-items')).toBe(true);
     expect(hasPageAccess(user, 'assess-summative-report')).toBe(true);
+  });
+
+  it('denies app access when entitlement data is present but empty or excludes the app', () => {
+    expect(hasAppAccess({ role: 'ADMIN', enabledApps: [] }, 'inventory')).toBe(false);
+    expect(hasAppAccess({ role: 'ADMIN', enabledApps: ['attendance'] }, 'inventory')).toBe(false);
+    expect(hasPageAccess({ role: 'ADMIN', enabledApps: [] }, 'inventory-items')).toBe(false);
   });
 
   it('allows super admins through every app gate', () => {
@@ -75,18 +81,38 @@ describe('appAccess', () => {
     expect(hasPageAccess(schoolAdmin, 'settings-payment')).toBe(false);
   });
 
-  it('hides fee pages for starter-like module sets', () => {
-    const starterAdmin = {
+  it('allows explicitly entitled private-primary Starter fee pages', () => {
+    const privatePrimaryAdmin = {
       role: 'SUPER_ADMIN',
+      institutionType: 'PRIMARY_CBC',
+      schoolType: 'PRIVATE_PRIMARY',
       enabledApps: ['student-registry', 'attendance', 'gradebook', 'school-settings', 'fee-management'],
     };
+    const privatePrimaryParent = { ...privatePrimaryAdmin, role: 'PARENT' };
+
+    expect(hasPageAccess(privatePrimaryAdmin, 'fees-overview')).toBe(true);
+    expect(hasPageAccess(privatePrimaryParent, 'parent-portal-fees')).toBe(true);
+  });
+
+  it('blocks public-primary Starter fee pages when fee management is not entitled', () => {
+    const publicPrimaryAdmin = {
+      role: 'SUPER_ADMIN',
+      institutionType: 'PRIMARY_CBC',
+      schoolType: 'PUBLIC_PRIMARY',
+      enabledApps: ['student-registry', 'attendance', 'gradebook', 'school-settings'],
+    };
+    const publicPrimaryParent = { ...publicPrimaryAdmin, role: 'PARENT' };
+
+    expect(hasPageAccess(publicPrimaryAdmin, 'fees-overview')).toBe(false);
+    expect(hasPageAccess(publicPrimaryParent, 'parent-portal-fees')).toBe(false);
+  });
+
+  it('allows fee pages for standard schools with fee management enabled', () => {
     const standardAdmin = {
       role: 'SUPER_ADMIN',
       enabledApps: ['student-registry', 'attendance', 'gradebook', 'school-settings', 'fee-management', 'transport'],
     };
 
-    expect(hasPageAccess(starterAdmin, 'fees-overview')).toBe(false);
-    expect(hasPageAccess(starterAdmin, 'parent-portal-fees')).toBe(false);
     expect(hasPageAccess(standardAdmin, 'fees-overview')).toBe(true);
   });
 
@@ -108,6 +134,7 @@ describe('appAccess', () => {
     expect(resolveDashboardPage({ role: 'STUDENT' })).toBe('dashboard');
     expect(resolveDashboardPage({ role: 'TEACHER' })).toBe('digital-diary');
     expect(resolveDashboardPage({ role: 'TEACHER', enabledApps: ['attendance'] })).toBe('dashboard');
+    expect(resolveDashboardPage({ role: 'TEACHER', enabledApps: [] })).toBe('dashboard');
     expect(resolveDashboardPage({ role: 'ADMIN' })).toBe('dashboard');
     expect(userHasParentPortalAccess({ role: 'ADMIN' })).toBe(false);
   });

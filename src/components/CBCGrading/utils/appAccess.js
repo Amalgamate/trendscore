@@ -1,4 +1,8 @@
-import { getEnabledAppsForUser, hasFeeModuleAccess, isStarterPackageApps } from '../../../utils/packageAccess';
+import {
+  getEnabledAppsForUser,
+  hasEnabledAppsData,
+  hasFeeModuleAccess,
+} from '../../../utils/packageAccess';
 
 const PAGE_APP_REQUIREMENTS = {
   'planner-calendar': 'planner',
@@ -293,12 +297,7 @@ export const resolveDashboardPage = (user) => {
   if (userHasParentPortalAccess(user)) return 'parent-portal-home';
   if (STUDENT_ROLES.has(role)) return 'dashboard';
   if (FINANCE_ROLES.has(role)) return 'finance-dashboard';
-  if (role === 'TEACHER') {
-    const enabledApps = getEnabledAppsForUser(user);
-    if (!enabledApps.length || enabledApps.includes('lms-professional') || enabledApps.includes('lms')) {
-      return 'digital-diary';
-    }
-  }
+  if (role === 'TEACHER' && hasAppAccess(user, 'lms-professional')) return 'digital-diary';
   return 'dashboard';
 };
 
@@ -386,7 +385,7 @@ export const hasAppAccess = (user, slug) => {
   if (!slug) return true;
 
   const enabledApps = getEnabledAppsForUser(user);
-  if (!Array.isArray(enabledApps) || enabledApps.length === 0) return true;
+  if (!hasEnabledAppsData(user)) return true;
   if (enabledApps.includes(slug)) return true;
   if (slug === 'lms-professional') return enabledApps.includes('lms');
   return false;
@@ -402,7 +401,7 @@ export const hasPageAccess = (user, page) => {
   if (
     requiredApp === 'fee-management' &&
     enabledApps.length > 0 &&
-    (!hasFeeModuleAccess(enabledApps) || isStarterPackageApps(enabledApps))
+    !hasFeeModuleAccess(enabledApps)
   ) {
     return false;
   }
