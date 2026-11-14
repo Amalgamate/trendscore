@@ -593,7 +593,16 @@ if [[ "${APP_TYPE}" == "school" ]]; then
     psql -U "${DB_USER}" -d "${DB_NAME}" \
     -v school_id="${SCHOOL_SLUG}" \
     -v school_name="${SCHOOL_NAME}" \
-    -c "insert into schools (id,name,active,status,archived,\"updatedAt\") values (:'school_id',:'school_name',true,'ACTIVE',false,now()) on conflict (id) do update set name=excluded.name, active=true, status='ACTIVE', archived=false, \"updatedAt\"=now();"
+    <<'SQL'
+insert into schools (id,name,active,status,archived,"updatedAt")
+values (:'school_id',:'school_name',true,'ACTIVE',false,now())
+on conflict (id) do update set
+  name=excluded.name,
+  active=true,
+  status='ACTIVE',
+  archived=false,
+  "updatedAt"=now();
+SQL
 
   echo "[provision] restarting app containers"
   "${COMPOSE_CMD[@]}" --env-file "${ENV_FILE}" -p "${PROJECT_NAME}" -f "${STACK_COMPOSE_FILE}" up -d --force-recreate backend frontend
