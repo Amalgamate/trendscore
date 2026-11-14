@@ -9,7 +9,7 @@
 <title>Trends CORE ERP</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
-<link rel="stylesheet" href="./styles.css?v=20261101-ringtone-picker"/>
+<link rel="stylesheet" href="./styles.css?v=20261114-installation-progress-v2"/>
 <link rel="stylesheet" href="./login.css"/>
 <link rel="stylesheet" href="./kanban-crm.css"/>
 </head>
@@ -1772,6 +1772,30 @@
     </div>
     <div class="modal-body">
       <div id="application-review-error" class="billing-register-note" role="alert" hidden></div>
+      <div id="application-provision-status" class="application-provision-status" role="status" aria-live="polite" hidden>
+        <div class="application-provision-heading">
+          <span id="application-provision-spinner" class="application-provision-spinner" aria-hidden="true"></span>
+          <div class="application-provision-copy">
+            <strong id="application-provision-step">Preparing the school workspace</strong>
+            <small id="application-provision-message">Checking the school address before installation starts.</small>
+          </div>
+          <span id="application-provision-percent" class="application-provision-percent">0%</span>
+        </div>
+        <div id="application-provision-bar" class="application-provision-bar" role="progressbar" aria-label="School installation progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <span id="application-provision-fill"></span>
+        </div>
+        <ol id="application-provision-steps" class="application-provision-steps" aria-label="Installation steps">
+          <li data-progress-step="prepare">Prepare</li>
+          <li data-progress-step="services">Services</li>
+          <li data-progress-step="records">Records</li>
+          <li data-progress-step="secure">Secure URL</li>
+          <li data-progress-step="verify">Verify</li>
+        </ol>
+        <div class="application-provision-timing">
+          <span id="application-provision-elapsed">Elapsed 0:00</span>
+          <span id="application-provision-eta">Usually a few minutes</span>
+        </div>
+      </div>
       <dl id="application-review-details" class="application-review-details"></dl>
       <div class="form-row">
         <label class="form-label" for="application-review-package">Package confirmed by staff</label>
@@ -1815,7 +1839,7 @@
 </div>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
 <script src="./app.js?v=20261101-ringtone-picker"></script>
-<script src="./applications.js"></script>
+<script src="./applications.js?v=20261114-installation-progress-v2"></script>
 <script src="./login.js"></script>
 </body>
 </html>

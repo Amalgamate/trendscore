@@ -204,14 +204,45 @@ fi
 
 port_in_use() {
   local p="$1"
-  docker ps --format '{{.Ports}}' | grep -E "(^|[ ,:])${p}->|:${p}-" >/dev/null 2>&1
+  if docker ps --format '{{.Ports}}' | grep -E "(^|[ ,:])${p}->|:${p}-" >/dev/null 2>&1; then
+    return 0
+  fi
+  if command -v ss >/dev/null 2>&1 && ss -H -ltn 2>/dev/null | awk -v p="$p" '$4 ~ (":" p "$") { found=1 } END { exit !found }'; then
+    return 0
+  fi
+  return 1
+}
+
+port_in_use_by_project() {
+  local p="$1" project="$2"
+  docker ps --filter "label=com.docker.compose.project=${project}" --format '{{.Ports}}' \
+    | grep -E "(^|[ ,:])${p}->|:${p}-" >/dev/null 2>&1
+}
+
+REJECTED_PORTS=()
+
+port_was_rejected() {
+  local candidate="$1" rejected
+  for rejected in "${REJECTED_PORTS[@]}"; do
+    [[ "${candidate}" == "${rejected}" ]] && return 0
+  done
+  return 1
+}
+
+write_env_value() {
+  local key="$1" value="$2"
+  if grep -q "^${key}=" "${ENV_FILE}"; then
+    sed -i "s|^${key}=.*|${key}=${value}|" "${ENV_FILE}"
+  else
+    printf '%s=%s\n' "${key}" "${value}" >> "${ENV_FILE}"
+  fi
 }
 
 next_free_port() {
   local start="$1"
   local finish="${2:-65000}"
   local p="$start"
-  while port_in_use "$p"; do
+  while port_in_use "$p" || port_was_rejected "$p"; do
     p=$((p+1))
     if [[ "$p" -gt "${finish}" ]]; then
       echo "no free port found in range ${start}-${finish}" >&2
@@ -219,6 +250,41 @@ next_free_port() {
     fi
   done
   echo "$p"
+}
+
+start_school_stack_with_port_retry() {
+  local attempt output failed_port replacement
+  for attempt in $(seq 1 8); do
+    if output="$("${COMPOSE_CMD[@]}" --env-file "${ENV_FILE}" -p "${PROJECT_NAME}" -f "${STACK_COMPOSE_FILE}" up -d db backend frontend 2>&1)"; then
+      [[ -z "${output}" ]] || printf '%s\n' "${output}"
+      return 0
+    fi
+    printf '%s\n' "${output}" >&2
+    if [[ "${output}" =~ Bind\ for\ 0\.0\.0\.0:([0-9]+)\ failed:\ port\ is\ already\ allocated ]]; then
+      failed_port="${BASH_REMATCH[1]}"
+    elif [[ "${output}" =~ Bind\ for\ \[::\]:([0-9]+)\ failed:\ port\ is\ already\ allocated ]]; then
+      failed_port="${BASH_REMATCH[1]}"
+    else
+      return 1
+    fi
+    REJECTED_PORTS+=("${failed_port}")
+    if [[ "${failed_port}" == "${FE_PORT}" ]]; then
+      replacement="$(next_free_port "${FE_MIN}" "${FE_MAX}")"
+      FE_PORT="${replacement}"
+      write_env_value FRONTEND_PORT "${FE_PORT}"
+      echo "[provision] frontend port ${failed_port} was rejected by Docker; retrying on ${FE_PORT}"
+    elif [[ "${failed_port}" == "${BE_PORT}" ]]; then
+      replacement="$(next_free_port "${BE_MIN}" "${BE_MAX}")"
+      BE_PORT="${replacement}"
+      write_env_value BACKEND_PORT "${BE_PORT}"
+      echo "[provision] backend port ${failed_port} was rejected by Docker; retrying on ${BE_PORT}"
+    else
+      echo "[provision] Docker rejected unexpected host port ${failed_port}; refusing to change another service's port" >&2
+      return 1
+    fi
+  done
+  echo "[provision] could not find an available school port after 8 retries" >&2
+  return 1
 }
 
 port_in_range() {
@@ -286,6 +352,18 @@ if [[ "${REUSED_ENV_FILE}" == "true" && "${APP_TYPE}" == "school" ]]; then
     echo "existing application ports are missing or outside the supported range" >&2
     exit 4
   fi
+  if port_in_use "${FE_PORT}" && ! port_in_use_by_project "${FE_PORT}" "${PROJECT_NAME}"; then
+    old_port="${FE_PORT}"
+    FE_PORT="$(next_free_port "${FE_MIN}" "${FE_MAX}")"
+    write_env_value FRONTEND_PORT "${FE_PORT}"
+    echo "[provision] saved frontend port ${old_port} is occupied; retrying on ${FE_PORT}"
+  fi
+  if port_in_use "${BE_PORT}" && ! port_in_use_by_project "${BE_PORT}" "${PROJECT_NAME}"; then
+    old_port="${BE_PORT}"
+    BE_PORT="$(next_free_port "${BE_MIN}" "${BE_MAX}")"
+    write_env_value BACKEND_PORT "${BE_PORT}"
+    echo "[provision] saved backend port ${old_port} is occupied; retrying on ${BE_PORT}"
+  fi
 else
 if [[ "${REQ_FE_PORT}" =~ ^[0-9]+$ ]] && [[ "${REQ_FE_PORT}" -gt 0 ]]; then
   FE_PORT="${REQ_FE_PORT}"
@@ -318,12 +396,19 @@ if [[ "${FE_PORT}" == "${BE_PORT}" ]]; then
 fi
 
 if port_in_use "${FE_PORT}"; then
-  echo "frontend port already in use: ${FE_PORT}" >&2
-  exit 4
+  if [[ "${APP_TYPE}" == "school" ]]; then
+    old_port="${FE_PORT}"
+    FE_PORT="$(next_free_port "${FE_MIN}" "${FE_MAX}")"
+    echo "[provision] requested frontend port ${old_port} is occupied; using ${FE_PORT} instead"
+  else
+    echo "frontend port already in use: ${FE_PORT}" >&2
+    exit 4
+  fi
 fi
 if [[ "${APP_TYPE}" == "school" ]] && port_in_use "${BE_PORT}"; then
-  echo "backend port already in use: ${BE_PORT}" >&2
-  exit 4
+  old_port="${BE_PORT}"
+  BE_PORT="$(next_free_port "${BE_MIN}" "${BE_MAX}")"
+  echo "[provision] requested backend port ${old_port} is occupied; using ${BE_PORT} instead"
 fi
 fi
 
@@ -480,7 +565,7 @@ pushd "${APPS_DIR}" >/dev/null
 
 echo "[provision] creating/updating stack ${PROJECT_NAME}"
 if [[ "${APP_TYPE}" == "school" ]]; then
-  "${COMPOSE_CMD[@]}" --env-file "${ENV_FILE}" -p "${PROJECT_NAME}" -f "${STACK_COMPOSE_FILE}" up -d db backend frontend
+  start_school_stack_with_port_retry
 
   echo "[provision] applying prisma schema"
   "${COMPOSE_CMD[@]}" --env-file "${ENV_FILE}" -p "${PROJECT_NAME}" -f "${STACK_COMPOSE_FILE}" run -T --rm backend npx prisma db push --skip-generate < /dev/null

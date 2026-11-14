@@ -574,7 +574,7 @@ function createLeadsStore(dataDir, options = {}) {
       return this.getApplication(id);
     },
 
-    startApplicationProvisioning(id, actor) {
+    startApplicationProvisioning(id, actor, domain = '') {
       const now = new Date().toISOString();
       db.exec('BEGIN IMMEDIATE');
       try {
@@ -585,8 +585,9 @@ function createLeadsStore(dataDir, options = {}) {
           return { application: this.getApplication(id), alreadyProvisioning: true };
         }
         if (app.application_status !== 'approved') throw new Error('Only an approved application can be provisioned');
-        db.prepare(`UPDATE leads SET application_status='provisioning',provisioning_started_at=?,last_provision_error='',updated_at=?
-          WHERE id=? AND application_status='approved'`).run(now, now, String(id));
+        const provisioningDomain = String(domain || app.provisioning_domain || '').trim().toLowerCase();
+        db.prepare(`UPDATE leads SET application_status='provisioning',provisioning_started_at=?,provisioning_domain=?,last_provision_error='',updated_at=?
+          WHERE id=? AND application_status='approved'`).run(now, provisioningDomain, now, String(id));
         db.prepare(`INSERT INTO application_events
           (id,application_id,event_type,from_status,to_status,actor,created_at)
           VALUES (?,?, 'provisioning_started','approved','provisioning',?,?)`)
@@ -599,18 +600,20 @@ function createLeadsStore(dataDir, options = {}) {
       return { application: this.getApplication(id), alreadyProvisioning: false };
     },
 
-    failApplicationProvisioning(id, message, actor) {
+    failApplicationProvisioning(id, message, actor, technicalDetails = '') {
       const now = new Date().toISOString();
       db.exec('BEGIN IMMEDIATE');
       try {
         const app = db.prepare('SELECT application_status FROM leads WHERE id=? AND application_status IS NOT NULL').get(String(id));
         if (!app || app.application_status !== 'provisioning') throw new Error('Application is not provisioning');
+        const summary = String(message || 'Provisioning failed').slice(0, 500);
+        const details = String(technicalDetails || '').slice(-1600);
         db.prepare(`UPDATE leads SET application_status='approved',last_provision_error=?,updated_at=? WHERE id=? AND application_status='provisioning'`)
-          .run(String(message || 'Provisioning failed').slice(0, 1000), now, String(id));
+          .run(summary, now, String(id));
         db.prepare(`INSERT INTO application_events
           (id,application_id,event_type,from_status,to_status,actor,details_json,created_at)
           VALUES (?,?, 'provisioning_failed','provisioning','approved',?,?,?)`)
-          .run(crypto.randomUUID(), String(id), String(actor || ''), JSON.stringify({ message: String(message || '').slice(0, 1000) }), now);
+          .run(crypto.randomUUID(), String(id), String(actor || ''), JSON.stringify({ message: summary, technicalDetails: details }), now);
         db.exec('COMMIT');
       } catch (error) {
         try { db.exec('ROLLBACK'); } catch {}
