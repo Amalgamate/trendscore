@@ -34,7 +34,7 @@
       : 'Not selected';
     const packageInput = packageList.querySelector('input:checked');
     document.getElementById('summary-package').textContent = packageInput?.dataset.name
-      || (educationLevel.value === 'SECONDARY' ? 'Not selected — Secondary packages are deferred' : 'Not selected');
+      || (educationLevel.value === 'SECONDARY' ? 'Our team will recommend a package' : 'Not selected');
     const agent = agentSelect.options[agentSelect.selectedIndex];
     document.getElementById('summary-agent').textContent = agentSelect.value ? agent.textContent : 'Unassigned';
   }
