@@ -56,6 +56,8 @@ test('school application package and lifecycle rules', async t => {
     assert.deepEqual(privatePrimary.map(pack => pack.id), ['starter', 'standard', 'professional']);
     assert.equal(publicPrimary[0].modules.some(module => module.slug === 'fee-management'), false);
     assert.equal(privatePrimary[0].modules.some(module => module.slug === 'fee-management'), true);
+    assert.equal(publicPrimary.slice(1).every(pack => pack.modules.every(module => module.slug !== 'transport')), true);
+    assert.equal(privatePrimary.slice(1).every(pack => pack.modules.every(module => module.slug !== 'transport')), true);
     assert.deepEqual(publicPackageOptions('PUBLIC_SECONDARY'), []);
     assert.equal(publicPrimary.some(pack => Object.hasOwn(pack, 'price')), false);
   });

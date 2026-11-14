@@ -21,6 +21,7 @@ import {
   APP_CATALOG,
   applyModulePackageToSchool,
   ensureSchoolModuleConfigs,
+  enableOptionalSchoolModules,
 } from '../services/moduleCatalog.service';
 
 const mockedPrisma = prisma as unknown as {
@@ -99,7 +100,7 @@ describe('module entitlement guards', () => {
   });
 
   it.each([
-    ['standard', ['fee-management', 'transport']],
+    ['standard', ['fee-management', 'inventory', 'approvals']],
     ['professional', ['fee-management', 'accounting', 'library']],
     ['enterprise', ['fee-management', 'tertiary-modules']],
   ] as const)('preserves %s package entitlements', async (packageId, expectedSlugs) => {
@@ -114,6 +115,40 @@ describe('module entitlement guards', () => {
       .filter((config) => config.isActive)
       .map((config) => APP_CATALOG.find((app, index) => `app-${index}` === config.appId)?.slug));
     expectedSlugs.forEach((slug) => expect(activeSlugs.has(slug)).toBe(true));
+    if (packageId === 'standard' || packageId === 'professional') {
+      expect(activeSlugs.has('transport')).toBe(false);
+    }
+  });
+
+  it('enables Transport only when separately confirmed as an optional module', async () => {
+    mockedPrisma.app.findMany.mockResolvedValue(
+      APP_CATALOG.map((app, index) => ({ id: `app-${index}`, slug: app.slug }))
+    );
+
+    await applyModulePackageToSchool('school-1', 'standard');
+
+    const transportAppId = `app-${APP_CATALOG.findIndex((app) => app.slug === 'transport')}`;
+    const packageTransportConfig = mockedPrisma.schoolAppConfig.upsert.mock.calls
+      .map(([args]) => args.create)
+      .find((config) => config.appId === transportAppId);
+    expect(packageTransportConfig).toMatchObject({ isActive: false });
+
+    mockedPrisma.app.findMany.mockResolvedValue([
+      { id: transportAppId, slug: 'transport' },
+    ]);
+    await enableOptionalSchoolModules('school-1', ['transport']);
+
+    expect(mockedPrisma.schoolAppConfig.upsert).toHaveBeenLastCalledWith({
+      where: { schoolId_appId: { schoolId: 'school-1', appId: transportAppId } },
+      update: { isActive: true, isMandatory: false, isVisible: true },
+      create: {
+        schoolId: 'school-1',
+        appId: transportAppId,
+        isActive: true,
+        isMandatory: false,
+        isVisible: true,
+      },
+    });
   });
 
   it('allows the fee module for private-primary Starter schools', async () => {

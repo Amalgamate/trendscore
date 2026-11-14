@@ -37,8 +37,8 @@
     },
     "standard": {
       "name": "Standard",
-      "description": "Starter plus fees, transport, inventory and approvals.",
-      "active": ["fee-management", "transport", "inventory", "approvals"],
+      "description": "Starter plus fees, inventory and approvals.",
+      "active": ["fee-management", "inventory", "approvals"],
       "mandatory": ["student-registry", "user-management", "school-settings"]
     },
     "professional": {
