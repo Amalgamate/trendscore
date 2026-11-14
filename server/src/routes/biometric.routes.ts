@@ -4,14 +4,17 @@ import { requirePermission } from '../middleware/permissions.middleware';
 import { asyncHandler } from '../utils/async.util';
 import { biometricController } from '../controllers/biometric.controller';
 import { rateLimit } from '../middleware/enhanced-rateLimit.middleware';
+import { requireApp } from '../middleware/requireApp';
 
 const router = Router();
+const requireBiometricApp = requireApp('biometric');
 
 // ── Device Management ─────────────────────────────────────────────────────────
 
 router.post(
   '/devices',
   authenticate,
+  requireBiometricApp,
   requirePermission('MANAGE_BIOMETRIC_DEVICES'),
   asyncHandler(biometricController.registerDevice.bind(biometricController)),
 );
@@ -19,6 +22,7 @@ router.post(
 router.get(
   '/devices',
   authenticate,
+  requireBiometricApp,
   requirePermission('MANAGE_BIOMETRIC_DEVICES'),
   asyncHandler(biometricController.getDevices.bind(biometricController)),
 );
@@ -26,6 +30,7 @@ router.get(
 router.patch(
   '/devices/:id',
   authenticate,
+  requireBiometricApp,
   requirePermission('MANAGE_BIOMETRIC_DEVICES'),
   asyncHandler(biometricController.updateDevice.bind(biometricController)),
 );
@@ -33,6 +38,7 @@ router.patch(
 router.delete(
   '/devices/:id',
   authenticate,
+  requireBiometricApp,
   requirePermission('MANAGE_BIOMETRIC_DEVICES'),
   asyncHandler(biometricController.decommissionDevice.bind(biometricController)),
 );
@@ -41,6 +47,7 @@ router.delete(
 router.post(
   '/devices/:id/rotate-token',
   authenticate,
+  requireBiometricApp,
   requirePermission('MANAGE_BIOMETRIC_DEVICES'),
   asyncHandler(biometricController.rotateDeviceToken.bind(biometricController)),
 );
@@ -48,6 +55,7 @@ router.post(
 router.post(
   '/devices/:id/activation',
   authenticate,
+  requireBiometricApp,
   requirePermission('MANAGE_BIOMETRIC_DEVICES'),
   asyncHandler(biometricController.createTerminalActivation.bind(biometricController)),
 );
@@ -55,6 +63,7 @@ router.post(
 router.post(
   '/devices/:id/test',
   authenticate,
+  requireBiometricApp,
   requirePermission('MANAGE_BIOMETRIC_DEVICES'),
   asyncHandler(biometricController.testDeviceConnection.bind(biometricController)),
 );
@@ -62,6 +71,7 @@ router.post(
 router.get(
   '/configuration',
   authenticate,
+  requireBiometricApp,
   requirePermission('CONFIGURE_BIOMETRIC_API'),
   asyncHandler(biometricController.getConfiguration.bind(biometricController)),
 );
@@ -71,6 +81,7 @@ router.get(
 router.post(
   '/face/enrollment/session',
   authenticate,
+  requireBiometricApp,
   requirePermission('ENROLL_FINGERPRINTS'),
   rateLimit({ windowMs: 60_000, maxRequests: 20 }),
   asyncHandler(biometricController.createFaceEnrollmentSession.bind(biometricController)),
@@ -79,6 +90,7 @@ router.post(
 router.post(
   '/face/enrollment/session/:sessionId/complete',
   authenticate,
+  requireBiometricApp,
   requirePermission('ENROLL_FINGERPRINTS'),
   rateLimit({ windowMs: 60_000, maxRequests: 20 }),
   asyncHandler(biometricController.completeFaceEnrollmentSession.bind(biometricController)),
@@ -87,6 +99,7 @@ router.post(
 router.post(
   '/enroll',
   authenticate,
+  requireBiometricApp,
   requirePermission('ENROLL_FINGERPRINTS'),
   asyncHandler(biometricController.enrollCredential.bind(biometricController)),
 );
@@ -94,6 +107,7 @@ router.post(
 router.get(
   '/enroll/:personType/:personId',
   authenticate,
+  requireBiometricApp,
   requirePermission('ENROLL_FINGERPRINTS'),
   asyncHandler(biometricController.getEnrollmentStatus.bind(biometricController)),
 );
@@ -101,6 +115,7 @@ router.get(
 router.get(
   '/credentials',
   authenticate,
+  requireBiometricApp,
   requirePermission('MANAGE_BIOMETRIC_DEVICES'),
   asyncHandler(biometricController.getCredentials.bind(biometricController)),
 );
@@ -108,6 +123,7 @@ router.get(
 router.delete(
   '/credentials/:id',
   authenticate,
+  requireBiometricApp,
   requirePermission('MANAGE_BIOMETRIC_DEVICES'),
   asyncHandler(biometricController.revokeCredential.bind(biometricController)),
 );
@@ -145,6 +161,7 @@ router.post('/log', biometricController.logAttendance.bind(biometricController))
 router.get(
   '/logs',
   authenticate,
+  requireBiometricApp,
   requirePermission('VIEW_BIOMETRIC_LOGS'),
   asyncHandler(biometricController.getLogs.bind(biometricController)),
 );
@@ -152,6 +169,7 @@ router.get(
 router.post(
   '/logs/:id/process',
   authenticate,
+  requireBiometricApp,
   requirePermission('MANAGE_BIOMETRIC_DEVICES'),
   asyncHandler(biometricController.retryLog.bind(biometricController)),
 );

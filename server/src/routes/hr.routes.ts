@@ -105,6 +105,7 @@ router.get(
 router.post(
     '/attendance/clock-in',
     authenticate,
+    requireApp('staff-hr'),
     rateLimit({ windowMs: 60_000, maxRequests: 60 }),
     validate(attendanceLocationPayloadSchema),
     auditLog('STAFF_CLOCK_IN'),
@@ -114,6 +115,7 @@ router.post(
 router.post(
     '/attendance/clock-out',
     authenticate,
+    requireApp('staff-hr'),
     rateLimit({ windowMs: 60_000, maxRequests: 60 }),
     validate(attendanceLocationPayloadSchema),
     auditLog('STAFF_CLOCK_OUT'),
@@ -123,6 +125,7 @@ router.post(
 router.get(
     '/attendance/today',
     authenticate,
+    requireApp('staff-hr'),
     rateLimit({ windowMs: 60_000, maxRequests: 120 }),
     hrController.getTodayClockIn
 );
@@ -130,6 +133,7 @@ router.get(
 router.get(
     '/attendance/live',
     authenticate,
+    requireApp('staff-hr'),
     requireRole([...ROLE_HR_ADMIN]),
     rateLimit({ windowMs: 60_000, maxRequests: 120 }),
     hrController.getLiveFeed
@@ -146,6 +150,7 @@ router.get(
 router.post(
     '/attendance/presence-ping',
     authenticate,
+    requireApp('staff-hr'),
     rateLimit({ windowMs: 60_000, maxRequests: 30 }),
     validate(attendanceLocationPayloadSchema),
     hrController.presencePing

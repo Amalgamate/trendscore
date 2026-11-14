@@ -26,6 +26,7 @@ import { Router } from 'express';
 import { authenticate } from '../middleware/auth.middleware';
 import { schoolContextMiddleware } from '../middleware/schoolContext.middleware';
 import { requireRole } from '../middleware/permissions.middleware';
+import { requireApp } from '../middleware/requireApp';
 import {
   submitRequest,
   listRequests,
@@ -46,6 +47,7 @@ const router = Router();
 // explicitly so this router is safe if mounted independently.
 router.use(authenticate);
 router.use(schoolContextMiddleware);
+router.use(requireApp('approvals'));
 
 // ── Roles shorthand ───────────────────────────────────────────────────────────
 // Users who can view all school-level approvals (R9.1 "View all approvals")
