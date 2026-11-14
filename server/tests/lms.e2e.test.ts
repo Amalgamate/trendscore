@@ -274,6 +274,18 @@ describe('LMS Courses, Enrollments & Student Portal API', () => {
     expect(statsResponse.body.data).toHaveProperty('recentEnrollments');
   });
 
+  it('keeps Enterprise Marketplace behind the Enterprise entitlement', async () => {
+    const response = await request(app)
+      .get('/api/lms/marketplace')
+      .set('Authorization', `Bearer ${authToken}`)
+      .expect(403);
+
+    expect(response.body).toMatchObject({
+      success: false,
+      code: 'APP_DISABLED',
+    });
+  });
+
   it('manages learner enrollments and student portal access', async () => {
     // 1. Enroll Student (Teacher action)
     const enrollPayload = {
