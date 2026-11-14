@@ -589,20 +589,29 @@ if [[ "${APP_TYPE}" == "school" ]]; then
   ' < /dev/null
 
   echo "[provision] ensuring active school row exists"
-  "${COMPOSE_CMD[@]}" --env-file "${ENV_FILE}" -p "${PROJECT_NAME}" -f "${STACK_COMPOSE_FILE}" exec -T db \
-    psql -U "${DB_USER}" -d "${DB_NAME}" \
+  SCHOOL_ID=$("${COMPOSE_CMD[@]}" --env-file "${ENV_FILE}" -p "${PROJECT_NAME}" -f "${STACK_COMPOSE_FILE}" exec -T db \
+    psql -U "${DB_USER}" -d "${DB_NAME}" -A -t \
+    -v ON_ERROR_STOP=1 \
     -v school_id="${SCHOOL_SLUG}" \
     -v school_name="${SCHOOL_NAME}" \
-    <<'SQL'
-insert into schools (id,name,active,status,archived,"updatedAt")
-values (:'school_id',:'school_name',true,'ACTIVE',false,now())
-on conflict (id) do update set
-  name=excluded.name,
+    -v application_id="${APPLICATION_ID}" <<'SQL'
+insert into schools (id,name,active,status,archived,"updatedAt","provisioningApplicationId")
+values (:'school_id',:'school_name',true,'ACTIVE',false,now(),:'application_id')
+on conflict (name) do update set
   active=true,
   status='ACTIVE',
   archived=false,
-  "updatedAt"=now();
+  "updatedAt"=now(),
+  "provisioningApplicationId"=coalesce(schools."provisioningApplicationId", excluded."provisioningApplicationId")
+where schools."provisioningApplicationId" is null
+   or schools."provisioningApplicationId" = excluded."provisioningApplicationId"
+returning id;
 SQL
+  )
+  if [[ -z "${SCHOOL_ID}" ]]; then
+    echo "[provision] school record upsert did not return an id" >&2
+    exit 1
+  fi
 
   echo "[provision] restarting app containers"
   "${COMPOSE_CMD[@]}" --env-file "${ENV_FILE}" -p "${PROJECT_NAME}" -f "${STACK_COMPOSE_FILE}" up -d --force-recreate backend frontend
@@ -713,7 +722,7 @@ elif [[ "${APP_TYPE}" == "wordpress" ]]; then
   check_url "http://${DEFAULT_HOST_IP}:${FE_PORT}/wp-login.php" "wordpress health"
 fi
 
-RESULT_JSON=$(jq -n \
+RESULT_JSON=$(jq -cn \
   --arg projectName "${PROJECT_NAME}" \
   --arg envFile "${ENV_FILE}" \
   --arg schoolName "${SCHOOL_NAME}" \
@@ -726,7 +735,7 @@ RESULT_JSON=$(jq -n \
   --argjson backendPort "$(if [[ "${APP_TYPE}" == "school" ]]; then echo "${BE_PORT}"; else echo "null"; fi)" \
   --arg dbName "${DB_NAME}" \
   --arg requestedBy "${REQUESTED_BY}" \
-  --arg schoolId "${SCHOOL_SLUG}" \
+  --arg schoolId "$(if [[ "${APP_TYPE}" == "school" ]]; then echo "${SCHOOL_ID}"; else echo ""; fi)" \
   --arg activationToken "${SUPER_ADMIN_ACTIVATION_TOKEN:-}" \
   --argjson reusedEnvFile "$( [[ "${REUSED_ENV_FILE}" == "true" ]] && echo true || echo false )" \
   '{ok:true, projectName:$projectName, schoolId:$schoolId, activationToken:$activationToken, envFile:$envFile, schoolName:$schoolName, domain:$domain, institutionType:$institutionType, appType:$appType, appVersion:$appVersion, appImage:$appImage, frontendPort:$frontendPort, backendPort:$backendPort, dbName:$dbName, requestedBy:$requestedBy, reusedEnvFile:$reusedEnvFile}')
