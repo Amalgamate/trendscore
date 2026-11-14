@@ -87,11 +87,14 @@ jobs:
           set -euo pipefail
           image="${CONSOLE_IMAGE}:${IMAGE_TAG}"
           container="trendscore-console-smoke"
+          smoke_data="/tmp/trendscore-console-smoke-data"
+          mkdir -p "${smoke_data}"
           docker pull "${image}"
           docker run -d --name "${container}" \
             -p 127.0.0.1:13100:3100 \
+            -v "${smoke_data}:/app/data" \
             -e PORT=3100 \
-            -e CONSOLE_DATA_DIR=/tmp/trendscore-console-smoke-data \
+            -e CONSOLE_DATA_DIR=/app/data \
             -e CONSOLE_JWT_SECRET=console-image-smoke-test-secret-0123456789 \
             -e CONSOLE_SUPER_ADMIN_EMAIL=smoke-admin@example.test \
             -e CONSOLE_SUPER_ADMIN_PASSWORD=smoke-test-password-only \
