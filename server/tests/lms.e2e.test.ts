@@ -7,17 +7,23 @@ import lmsRoutes from '../src/routes/lms.routes';
 import prisma from '../src/config/database';
 import { generateAccessToken } from '../src/utils/jwt.util';
 import { UserRole, Gender, LearnerStatus } from '@prisma/client';
+import { enableOptionalSchoolModules } from '../src/services/moduleCatalog.service';
+import { errorHandler } from '../src/middleware/error.middleware';
+import { requireApp } from '../src/middleware/requireApp';
 
+process.env.NODE_ENV = 'test';
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-jwt-secret';
 process.env.JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h';
 
 const app = express();
 app.use(express.json());
+let testSchoolId = 'lms-e2e-school-id';
 app.use((req: any, _res, next) => {
-  req.school = { id: 'lms-e2e-school-id', name: 'LMS E2E Academy', institutionType: 'SECONDARY' };
+  req.school = { id: testSchoolId, name: 'LMS E2E Academy', institutionType: 'SECONDARY' };
   next();
 });
-app.use('/api/lms', lmsRoutes);
+app.use('/api/lms', requireApp('lms-professional'), lmsRoutes);
+app.use(errorHandler);
 
 describe('LMS Courses, Enrollments & Student Portal API', () => {
   const testUserEmail = 'test-lms-creator@local.test';
@@ -35,7 +41,7 @@ describe('LMS Courses, Enrollments & Student Portal API', () => {
   let createdEnrollmentId: string | null = null;
 
   beforeAll(async () => {
-    await prisma.school.upsert({
+    const school = await prisma.school.upsert({
       where: { name: 'LMS E2E Academy' },
       update: {
         active: true,
@@ -56,6 +62,13 @@ describe('LMS Courses, Enrollments & Student Portal API', () => {
         curriculumType: 'CBC_AND_EXAM',
       },
     });
+    testSchoolId = school.id;
+    await enableOptionalSchoolModules(testSchoolId, ['lms', 'lms-professional']);
+    const lmsConfig = await prisma.schoolAppConfig.findFirst({
+      where: { schoolId: testSchoolId, app: { slug: 'lms-professional' } },
+      select: { isActive: true, isVisible: true },
+    });
+    expect(lmsConfig).toEqual({ isActive: true, isVisible: true });
 
     // 1. Create a Head Teacher User
     const user = await prisma.user.upsert({
@@ -202,7 +215,7 @@ describe('LMS Courses, Enrollments & Student Portal API', () => {
     if (testClassId) {
       await prisma.class.deleteMany({ where: { id: testClassId } });
     }
-    await prisma.school.deleteMany({ where: { id: 'lms-e2e-school-id' } }).catch(() => null);
+    await prisma.school.deleteMany({ where: { id: testSchoolId } }).catch(() => null);
     await prisma.$disconnect();
   });
 
@@ -259,6 +272,18 @@ describe('LMS Courses, Enrollments & Student Portal API', () => {
     expect(statsResponse.body.data).toHaveProperty('activeEnrollments');
     expect(statsResponse.body.data).toHaveProperty('totalContent');
     expect(statsResponse.body.data).toHaveProperty('recentEnrollments');
+  });
+
+  it('keeps Enterprise Marketplace behind the Enterprise entitlement', async () => {
+    const response = await request(app)
+      .get('/api/lms/marketplace')
+      .set('Authorization', `Bearer ${authToken}`)
+      .expect(403);
+
+    expect(response.body).toMatchObject({
+      success: false,
+      code: 'APP_DISABLED',
+    });
   });
 
   it('manages learner enrollments and student portal access', async () => {

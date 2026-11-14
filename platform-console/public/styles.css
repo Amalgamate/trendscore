@@ -873,6 +873,19 @@ tbody tr:hover td{background:#f8fbff}
   .billing-config-note{padding:12px 14px}
 }
 @media(max-width:680px){.billing-quote-grid{grid-template-columns:1fr}.billing-extra-row{grid-template-columns:1fr}}
+.application-review-modal{width:min(760px,calc(100vw - 28px));max-height:calc(100vh - 28px);display:flex;flex-direction:column}
+.application-review-modal .modal-body{overflow-y:auto}
+.application-review-modal .modal-subtitle{margin-top:3px;color:var(--muted);font-size:11px}
+.application-review-details{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 18px;margin-bottom:16px}
+.application-review-details div{min-width:0;padding:8px 0;border-bottom:1px solid var(--border)}
+.application-review-details dt{color:var(--muted);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+.application-review-details dd{margin:3px 0 0;color:var(--ink);font-size:12px;overflow-wrap:anywhere}
+.application-transport-confirm{display:flex;align-items:flex-start;gap:8px;margin:12px 0;padding:10px;border:1px solid var(--border);font-size:12px}
+.application-review-events{max-height:150px;overflow:auto;padding-left:19px;color:var(--muted);font-size:11px}
+.application-review-events li{margin:0 0 6px}
+.application-review-actions{flex-wrap:wrap}
+.application-review-actions .danger-btn{margin-right:auto}
+@media(max-width:600px){.application-review-details{grid-template-columns:1fr}.application-review-actions{justify-content:flex-start}.application-review-actions .danger-btn{margin-right:0}}
 .form-label{
   display:block;font-size:11px;font-weight:700;text-transform:uppercase;
   letter-spacing:.08em;color:var(--muted);margin-bottom:5px

@@ -98,6 +98,10 @@
       </span>
       Leads &amp; CRM
     </a>
+    <a class="nav-item" data-section="applications" href="#">
+      <span class="nav-icon" aria-hidden="true">▤</span>
+      School Applications
+    </a>
     <a class="nav-item" data-section="agents" href="#">
       <span class="nav-icon">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><polyline points="16 11 18 13 22 9"/></svg>
@@ -760,6 +764,38 @@
                 </tr>
               </thead>
               <tbody id="audit-table"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── SCHOOL APPLICATIONS section ── -->
+      <div id="section-applications" class="section-hidden">
+        <div class="page-header">
+          <div>
+            <div class="page-title">School Applications</div>
+            <div class="page-sub">Review applications before approving installation and account activation</div>
+          </div>
+          <div class="page-actions">
+            <select id="application-status-filter" class="form-select" aria-label="Filter applications by status">
+              <option value="">All statuses</option>
+              <option value="submitted">Submitted</option>
+              <option value="under_review">Under review</option>
+              <option value="approved">Approved</option>
+              <option value="provisioning">Installing</option>
+              <option value="ready">Ready</option>
+              <option value="rejected">Rejected</option>
+            </select>
+            <button id="refresh-applications" class="btn" type="button">Refresh</button>
+            <button id="copy-application-link" class="btn" type="button">Copy application link</button>
+          </div>
+        </div>
+        <div id="applications-error" class="billing-register-note" role="alert" hidden></div>
+        <div class="panel">
+          <div class="table-wrap">
+            <table style="min-width:1050px">
+              <thead><tr><th>Reference</th><th>School</th><th>Type</th><th>Package</th><th>Status</th><th>Agent</th><th>Submitted</th><th></th></tr></thead>
+              <tbody id="applications-table"><tr><td colspan="8">Applications load when you open this section.</td></tr></tbody>
             </table>
           </div>
         </div>
@@ -1725,8 +1761,61 @@
   </div>
 </div>
 
+<div class="overlay" id="application-review-overlay" aria-modal="true" role="dialog" aria-labelledby="application-review-title" style="display:none">
+  <div class="modal application-review-modal">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="application-review-title">Review school application</div>
+        <div class="modal-subtitle" id="application-review-reference"></div>
+      </div>
+      <button class="modal-close" id="application-review-close" type="button" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="application-review-error" class="billing-register-note" role="alert" hidden></div>
+      <dl id="application-review-details" class="application-review-details"></dl>
+      <div class="form-row">
+        <label class="form-label" for="application-review-package">Package confirmed by staff</label>
+        <select id="application-review-package" class="form-select">
+          <option value="">No package — Secondary</option>
+          <option value="starter">Starter</option>
+          <option value="standard">Standard</option>
+          <option value="professional">Professional</option>
+        </select>
+      </div>
+      <p id="application-package-includes" class="field-help"></p>
+      <div class="form-row">
+        <label class="form-label" for="application-review-agent">Assigned agent (optional)</label>
+        <select id="application-review-agent" class="form-select"><option value="">Unassigned</option></select>
+      </div>
+      <label id="application-transport-confirm-row" class="application-transport-confirm" hidden>
+        <input id="application-transport-confirm" type="checkbox"/>
+        Confirm Transport as an enabled module (requested by applicant)
+      </label>
+      <div class="form-row">
+        <label class="form-label" for="application-review-notes">Review notes</label>
+        <textarea id="application-review-notes" class="form-input" rows="3" maxlength="2000"></textarea>
+      </div>
+      <div class="form-row">
+        <label class="form-label" for="application-rejection-reason">Rejection reason</label>
+        <textarea id="application-rejection-reason" class="form-input" rows="2" maxlength="1000" placeholder="Required only when rejecting"></textarea>
+      </div>
+      <div class="form-row">
+        <div class="form-label">Application history</div>
+        <ol id="application-review-events" class="application-review-events"></ol>
+      </div>
+    </div>
+    <div class="modal-footer application-review-actions">
+      <button id="application-reject" class="btn danger-btn" type="button">Reject</button>
+      <button id="application-retry-activation" class="btn" type="button" hidden>Retry activation email</button>
+      <button id="application-save-review" class="btn" type="button">Save review</button>
+      <button id="application-approve" class="btn primary" type="button">Approve</button>
+      <button id="application-provision" class="btn teal" type="button" data-super-admin-only hidden>Start installation</button>
+    </div>
+  </div>
+</div>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@latest/Sortable.min.js"></script>
 <script src="./app.js?v=20261101-ringtone-picker"></script>
+<script src="./applications.js"></script>
 <script src="./login.js"></script>
 </body>
 </html>

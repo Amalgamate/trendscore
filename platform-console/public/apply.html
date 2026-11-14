@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="theme-color" content="#030b82"/>
+  <title>School application · TrendSCORE</title>
+  <link rel="stylesheet" href="/apply.css"/>
+</head>
+<body>
+  <header class="apply-header">
+    <a class="brand" href="/apply" aria-label="TrendSCORE school application home">
+      <span class="brand-mark" aria-hidden="true">T</span>
+      <span>TrendSCORE</span>
+    </a>
+    <a class="header-link" href="/">Platform Console</a>
+  </header>
+
+  <main class="apply-layout">
+    <section class="apply-content" aria-labelledby="page-title">
+      <div class="page-intro">
+        <h1 id="page-title">Start a school application</h1>
+        <p>Tell us about your school and the package you are considering. Our team reviews every application before installation.</p>
+        <div class="process-note">
+          <strong>No account is created when you submit.</strong>
+          Installation begins only after internal review. When your school is ready, its administrator receives a one-time activation link by email.
+        </div>
+      </div>
+
+      <form id="application-form" novalidate>
+        <fieldset>
+          <legend>School profile</legend>
+          <div class="form-grid">
+            <label class="field field-wide" for="school">
+              School name
+              <input id="school" name="school" autocomplete="organization" required maxlength="180"/>
+            </label>
+            <label class="field" for="ownership">
+              School ownership
+              <select id="ownership" name="ownership" required>
+                <option value="">Choose public or private</option>
+                <option value="PUBLIC">Public</option>
+                <option value="PRIVATE">Private</option>
+              </select>
+            </label>
+            <label class="field" for="education-level">
+              Education level
+              <select id="education-level" name="educationLevel" required>
+                <option value="">Choose a level</option>
+                <option value="PRIMARY">Primary</option>
+                <option value="SECONDARY">Secondary</option>
+              </select>
+            </label>
+            <label class="field" for="accommodation">
+              Day or boarding
+              <select id="accommodation" name="accommodationType" required>
+                <option value="">Choose an option</option>
+                <option value="DAY">Day</option>
+                <option value="BOARDING">Boarding</option>
+                <option value="DAY_AND_BOARDING">Day and boarding</option>
+              </select>
+            </label>
+            <label class="field" for="transport">
+              Does the school need transport?
+              <select id="transport" name="transportNeeded" required>
+                <option value="">Choose yes or no</option>
+                <option value="true">Yes</option>
+                <option value="false">No</option>
+              </select>
+            </label>
+            <label class="field field-wide" for="address">
+              School address
+              <input id="address" name="address" autocomplete="street-address" required maxlength="240"/>
+            </label>
+            <label class="field" for="county">
+              County
+              <input id="county" name="county" autocomplete="address-level1" required maxlength="100"/>
+            </label>
+            <label class="field" for="sub-county">
+              Sub-county
+              <input id="sub-county" name="subCounty" maxlength="100"/>
+            </label>
+            <label class="field field-wide" for="ward">
+              Ward
+              <input id="ward" name="ward" maxlength="100"/>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>School administrator contact</legend>
+          <div class="form-grid">
+            <label class="field" for="contact-name">
+              Full name
+              <input id="contact-name" name="name" autocomplete="name" required maxlength="120"/>
+            </label>
+            <label class="field" for="contact-phone">
+              Phone
+              <input id="contact-phone" name="phone" type="tel" autocomplete="tel" required maxlength="30" placeholder="+254 7XX XXX XXX"/>
+            </label>
+            <label class="field field-wide" for="contact-email">
+              Email
+              <input id="contact-email" name="email" type="email" autocomplete="email" required maxlength="254"/>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset id="package-fieldset" hidden>
+          <legend>Choose a Primary package</legend>
+          <p class="fieldset-help">Packages are shown without prices. Your team confirms the package before installation.</p>
+          <div id="package-list" class="package-list" role="radiogroup" aria-label="Primary package"></div>
+        </fieldset>
+
+        <div class="agent-choice">
+          <label class="field" for="agent">
+            Agent referral <span class="optional">(optional)</span>
+            <select id="agent" name="agentId">
+              <option value="">No agent / not sure</option>
+            </select>
+            <span class="field-help">You can submit without selecting an agent. The team may update the assignment during review.</span>
+          </label>
+        </div>
+
+        <p id="form-error" class="form-message error" role="alert" hidden></p>
+        <button id="submit-application" class="submit-button" type="submit">Submit application</button>
+        <p id="privacy-note" class="privacy-note">Your details are used to review and prepare this school application.</p>
+      </form>
+
+      <section id="success-panel" class="success-panel" aria-live="polite" hidden>
+        <h2>Application received</h2>
+        <p id="success-message"></p>
+        <p class="reference">Application reference <strong id="application-reference"></strong></p>
+        <a class="return-link" href="/">Return to TrendSCORE</a>
+      </section>
+    </section>
+
+    <aside class="summary-panel" aria-labelledby="summary-heading">
+      <h2 id="summary-heading">Application summary</h2>
+      <dl>
+        <div><dt>School</dt><dd id="summary-school">Not entered</dd></div>
+        <div><dt>School type</dt><dd id="summary-type">Not selected</dd></div>
+        <div><dt>Accommodation</dt><dd id="summary-accommodation">Not selected</dd></div>
+        <div><dt>Transport</dt><dd id="summary-transport">Not selected</dd></div>
+        <div><dt>Package</dt><dd id="summary-package">Not selected</dd></div>
+        <div><dt>Agent</dt><dd id="summary-agent">Unassigned</dd></div>
+      </dl>
+      <p class="summary-footnote">Transport need is a recommendation input only. It is not enabled unless confirmed by our team during review.</p>
+    </aside>
+  </main>
+  <script src="/apply.js" defer></script>
+</body>
+</html>

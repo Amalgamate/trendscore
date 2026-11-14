@@ -137,3 +137,76 @@ test('sanity: the login page itself still loads', async () => {
   const body = await res.text();
   assert.match(body, /Sign in to control panel/);
 });
+
+test('public school application displays supported packages and ownership-specific Starter modules', async () => {
+  const publicPackages = await fetch(`${BASE_URL}/api/public/application-catalog?schoolType=PUBLIC_PRIMARY`).then(res => res.json());
+  const privatePackages = await fetch(`${BASE_URL}/api/public/application-catalog?schoolType=PRIVATE_PRIMARY`).then(res => res.json());
+  const secondaryPackages = await fetch(`${BASE_URL}/api/public/application-catalog?schoolType=PUBLIC_SECONDARY`).then(res => res.json());
+
+  assert.deepEqual(publicPackages.packages.map(pack => pack.id), ['starter', 'standard', 'professional']);
+  assert.equal(publicPackages.packages[0].modules.some(module => module.slug === 'fee-management'), false);
+  assert.equal(privatePackages.packages[0].modules.some(module => module.slug === 'fee-management'), true);
+  assert.deepEqual(secondaryPackages.packages, []);
+  assert.equal(publicPackages.packages.some(pack => Object.hasOwn(pack, 'price')), false);
+});
+
+test('public applications require Primary packages and accept Secondary without a package or account', async () => {
+  const missingPackage = await fetch(`${BASE_URL}/api/public/applications`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: 'Amina Example',
+      email: 'amina@example.test',
+      phone: '0712345678',
+      school: 'Primary Without Package',
+      schoolType: 'PUBLIC_PRIMARY',
+      accommodationType: 'DAY',
+      transportNeeded: false,
+      address: 'Example Road',
+      county: 'Nakuru',
+      packageId: '',
+    }),
+  });
+  assert.equal(missingPackage.status, 400);
+
+  const response = await fetch(`${BASE_URL}/api/public/applications`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: 'Amina Example',
+      email: 'amina@example.test',
+      phone: '0712345678',
+      school: 'Secondary Without Package',
+      schoolType: 'PUBLIC_SECONDARY',
+      accommodationType: 'BOARDING',
+      transportNeeded: true,
+      address: 'Example Road',
+      county: 'Nakuru',
+      packageId: '',
+      agentId: '',
+    }),
+  });
+  const payload = await response.json();
+  assert.equal(response.status, 201);
+  assert.equal(payload.ok, true);
+  assert.match(payload.reference, /^A/);
+  assert.match(payload.message, /No school account is created until approval and installation/);
+
+  const appResponse = await fetch(`${BASE_URL}/api/public/applications`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: 'Amina Example',
+      email: 'amina@example.test',
+      phone: '0712345678',
+      school: 'Starter Enterprise Primary',
+      schoolType: 'PRIVATE_PRIMARY',
+      accommodationType: 'DAY_AND_BOARDING',
+      transportNeeded: false,
+      address: 'Example Road',
+      county: 'Nakuru',
+      packageId: 'enterprise',
+    }),
+  });
+  assert.equal(appResponse.status, 400);
+});

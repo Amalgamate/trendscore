@@ -317,7 +317,8 @@ router.post(
 // All remaining marketplace routes require lms-enterprise.
 // Using a sub-router avoids repeating requireApp on every route.
 const enterpriseRouter = Router();
-enterpriseRouter.use(requireApp('lms-enterprise'));
+enterpriseRouter.use('/marketplace', requireApp('lms-enterprise'));
+enterpriseRouter.use('/ai', requireApp('lms-enterprise'));
 
 enterpriseRouter.get(
   '/marketplace',

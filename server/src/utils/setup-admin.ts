@@ -1,6 +1,11 @@
 import bcrypt from 'bcrypt';
 import prisma from '../config/database';
 import { invalidateAuthLookupCache } from '../services/auth-cache.service';
+import {
+    applyModulePackageToSchool,
+    enableOptionalSchoolModules,
+    initializeUnassignedSchoolModules,
+} from '../services/moduleCatalog.service';
 
 /**
  * Ensures initial users exist in the database for testing and administration.
@@ -8,6 +13,12 @@ import { invalidateAuthLookupCache } from '../services/auth-cache.service';
 export async function ensureSuperAdmin() {
     const superAdminEmail = process.env.SUPER_ADMIN_EMAIL || 'admin@trendscore.app';
     const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD || 'Admin@123!';
+    const superAdminFirstName = process.env.SUPER_ADMIN_FIRST_NAME || 'System';
+    const superAdminLastName = process.env.SUPER_ADMIN_LAST_NAME || 'Administrator';
+    const superAdminPhone = process.env.SUPER_ADMIN_PHONE || '0713612141';
+    const activationToken = process.env.SUPER_ADMIN_ACTIVATION_TOKEN || '';
+    const applicationId = process.env.APPLICATION_ID?.trim() || '';
+    const institutionType = process.env.SCHOOL_INSTITUTION_TYPE === 'SECONDARY' ? 'SECONDARY' : 'PRIMARY_CBC';
     const demoUserPassword = process.env.DEMO_USER_PASSWORD || 'Demo@123!';
     const createExtraDemoUsers = (process.env.CREATE_EXTRA_DEMO_USERS || 'false').toLowerCase() === 'true';
 
@@ -22,10 +33,10 @@ export async function ensureSuperAdmin() {
         {
             email: superAdminEmail,
             password: superAdminPassword,
-            firstName: 'System',
-            lastName: 'Administrator',
+            firstName: superAdminFirstName,
+            lastName: superAdminLastName,
             role: 'SUPER_ADMIN' as const,
-            phone: '0713612141'
+            phone: superAdminPhone
         }
     ];
 
@@ -61,6 +72,25 @@ export async function ensureSuperAdmin() {
     try {
         console.log('[SETUP] Checking/Creating initial users...');
 
+        const existingActiveSchool = await prisma.school.findFirst({
+            where: {
+                active: true,
+                archived: false,
+            },
+            orderBy: [
+                { updatedAt: 'desc' },
+                { createdAt: 'desc' },
+            ],
+        });
+        if (applicationId && existingActiveSchool?.provisioningApplicationId
+            && existingActiveSchool.provisioningApplicationId !== applicationId) {
+            throw new Error('This tenant is already linked to a different application');
+        }
+        const issueApplicationActivation = Boolean(
+            applicationId && activationToken
+            && existingActiveSchool?.provisioningApplicationId !== applicationId,
+        );
+
         const hashRounds = process.env.NODE_ENV === 'production' ? 12 : 10;
 
         for (const userData of usersToCreate) {
@@ -75,15 +105,21 @@ export async function ensureSuperAdmin() {
                     data: {
                         status: 'ACTIVE',
                         role: userData.role,
-                        ...((existing.role !== userData.role || existing.status !== 'ACTIVE')
+                        ...((existing.role !== userData.role || existing.status !== 'ACTIVE' || issueApplicationActivation)
                             ? { authVersion: { increment: 1 } }
                             : {}),
                         firstName: userData.firstName,
                         lastName: userData.lastName,
-                        phone: userData.phone
+                        phone: userData.phone,
+                        ...(applicationId ? { institutionType } : {}),
+                        ...(issueApplicationActivation ? {
+                            emailVerified: false,
+                            passwordResetToken: activationToken,
+                            passwordResetExpiry: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+                        } : {}),
                     }
                 });
-                if (existing.role !== userData.role || existing.status !== 'ACTIVE') {
+                if (existing.role !== userData.role || existing.status !== 'ACTIVE' || issueApplicationActivation) {
                     await invalidateAuthLookupCache();
                 }
             } else {
@@ -96,7 +132,13 @@ export async function ensureSuperAdmin() {
                         lastName: userData.lastName,
                         role: userData.role,
                         status: 'ACTIVE',
-                        phone: userData.phone
+                        phone: userData.phone,
+                        institutionType,
+                        emailVerified: !activationToken,
+                        ...(activationToken ? {
+                            passwordResetToken: activationToken,
+                            passwordResetExpiry: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+                        } : {}),
                     }
                 });
             }
@@ -117,21 +159,11 @@ export async function ensureSuperAdmin() {
             .map(part => part.charAt(0).toUpperCase() + part.slice(1))
             .join(' ') || 'School';
 
-        const existingActiveSchool = await prisma.school.findFirst({
-            where: {
-                active: true,
-                archived: false,
-            },
-            orderBy: [
-                { updatedAt: 'desc' },
-                { createdAt: 'desc' },
-            ],
-        });
-
-        if (existingActiveSchool) {
-            console.log(`✅ School context ready: ${existingActiveSchool.id} (${existingActiveSchool.name})`);
+        let activeSchool = existingActiveSchool;
+        if (activeSchool) {
+            console.log(`✅ School context ready: ${activeSchool.id} (${activeSchool.name})`);
         } else {
-            await prisma.school.upsert({
+            activeSchool = await prisma.school.upsert({
                 where: { id: schoolCode },
                 create: {
                     id: schoolCode,
@@ -149,7 +181,64 @@ export async function ensureSuperAdmin() {
             });
             console.log(`✅ School context ready: ${schoolCode} (${schoolName})`);
         }
+
+        if (applicationId) {
+            const schoolType = process.env.SCHOOL_TYPE || '';
+            const accommodationType = process.env.SCHOOL_ACCOMMODATION_TYPE || '';
+            const packageId = process.env.APPLICATION_PACKAGE_ID || '';
+            let optionalModuleSlugs: string[] = [];
+            try {
+                const parsed = JSON.parse(process.env.APPLICATION_MODULE_SLUGS || '[]');
+                if (!Array.isArray(parsed) || parsed.some(slug => typeof slug !== 'string')) {
+                    throw new Error('Invalid approved module list');
+                }
+                optionalModuleSlugs = parsed;
+            } catch (error) {
+                throw new Error(`Invalid application module configuration: ${error instanceof Error ? error.message : String(error)}`);
+            }
+            if (!['PUBLIC_PRIMARY', 'PRIVATE_PRIMARY', 'PUBLIC_SECONDARY', 'PRIVATE_SECONDARY'].includes(schoolType)) {
+                throw new Error('Invalid school type in approved application');
+            }
+            if (!['DAY', 'BOARDING', 'DAY_AND_BOARDING'].includes(accommodationType)) {
+                throw new Error('Invalid accommodation type in approved application');
+            }
+            if ((institutionType === 'PRIMARY_CBC' && !['starter', 'standard', 'professional'].includes(packageId))
+                || (institutionType === 'SECONDARY' && packageId)) {
+                throw new Error('Invalid package selection in approved application');
+            }
+            if (optionalModuleSlugs.some(slug => slug !== 'transport')
+                || (optionalModuleSlugs.length && process.env.SCHOOL_TRANSPORT_NEEDED !== 'true')) {
+                throw new Error('Invalid optional modules in approved application');
+            }
+            if (activeSchool.provisioningApplicationId !== applicationId) {
+                await prisma.$transaction(async tx => {
+                    await tx.school.update({
+                        where: { id: activeSchool.id },
+                        data: {
+                            schoolType,
+                            accommodationType,
+                            institutionType,
+                            institutionTypeLocked: true,
+                            provisioningApplicationId: applicationId,
+                            ...(process.env.SCHOOL_ADDRESS ? { address: process.env.SCHOOL_ADDRESS } : {}),
+                            ...(process.env.SCHOOL_COUNTY ? { county: process.env.SCHOOL_COUNTY } : {}),
+                            ...(process.env.SCHOOL_SUB_COUNTY ? { subCounty: process.env.SCHOOL_SUB_COUNTY } : {}),
+                            ...(process.env.SCHOOL_WARD ? { ward: process.env.SCHOOL_WARD } : {}),
+                            ...(process.env.SCHOOL_PHONE ? { phone: process.env.SCHOOL_PHONE } : {}),
+                            ...(process.env.SCHOOL_EMAIL ? { email: process.env.SCHOOL_EMAIL } : {}),
+                        },
+                    });
+                    if (institutionType === 'SECONDARY') {
+                        await initializeUnassignedSchoolModules(activeSchool.id, tx);
+                    } else {
+                        await applyModulePackageToSchool(activeSchool.id, packageId as 'starter' | 'standard' | 'professional', tx);
+                    }
+                    await enableOptionalSchoolModules(activeSchool.id, optionalModuleSlugs, tx);
+                });
+            }
+        }
     } catch (error: any) {
         console.error('❌ Error during user setup:', error.message);
+        throw error;
     }
 }
