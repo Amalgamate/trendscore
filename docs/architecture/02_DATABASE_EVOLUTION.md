@@ -4,7 +4,6 @@
 **Version:** 1.0  
 **Status:** DRAFT — Pending Architecture Review  
 **Date:** August 2026  
-**Parent Document:** `00_MASTER_ARCHITECTURE_SPECIFICATION.md §7`
 
 ---
 

@@ -144,7 +144,7 @@ TrendScore includes an end-to-end Grade 7–9 decision workflow that turns learn
 6. Teachers or counsellors add guidance, action plans, and review decisions.
 7. Administrators monitor the funnel, correct reference data, approve, and lock final decisions.
 
-The workflow keeps submission snapshots, revision history, notifications, role boundaries, audit records, and locked-plan protection. See [the Pathways end-to-end scenario](pathways/E2E-Pathways-G7-G9-Test-Scenario.md) for UAT coverage across Grade 7, 8, and 9 journeys.
+The workflow keeps submission snapshots, revision history, notifications, role boundaries, audit records, and locked-plan protection.
 
 ### Finance, accounting, and payments
 
@@ -328,10 +328,13 @@ TrendScore is maintained as a modular monorepo.
 | [`src/`](src) | React application, UI components, state stores, API clients, and role-based experiences. |
 | [`server/`](server) | Express API, Prisma schema, routes, services, controllers, jobs, scripts, and tests. |
 | [`public/`](public) | Application assets, PWA metadata, service-worker files, branding, and screenshots. |
-| [`pathways/`](pathways) | Pathways UAT scenarios and implementation-supporting material. |
 | [`deploy/`](deploy) | Instance manifest and school deployment operating documentation. |
 | [`.github/workflows/`](.github/workflows) | CI, Docker publishing, promotion, storage maintenance, and biometric verification workflows. |
 | [`docs/`](docs) | Architecture, audit, and product documentation. |
+
+### Repository documentation policy
+
+The repository keeps the root README and documentation that helps users and maintainers understand, operate, or support the product. Temporary implementation plans, generated task lists, and tool-specific AI-agent prompts or configuration do not belong in the tracked project tree; keep those in the relevant planning tool or local environment instead.
 
 ### Technology
 
