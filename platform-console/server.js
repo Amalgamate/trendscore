@@ -740,14 +740,28 @@ async function sendApplicationActivationEmail(application, activationUrl) {
 }
 
 function parseProvisioningResult(stdout) {
-  const lines = String(stdout || '').split(/\r?\n/).filter(Boolean);
+  const output = String(stdout || '').trim();
+  const lines = output.split(/\r?\n/).filter(Boolean);
   for (const line of lines.reverse()) {
     try {
       const payload = JSON.parse(line);
       if (payload?.ok && payload.projectName) return payload;
     } catch {}
   }
-  throw new Error('Provisioning completed without a valid result record.');
+  const resultStart = output.lastIndexOf('\n{');
+  const resultText = resultStart >= 0 ? output.slice(resultStart + 1).trim() : output;
+  if (resultText.startsWith('{')) {
+    try {
+      const payload = JSON.parse(resultText);
+      if (payload?.ok && payload.projectName) return payload;
+    } catch {}
+  }
+  const error = new Error('Provisioning completed without a valid result record.');
+  // Do not persist the final result object: it contains the administrator's
+  // one-time activation token. Keep only installer diagnostics for support.
+  const diagnostics = output.startsWith('{') ? '' : resultStart >= 0 ? output.slice(0, resultStart) : output;
+  error.stdout = diagnostics.slice(-4000);
+  throw error;
 }
 
 function describeProvisioningFailure(error) {

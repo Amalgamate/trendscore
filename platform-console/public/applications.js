@@ -147,6 +147,15 @@
         if (payload.progress) {
           currentProvisionProgress = payload.progress;
           renderProvisionProgress(currentProvisionProgress);
+          if (['complete', 'failed'].includes(currentProvisionProgress.status)) {
+            stopProvisionProgressWatch();
+            const applicationPayload = await request(`/api/applications/${encodeURIComponent(applicationId)}`);
+            currentApplication = applicationPayload.application;
+            renderEvents(applicationPayload.events);
+            setReviewControls(currentApplication);
+            document.querySelectorAll('.application-review-actions button').forEach(button => { button.disabled = false; });
+            await loadApplications();
+          }
         }
       } catch {
         // The installation request still reports its final result if polling is interrupted.
@@ -358,6 +367,12 @@
       renderEvents(payload.events);
       populateAgents(currentApplication.agentId || currentApplication.requestedAgentId);
       setReviewControls(currentApplication);
+      if (currentApplication.applicationStatus === 'provisioning') {
+        document.querySelectorAll('.application-review-actions button').forEach(button => { button.disabled = true; });
+        watchProvisionProgress(currentApplication.id);
+      } else {
+        stopProvisionProgressWatch();
+      }
       await updatePackageIncludes();
     } catch (error) {
       setError($('application-review-error'), error.message);
@@ -398,6 +413,7 @@
     setError(error, '');
     const buttons = [...document.querySelectorAll('.application-review-actions button')];
     buttons.forEach(button => { button.disabled = true; });
+    let installationStillRunning = false;
     const provisionStatus = $('application-provision-status');
     if (action === 'provision') {
       provisionStartedAt = new Date().toISOString();
@@ -446,7 +462,13 @@
         provisionStatus.hidden = true;
       } else if (action === 'provision') {
         $('application-provision').textContent = 'Retry installation';
-        if (currentProvisionProgress?.status !== 'failed') {
+        if (currentProvisionProgress?.status === 'running') {
+          installationStillRunning = true;
+          renderActionError(error, {
+            message: 'The server is still installing this school, but the response took too long. Progress will continue here; please wait before retrying.',
+          });
+          $('application-provision').textContent = 'Installation still running…';
+        } else if (currentProvisionProgress?.status !== 'failed') {
           currentProvisionProgress = {
             ...(currentProvisionProgress || {}),
             status: 'failed', step: 'Installation needs attention', message: requestError.message,
@@ -455,8 +477,9 @@
         }
       }
     } finally {
-      if (action === 'provision') stopProvisionProgressWatch();
+      if (action === 'provision' && !installationStillRunning) stopProvisionProgressWatch();
       buttons.forEach(button => { button.disabled = false; });
+      if (installationStillRunning) buttons.forEach(button => { button.disabled = true; });
     }
   }
 
