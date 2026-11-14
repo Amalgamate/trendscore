@@ -480,7 +480,7 @@ function createLeadsStore(dataDir, options = {}) {
     listApplicationEvents(id) {
       return db.prepare(`SELECT id,event_type AS eventType,from_status AS fromStatus,to_status AS toStatus,
         actor,details_json AS detailsJson,created_at AS createdAt
-        FROM application_events WHERE application_id=? ORDER BY created_at,id`).all(String(id))
+        FROM application_events WHERE application_id=? ORDER BY created_at,rowid`).all(String(id))
         .map(event => ({ ...event, details: JSON.parse(event.detailsJson || '{}') }));
     },
 
