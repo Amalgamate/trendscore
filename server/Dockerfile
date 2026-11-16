@@ -10,8 +10,8 @@ COPY prisma ./prisma
 RUN npm install
 
 COPY . .
-RUN npx prisma generate
-RUN npm run prisma:generate && npx tsc
+# The backend TypeScript project exceeds Node's default 2 GB heap in BuildKit.
+RUN npm run prisma:generate && node --max-old-space-size=4096 ./node_modules/typescript/bin/tsc
 
 # Production stage
 FROM node:20-alpine
