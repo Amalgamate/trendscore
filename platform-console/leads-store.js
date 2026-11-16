@@ -574,7 +574,7 @@ function createLeadsStore(dataDir, options = {}) {
       return this.getApplication(id);
     },
 
-    startApplicationProvisioning(id, actor, domain = '') {
+    startApplicationProvisioning(id, actor, domain = '', tenantKey = '') {
       const now = new Date().toISOString();
       db.exec('BEGIN IMMEDIATE');
       try {
@@ -586,8 +586,9 @@ function createLeadsStore(dataDir, options = {}) {
         }
         if (app.application_status !== 'approved') throw new Error('Only an approved application can be provisioned');
         const provisioningDomain = String(domain || app.provisioning_domain || '').trim().toLowerCase();
-        db.prepare(`UPDATE leads SET application_status='provisioning',provisioning_started_at=?,provisioning_domain=?,last_provision_error='',updated_at=?
-          WHERE id=? AND application_status='approved'`).run(now, provisioningDomain, now, String(id));
+        const provisioningTenantKey = String(tenantKey || app.provisioning_tenant_key || '').trim();
+        db.prepare(`UPDATE leads SET application_status='provisioning',provisioning_started_at=?,provisioning_tenant_key=?,provisioning_domain=?,last_provision_error='',updated_at=?
+          WHERE id=? AND application_status='approved'`).run(now, provisioningTenantKey, provisioningDomain, now, String(id));
         db.prepare(`INSERT INTO application_events
           (id,application_id,event_type,from_status,to_status,actor,created_at)
           VALUES (?,?, 'provisioning_started','approved','provisioning',?,?)`)
