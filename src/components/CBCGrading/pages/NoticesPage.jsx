@@ -11,7 +11,7 @@ const confettiEmoji = String.fromCodePoint(0x1F38A);
 const sparkleEmoji = String.fromCodePoint(0x2728);
 const defaultBirthdayTemplate = `*Happy Birthday {firstName}!* ${cakeEmoji}${balloonEmoji}\n\n{schoolName} is thrilled to celebrate you on your *{ageOrdinal} birthday* today, {birthdayDate}! ${confettiEmoji} \n\nWe are so proud of your progress in *{grade}*. May your day be filled with joy, laughter, and wonderful memories. Keep shining bright! ${sparkleEmoji}\n\nBest wishes,\n*The {schoolName} Family*`;
 
-const NoticesPage = ({ initialTab }) => {
+const NoticesPage = ({ initialTab, onNavigate }) => {
   const { showSuccess, showError } = useNotifications();
 
   // Get initial tab from prop, localStorage or URL, default to 'notices'
@@ -61,7 +61,13 @@ const NoticesPage = ({ initialTab }) => {
   const currentUser = getStoredUser();
   const currentUserId = currentUser?.id || currentUser?.userId;
   const isSystemAdmin = currentUser?.role === 'SUPER_ADMIN';
-  const isSchoolAdmin = ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'].includes(currentUser?.role);
+  const currentRoles = [...new Set([currentUser?.role, ...(currentUser?.roles || [])]
+    .filter(Boolean)
+    .map((role) => String(role).toUpperCase()))];
+  const canManageSchoolNotices = currentRoles.some((role) =>
+    ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'RECEPTIONIST'].includes(role)
+  );
+  const isClassDiaryTeacher = currentRoles.includes('TEACHER') && !canManageSchoolNotices;
 
   // Birthday features states
   const [schoolId, setSchoolId] = useState(null);
@@ -646,17 +652,26 @@ const NoticesPage = ({ initialTab }) => {
           {/* Notices Tab */}
           <TabsContent value="notices" className="flex-1 overflow-auto p-6 space-y-4">
             <div className="flex justify-end mb-4">
-              <Button
-                onClick={() => {
-                  setEditingNoticeId(null);
-                  setFormData({ title: '', content: '', category: 'Academic', priority: 'Medium' });
-                  setShowModal(true);
-                }}
-                className="bg-brand-teal hover:bg-brand-teal/90 text-white font-medium gap-2"
-              >
-                <Plus size={20} />
-                Create Notice
-              </Button>
+              {canManageSchoolNotices ? (
+                <Button
+                  onClick={() => {
+                    setEditingNoticeId(null);
+                    setFormData({ title: '', content: '', category: 'Academic', priority: 'Medium' });
+                    setShowModal(true);
+                  }}
+                  className="bg-brand-teal hover:bg-brand-teal/90 text-white font-medium gap-2"
+                >
+                  <Plus size={20} />
+                  Create Notice
+                </Button>
+              ) : isClassDiaryTeacher ? (
+                <div className="flex w-full flex-wrap items-center justify-between gap-3 rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3">
+                  <p className="text-sm text-indigo-950">Post homework or a diary note from your assigned class workspace so it reaches the right families.</p>
+                  <Button onClick={() => onNavigate?.('digital-diary')} className="bg-indigo-800 text-white hover:bg-indigo-900">
+                    <MessageCircle size={16} /> Open class diary
+                  </Button>
+                </div>
+              ) : null}
             </div>
 
             {loadingNotices ? (
@@ -671,7 +686,7 @@ const NoticesPage = ({ initialTab }) => {
                 {notices.map(notice => (
                   (() => {
                     const isOwner = notice.createdById && currentUserId && notice.createdById === currentUserId;
-                    const canArchive = !!isOwner || isSchoolAdmin;
+                    const canArchive = canManageSchoolNotices;
                     const canDelete = !!isOwner && isSystemAdmin;
 
                     return (
@@ -718,14 +733,16 @@ const NoticesPage = ({ initialTab }) => {
                               >
                                 <Share2 size={18} />
                               </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-green-600 hover:bg-green-50"
-                                onClick={() => handleEditClick(notice)}
-                              >
-                                <Edit size={18} />
-                              </Button>
+                              {canManageSchoolNotices && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="text-green-600 hover:bg-green-50"
+                                  onClick={() => handleEditClick(notice)}
+                                >
+                                  <Edit size={18} />
+                                </Button>
+                              )}
                               {canArchive && (
                                 <Button
                                   variant="ghost"
