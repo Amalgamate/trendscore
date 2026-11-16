@@ -271,13 +271,15 @@ function DiaryNotesPanel({ diaryDate, child }) {
   const now      = new Date();
   const sevenDaysAgo = new Date(now); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-  const todayNotices = allNotices.filter((n) => {
+  const childNotices = allNotices.filter((notice) => !notice.targetClassId || notice.targetClassId === child?.classId);
+
+  const todayNotices = childNotices.filter((n) => {
     if (!n.publishedAt) return false;
     const published = new Date(n.publishedAt);
     return published >= dayStart && published <= dayEnd;
   });
 
-  const historyNotices = allNotices.filter((n) => {
+  const historyNotices = childNotices.filter((n) => {
     if (!n.publishedAt) return false;
     const published = new Date(n.publishedAt);
     return published < dayStart && published >= sevenDaysAgo;
@@ -369,6 +371,7 @@ function DiaryNotesPanel({ diaryDate, child }) {
                         </div>
                         <p className="mt-1 text-[11px] leading-relaxed text-slate-600">{notice.content}</p>
                         <div className="mt-1.5 flex items-center gap-2">
+                          <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-[9px] font-bold text-indigo-700">{notice.targetClass?.name || (notice.targetClassId ? 'Class update' : 'School-wide')}</span>
                           {notice.category && (
                             <span className={`rounded px-1.5 py-0.5 text-[9px] font-bold text-white ${subjectColor(notice.category)}`}>{notice.category}</span>
                           )}
@@ -413,7 +416,7 @@ function DiaryNotesPanel({ diaryDate, child }) {
                         <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-[9px] font-extrabold text-indigo-900">{initials}</div>
                         <div className="min-w-0 flex-1">
                           <p className="text-[11px] font-bold text-slate-800 truncate">{notice.title}</p>
-                          <p className="text-[10px] text-slate-500 truncate">{teacherName}{notice.category ? ` · ${notice.category}` : ''}</p>
+                          <p className="text-[10px] text-slate-500 truncate">{teacherName}{notice.category ? ` · ${notice.category}` : ''} · {notice.targetClass?.name || (notice.targetClassId ? 'Class update' : 'School-wide')}</p>
                         </div>
                         <span className="shrink-0 text-[9px] text-slate-400">
                           {new Date(notice.publishedAt).toLocaleTimeString('en-KE', { hour: '2-digit', minute: '2-digit', hour12: true })}

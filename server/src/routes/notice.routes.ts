@@ -17,6 +17,7 @@ const noticeSchema = z.object({
   priority: z.enum(['LOW', 'NORMAL', 'HIGH', 'URGENT']).optional(),
   status: z.enum(['DRAFT', 'PUBLISHED', 'ARCHIVED']).optional(),
   targetAudience: z.string().max(100).optional(),
+  targetClassId: z.string().uuid().optional().nullable(),
   publishedAt: z.string().datetime().optional(),
   expiresAt: z.string().datetime().optional().nullable()
 });

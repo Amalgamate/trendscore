@@ -290,6 +290,7 @@ function DiaryEntryComposerPage({ kind, selectedClass, selectedDate, onBack, onP
       priority,
       status: 'PUBLISHED',
       targetAudience: 'PARENTS',
+      targetClassId: selectedClass.id,
     };
 
     setSubmitting(true);

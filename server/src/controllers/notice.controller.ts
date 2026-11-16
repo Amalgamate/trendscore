@@ -43,6 +43,17 @@ const isNoticeVisibleTo = (notice: any, user: AuthRequest['user'], now: Date) =>
     .some((part) => tokens.has(part));
 };
 
+const learnerClassIdsFor = async (user: AuthRequest['user']) => {
+  const userId = user?.userId;
+  if (!userId) return new Set<string>();
+  const roles = getCanonicalRoles(user) as string[];
+  const learners = await prisma.learner.findMany({
+    where: roles.includes('PARENT') ? { parentId: userId, archived: false } : { studentUserId: userId, archived: false },
+    select: { enrollments: { where: { active: true, archived: false }, select: { classId: true }, take: 1 } },
+  });
+  return new Set(learners.flatMap((learner) => learner.enrollments.map((enrollment) => enrollment.classId)));
+};
+
 /** Parents and students do not need to see staff email addresses. */
 const withoutAuthorEmail = (notice: any) =>
   notice.createdBy
@@ -67,6 +78,7 @@ export class NoticeController {
           ...(category ? { category: String(category) } : {})
         },
         include: {
+          targetClass: { select: { id: true, name: true, grade: true, stream: true } },
           createdBy: {
             select: {
               id: true,
@@ -87,7 +99,15 @@ export class NoticeController {
             ).map(withoutAuthorEmail)
           : notices.filter((notice) => isNoticeVisibleTo(notice, req.user, now)).map(withoutAuthorEmail);
 
-      return res.json({ success: true, data: visibleNotices });
+      const audienceRoles = getCanonicalRoles(req.user);
+      const scopedNotices = audienceRoles.some((role) => ['PARENT', 'STUDENT'].includes(role))
+        ? await (async () => {
+            const classIds = await learnerClassIdsFor(req.user);
+            return visibleNotices.filter((notice) => !notice.targetClassId || classIds.has(notice.targetClassId));
+          })()
+        : visibleNotices;
+
+      return res.json({ success: true, data: scopedNotices });
     } catch (error: any) {
       return res.status(500).json({ success: false, error: error.message || 'Failed to fetch notices' });
     }
@@ -102,6 +122,7 @@ export class NoticeController {
           archived: false
         },
         include: {
+          targetClass: { select: { id: true, name: true, grade: true, stream: true } },
           createdBy: {
             select: {
               id: true,
@@ -138,7 +159,7 @@ export class NoticeController {
         return res.status(403).json({ success: false, error: 'Authentication required' });
       }
 
-      const { title, content, category, priority, status, targetAudience, publishedAt, expiresAt } = req.body;
+      const { title, content, category, priority, status, targetAudience, targetClassId, publishedAt, expiresAt } = req.body;
       if (!title || !content) {
         return res.status(400).json({ success: false, error: 'title and content are required' });
       }
@@ -147,6 +168,16 @@ export class NoticeController {
       // students. School-wide audiences (ALL, STAFF, TEACHERS) are reserved for
       // roles holding SEND_SCHOOL_NOTICES.
       const isSchoolNoticeManager = canManageNotices(req.user);
+      if (targetClassId) {
+        const targetClass = await prisma.class.findFirst({
+          where: {
+            id: targetClassId,
+            ...(isSchoolNoticeManager ? {} : { OR: [{ teacherId: userId }, { teacherAssignments: { some: { teacherId: userId } } }] }),
+          },
+          select: { id: true },
+        });
+        if (!targetClass) return res.status(403).json({ success: false, error: 'You can only publish diary notes to a class assigned to you.' });
+      }
       const audience = String(targetAudience || '').trim().toUpperCase();
       if (!isSchoolNoticeManager && audience) {
         const allowed = audience.split(',').map((t) => t.trim()).filter(Boolean);
@@ -168,6 +199,7 @@ export class NoticeController {
           priority: priority || 'NORMAL',
           status: status || 'PUBLISHED',
           targetAudience: targetAudience || null,
+          targetClassId: targetClassId || null,
           publishedAt: publishedAt ? new Date(publishedAt) : new Date(),
           expiresAt: expiresAt ? new Date(expiresAt) : null
         }
