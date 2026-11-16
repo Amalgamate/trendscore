@@ -1590,8 +1590,7 @@ function renderRunningInstances() {
           <span class="ri-meta-val" style="font-family:var(--mono)">${esc(instance.version)}</span>
         </div>
         <div class="ri-actions">
-          <button class="tbl-btn primary" data-action="Restart" data-school="${esc(instance.name)}">Restart</button>
-          <button class="tbl-btn" data-action="Logs" data-school="${esc(instance.name)}">Logs</button>
+          <button class="tbl-btn primary" data-view-school="${esc(inferGroupKey(instance))}">View school</button>
         </div>
       </div>
     </div>`;
@@ -1945,11 +1944,7 @@ function renderInstanceRow(instance, mode = 'compact') {
     </td>
     <td>
       <div class="action-row">
-        <button class="tbl-btn primary" data-action="Restart" data-school="${esc(instance.name)}">Restart</button>
-        <button class="tbl-btn" data-action="Logs" data-school="${esc(instance.name)}">Logs</button>
-        <button class="tbl-btn" data-action="Redeploy" data-school="${esc(instance.name)}">Redeploy</button>
-        <button class="tbl-btn danger" data-action="Stop" data-school="${esc(instance.name)}">Stop</button>
-        <button class="tbl-btn danger" data-action="Drop" data-school="${esc(instance.name)}">Drop</button>
+        <button class="tbl-btn primary" data-view-school="${esc(inferGroupKey(instance))}">View school</button>
       </div>
     </td>
   </tr>`;
@@ -2318,6 +2313,51 @@ function renderLogs(lines = []) {
     return;
   }
   el.innerHTML = lines.map(line => `<span class="log-line ${esc(line.type || '')}">${esc(line.text)}</span>`).join('');
+}
+
+function renderSchoolManagement(groupKey) {
+  const group = groupInstances(INSTANCES).find(item => item.key === groupKey);
+  if (!group) return false;
+  const overlay = $('school-management-overlay');
+  overlay.dataset.schoolKey = group.key;
+  $('school-management-title').textContent = group.name;
+  const primary = group.items.find(item => item.domain) || group.items[0] || {};
+  $('school-management-domain').textContent = primary.domain || 'School services';
+  const running = group.items.filter(item => item.status === 'Online').length;
+  $('school-management-status').innerHTML = `<span class="badge ${running === group.items.length ? 'online' : running ? 'warn' : 'offline'}">${running === group.items.length ? 'Online' : running ? 'Degraded' : 'Offline'}</span><span>${running} of ${group.items.length} services running</span>`;
+  $('school-management-containers').innerHTML = group.items.map(item => `<div class="school-management-container"><span>${esc(item.name)}</span><span class="badge ${statusCls(item.status)}">${esc(item.status || 'Unknown')}</span></div>`).join('');
+  $('school-management-feedback').hidden = true;
+  overlay.classList.add('open');
+  return true;
+}
+
+async function operateSchool(groupKey, operation) {
+  const feedback = $('school-management-feedback');
+  feedback.hidden = false;
+  feedback.textContent = 'Working…';
+  if (operation === 'logs') {
+    try {
+      const response = await fetch(`/api/instances/${encodeURIComponent(groupKey)}/logs`, { credentials: 'same-origin' });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'Could not load school logs.');
+      renderLogs(String(payload.logs || '').split(/\r?\n/).filter(Boolean).slice(-120).map(text => ({ text })));
+      $('school-management-overlay').classList.remove('open');
+      toast('School service logs loaded.');
+      return;
+    } catch (error) {
+      feedback.textContent = error.message;
+      return;
+    }
+  }
+  const result = await callControlApi(operation, groupKey);
+  if (!result.ok) {
+    feedback.textContent = result.error;
+    return;
+  }
+  await refreshFromRuntime();
+  renderEverything();
+  renderSchoolManagement(groupKey);
+  toast(`${operation === 'pause' ? 'School suspended' : operation === 'resume' ? 'School resumed' : operation === 'restart' ? 'School containers restarted' : 'School health check complete'}.`);
 }
 
 // Promote release (admin panel deploy)
@@ -2980,6 +3020,34 @@ document.body.addEventListener('click', event => {
     return;
   }
 
+  const schoolViewButton = event.target.closest('[data-view-school]');
+  if (schoolViewButton) {
+    renderSchoolManagement(schoolViewButton.dataset.viewSchool);
+    return;
+  }
+
+  const schoolOperationButton = event.target.closest('[data-school-operation]');
+  if (schoolOperationButton) {
+    const operation = schoolOperationButton.dataset.schoolOperation;
+    const schoolKey = $('school-management-overlay').dataset.schoolKey;
+    if (operation === 'pause' || operation === 'restart') {
+      const school = groupInstances(INSTANCES).find(item => item.key === schoolKey);
+      if (!school) return;
+      openConfirm({
+        title: operation === 'pause' ? 'Suspend school services' : 'Restart school containers',
+        body: operation === 'pause'
+          ? `This will take ${school.name} offline until a super admin resumes it. School records will be retained.`
+          : `This will briefly interrupt all running services for ${school.name}.`,
+        requireText: operation === 'pause' ? school.name : '',
+        confirmLabel: operation === 'pause' ? 'Suspend school' : 'Restart containers',
+        onConfirm: () => operateSchool(schoolKey, operation),
+      });
+    } else {
+      operateSchool(schoolKey, operation);
+    }
+    return;
+  }
+
   const groupHead = event.target.closest('.group-head');
   if (groupHead) {
     const groupKey = groupHead.dataset.group;
@@ -3573,6 +3641,9 @@ document.body.addEventListener('change', event => {
 });
 
 function bindModalEvents() {
+  $('school-management-close')?.addEventListener('click', () => $('school-management-overlay')?.classList.remove('open'));
+  $('school-management-done')?.addEventListener('click', () => $('school-management-overlay')?.classList.remove('open'));
+  $('school-management-overlay')?.addEventListener('click', event => { if (event.target === $('school-management-overlay')) $('school-management-overlay').classList.remove('open'); });
   $('instance-type-close')?.addEventListener('click', closeInstanceTypePicker);
   $('instance-type-cancel')?.addEventListener('click', closeInstanceTypePicker);
   $('instance-type-overlay')?.addEventListener('click', event => { if (event.target === $('instance-type-overlay')) closeInstanceTypePicker(); });

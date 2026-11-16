@@ -1817,6 +1817,16 @@ input:checked + .toggle-slider::before{transform:translateX(18px)}
 #section-applications #applications-table .application-install-now{border-color:#16a34a;background:#16a34a;color:#fff;font-weight:700;box-shadow:0 1px 2px rgba(22,163,74,.16)}
 #section-applications #applications-table .application-install-now:hover{border-color:#15803d;background:#15803d}
 #section-applications #applications-table .application-install-now:focus-visible{outline:3px solid rgba(34,197,94,.28);outline-offset:2px}
+.school-management-modal{width:min(680px,calc(100vw - 32px));max-height:calc(100vh - 32px);overflow:auto}
+.school-management-status{display:flex;align-items:center;gap:8px;margin-bottom:18px;color:var(--muted);font-size:13px}
+.school-management-section-title{margin:18px 0 9px;color:var(--ink);font-size:14px}
+.school-management-containers{display:grid;gap:7px}
+.school-management-container{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 12px;border:1px solid var(--line);border-radius:7px;background:#fff;font-size:13px}
+.school-management-actions{display:flex;flex-wrap:wrap;gap:8px}
+.school-management-actions .btn{min-height:38px}
+.school-management-note{margin:16px 0 0;padding:10px 12px;border-radius:6px;background:#f5f7fb;color:#5b6780;font-size:12px;line-height:1.5}
+.school-management-feedback{margin-top:12px;padding:10px 12px;border-radius:6px;background:#eef5ff;color:#234a91;font-size:13px}
+.school-management-feedback[hidden]{display:none}
 #section-applications .application-refresh{color:#34405b}
 #section-applications .application-refresh:hover{background:#f7f8fc;border-color:#c7cede;color:var(--brand)}
 #section-applications .application-copy-link{box-shadow:0 2px 5px rgba(3,11,130,.14)}

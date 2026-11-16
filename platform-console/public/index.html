@@ -791,7 +791,7 @@
                   <option value="under_review">Under review</option>
                   <option value="approved">Approved</option>
                   <option value="provisioning">Installing</option>
-                  <option value="ready">Ready</option>
+                  <option value="ready">Installed</option>
                   <option value="rejected">Rejected</option>
                 </select>
               </label>
@@ -988,6 +988,28 @@
 </div><!-- /shell -->
 
 <!-- CREATE SCHOOL MODAL -->
+<div class="overlay" id="school-management-overlay" aria-modal="true" role="dialog" aria-labelledby="school-management-title">
+  <div class="modal school-management-modal">
+    <div class="modal-header"><div><div class="modal-title" id="school-management-title">School</div><div class="panel-sub" id="school-management-domain"></div></div><button class="modal-close" id="school-management-close" type="button" aria-label="Close">×</button></div>
+    <div class="modal-body">
+      <div id="school-management-status" class="school-management-status"></div>
+      <h3 class="school-management-section-title">School services</h3>
+      <div id="school-management-containers" class="school-management-containers"></div>
+      <h3 class="school-management-section-title">Actions</h3>
+      <div class="school-management-actions" data-super-admin-only>
+        <button class="btn" type="button" data-school-operation="health">Health check</button>
+        <button class="btn" type="button" data-school-operation="logs">View logs</button>
+        <button class="btn" type="button" data-school-operation="restart">Restart containers</button>
+        <button class="btn warn-ctrl" type="button" data-school-operation="pause">Suspend school</button>
+        <button class="btn" type="button" data-school-operation="resume">Resume school</button>
+      </div>
+      <p class="school-management-note">School records are protected. Permanent decommissioning requires a verified backup and an explicit archive review.</p>
+      <div id="school-management-feedback" class="school-management-feedback" role="status" aria-live="polite" hidden></div>
+    </div>
+    <div class="modal-footer"><button class="btn" id="school-management-done" type="button">Done</button></div>
+  </div>
+</div>
+
 <div class="overlay" id="instance-type-overlay" aria-modal="true" role="dialog" aria-labelledby="instance-type-title">
   <div class="modal instance-type-modal">
     <div class="modal-header"><div><div class="modal-title" id="instance-type-title">What would you like to provision?</div><div class="panel-sub">Choose a product type to open its setup form.</div></div><button class="modal-close" id="instance-type-close" type="button" aria-label="Close">×</button></div>

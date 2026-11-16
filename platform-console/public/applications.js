@@ -17,7 +17,7 @@
     under_review: 'Under review',
     approved: 'Approved',
     provisioning: 'Installing',
-    ready: 'Ready',
+    ready: 'Installed',
     rejected: 'Rejected',
     withdrawn: 'Withdrawn',
   };
