@@ -776,18 +776,34 @@
             <div class="page-title">School Applications</div>
             <div class="page-sub">Review applications before approving installation and account activation</div>
           </div>
-          <div class="page-actions">
-            <select id="application-status-filter" class="form-select" aria-label="Filter applications by status">
-              <option value="">All statuses</option>
-              <option value="submitted">Submitted</option>
-              <option value="under_review">Under review</option>
-              <option value="approved">Approved</option>
-              <option value="provisioning">Installing</option>
-              <option value="ready">Ready</option>
-              <option value="rejected">Rejected</option>
-            </select>
-            <button id="refresh-applications" class="btn" type="button">Refresh</button>
-            <button id="copy-application-link" class="btn" type="button">Copy application link</button>
+          <div class="page-actions application-actions">
+            <div class="application-filterbar" role="search" aria-label="Filter school applications">
+              <label class="application-search">
+                <span class="sr-only">Search applications</span>
+                <svg aria-hidden="true" viewBox="0 0 20 20" fill="none"><circle cx="8.8" cy="8.8" r="5.8" stroke="currentColor" stroke-width="1.7"/><path d="m13.2 13.2 4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+                <input id="application-search" type="search" autocomplete="off" placeholder="Search school or reference" />
+              </label>
+              <label class="application-status-control">
+                <span>Status</span>
+                <select id="application-status-filter" class="form-select application-status-select" aria-label="Filter applications by status">
+                  <option value="">All statuses</option>
+                  <option value="submitted">Submitted</option>
+                  <option value="under_review">Under review</option>
+                  <option value="approved">Approved</option>
+                  <option value="provisioning">Installing</option>
+                  <option value="ready">Ready</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+              </label>
+            </div>
+            <button id="refresh-applications" class="btn application-refresh" type="button">
+              <svg aria-hidden="true" viewBox="0 0 20 20" fill="none"><path d="M16.2 7.4A6.6 6.6 0 0 0 4.8 5.1L3.5 6.5M3.8 3.8v2.9h2.9M3.8 12.6a6.6 6.6 0 0 0 11.4 2.3l1.3-1.4m-.3 2.7v-2.9h-2.9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span>Refresh</span>
+            </button>
+            <button id="copy-application-link" class="btn primary application-copy-link" type="button">
+              <svg aria-hidden="true" viewBox="0 0 20 20" fill="none"><path d="M8 6.2 9.2 5a3.5 3.5 0 0 1 5 5l-2 2a3.5 3.5 0 0 1-5 0M12 13.8 10.8 15a3.5 3.5 0 0 1-5-5l2-2a3.5 3.5 0 0 1 5 0" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+              <span id="copy-application-link-label">Copy application link</span>
+            </button>
           </div>
         </div>
         <div id="applications-error" class="billing-register-note" role="alert" hidden></div>

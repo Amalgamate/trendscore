@@ -9,6 +9,7 @@
   let provisionClockInterval = null;
   let provisionStartedAt = null;
   let currentProvisionProgress = null;
+  let allApplications = [];
 
   const packageNames = { starter: 'Starter', standard: 'Standard', professional: 'Professional' };
   const statusNames = {
@@ -220,6 +221,20 @@
     }
   }
 
+  function renderFilteredApplications() {
+    const query = $('application-search').value.trim().toLocaleLowerCase();
+    const filtered = query
+      ? allApplications.filter(application => [
+        application.id,
+        application.school,
+        application.schoolType,
+        application.agentName,
+        application.applicationEmail,
+      ].some(value => String(value || '').toLocaleLowerCase().includes(query)))
+      : allApplications;
+    renderApplications(filtered);
+  }
+
   async function loadApplications() {
     setError(errorBox, '');
     table.replaceChildren();
@@ -229,7 +244,8 @@
     try {
       const status = $('application-status-filter').value;
       const payload = await request(`/api/applications${status ? `?status=${encodeURIComponent(status)}` : ''}`);
-      renderApplications(payload.applications || []);
+      allApplications = payload.applications || [];
+      renderFilteredApplications();
     } catch (error) {
       table.replaceChildren();
       const row = table.insertRow();
@@ -485,6 +501,7 @@
 
   $('refresh-applications').addEventListener('click', loadApplications);
   $('application-status-filter').addEventListener('change', loadApplications);
+  $('application-search').addEventListener('input', renderFilteredApplications);
   $('application-review-close').addEventListener('click', closeModal);
   $('application-review-package').addEventListener('change', () => {
     updatePackageIncludes().catch(error => setError($('application-review-error'), error.message));
@@ -498,8 +515,8 @@
   $('copy-application-link').addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText(`${window.location.origin}/apply`);
-      $('copy-application-link').textContent = 'Link copied';
-      window.setTimeout(() => { $('copy-application-link').textContent = 'Copy application link'; }, 1800);
+      $('copy-application-link-label').textContent = 'Link copied';
+      window.setTimeout(() => { $('copy-application-link-label').textContent = 'Copy application link'; }, 1800);
     } catch {
       setError(errorBox, 'Could not copy the application link. Use this URL: ' + `${window.location.origin}/apply`);
     }
