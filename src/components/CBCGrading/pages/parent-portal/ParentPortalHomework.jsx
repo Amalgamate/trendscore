@@ -30,6 +30,20 @@ import { Skeleton } from '../../../ui';
 const fmtDate = (d) =>
   d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : '—';
 
+const noticeCategory = (notice) => String(notice?.category || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+const isDiaryHomework = (notice) => ['HOMEWORK', 'HOLIDAY_HOMEWORK', 'HOLIDAY_WORK'].includes(noticeCategory(notice));
+
+function diaryHomeworkForChild(notices, child) {
+  const childClassId = String(child?.classId || child?.class?.id || '');
+  return (Array.isArray(notices) ? notices : [])
+    .filter((notice) => {
+      if (!isDiaryHomework(notice)) return false;
+      const targetClassId = String(notice.targetClassId || notice.targetClass?.id || '');
+      return !targetClassId || targetClassId === childClassId;
+    })
+    .sort((a, b) => new Date(b.publishedAt || b.createdAt || 0) - new Date(a.publishedAt || a.createdAt || 0));
+}
+
 function statusConfig(statusSummary, isOverdue) {
   if (isOverdue) {
     return {
@@ -76,7 +90,9 @@ function AssignmentRow({ assignment }) {
     ? { label: 'Done on paper', cls: 'bg-emerald-100 text-emerald-900 border border-emerald-200', icon: CheckCircle2 }
     : statusConfig(assignment.statusSummary, assignment.isOverdue);
   const { label, cls, icon: Icon } = status;
-  const subject = assignment.learningArea?.name || '—';
+  const category = String(assignment.category || assignment.workType || assignment.assignmentType || '').toUpperCase();
+  const isHoliday = category.includes('HOLIDAY');
+  const subject = assignment.learningArea?.name || assignment.learningAreaName || '—';
   const marks   = assignment.mySubmission?.marks;
   const total   = assignment.totalMarks;
 
@@ -88,7 +104,7 @@ function AssignmentRow({ assignment }) {
       <div className="flex-1 min-w-0">
         <p className="text-sm font-bold text-gray-900 truncate">{assignment.title}</p>
         <p className="text-[10px] text-gray-600 mt-0.5">
-          {[assignment.workType === 'HOLIDAY' || assignment.assignmentType === 'HOLIDAY' ? 'Holiday homework' : 'Daily homework', subject, `Due ${fmtDate(assignment.dueDate)}`].filter(Boolean).join(' · ')}
+          {[isHoliday ? 'Holiday homework' : 'Daily homework', subject, `Due ${fmtDate(assignment.dueDate)}`].filter(Boolean).join(' · ')}
         </p>
         {assignment.statusSummary === 'MARKED' && marks != null && total != null && (
           <p className="text-[10px] font-bold text-emerald-600 mt-0.5">{marks}/{total} marks</p>
@@ -107,10 +123,31 @@ function AssignmentRow({ assignment }) {
   );
 }
 
+function DiaryHomeworkRow({ notice }) {
+  return (
+    <div className="px-3 py-3 flex items-start gap-3">
+      <div className="w-8 h-8 rounded-xl bg-violet-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+        <BookOpen size={14} className="text-violet-700" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-bold text-gray-900">{notice.title || 'Diary homework'}</p>
+        <p className="text-[10px] text-gray-600 mt-0.5">
+          {[noticeCategory(notice).includes('HOLIDAY') ? 'Holiday homework' : 'Diary homework', notice.expiresAt ? `Due ${fmtDate(notice.expiresAt)}` : null].filter(Boolean).join(' · ')}
+        </p>
+        {notice.content && <p className="mt-1 text-xs text-gray-600 whitespace-pre-wrap">{notice.content}</p>}
+      </div>
+      <span className="flex-shrink-0 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-bold text-violet-800">
+        Diary post
+      </span>
+    </div>
+  );
+}
+
 // ─── Child Homework Card ───────────────────────────────────────────────────────
 
 function ChildHomeworkCard({ child, initiallyExpanded = false, hideHeader = false }) {
   const [assignments, setAssignments] = useState([]);
+  const [diaryHomework, setDiaryHomework] = useState([]);
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState(null);
   const [expanded, setExpanded]       = useState(initiallyExpanded);
@@ -119,8 +156,15 @@ function ChildHomeworkCard({ child, initiallyExpanded = false, hideHeader = fals
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const res = await api.lms.getChildAssignments(child.id);
-      setAssignments(res?.data || []);
+      const [assignmentRes, noticeRes] = await Promise.all([
+        api.lms.getChildAssignments(child.id),
+        api.notices.getAll().catch((noticeError) => {
+          console.error('Could not load diary homework posts:', noticeError);
+          return { data: [] };
+        }),
+      ]);
+      setAssignments(assignmentRes?.data || []);
+      setDiaryHomework(diaryHomeworkForChild(noticeRes?.data || noticeRes, child));
     } catch (e) {
       setError(e?.message || 'Failed to load assignments');
     } finally {
@@ -169,7 +213,7 @@ function ChildHomeworkCard({ child, initiallyExpanded = false, hideHeader = fals
         </div>
 
         {/* Summary badges */}
-        {!loading && !error && assignments.length > 0 && (
+        {!loading && !error && (assignments.length > 0 || diaryHomework.length > 0) && (
           <div className="flex items-center gap-1.5 flex-shrink-0">
             {overdue > 0 && (
               <span className="rounded-full bg-rose-100 border border-rose-200 px-2 py-0.5 text-[10px] font-black text-rose-700">
@@ -182,10 +226,11 @@ function ChildHomeworkCard({ child, initiallyExpanded = false, hideHeader = fals
               </span>
             )}
             {!overdue && !pending && (
-              <span className="rounded-full bg-emerald-100 border border-emerald-200 px-2 py-0.5 text-[10px] font-black text-emerald-700">
+              assignments.length > 0 && <span className="rounded-full bg-emerald-100 border border-emerald-200 px-2 py-0.5 text-[10px] font-black text-emerald-700">
                 All caught up
               </span>
             )}
+            {diaryHomework.length > 0 && <span className="rounded-full bg-violet-100 border border-violet-200 px-2 py-0.5 text-[10px] font-black text-violet-800">{diaryHomework.length} diary post{diaryHomework.length === 1 ? '' : 's'}</span>}
           </div>
         )}
 
@@ -210,7 +255,7 @@ function ChildHomeworkCard({ child, initiallyExpanded = false, hideHeader = fals
             </div>
           )}
 
-          {!loading && !error && assignments.length === 0 && (
+          {!loading && !error && assignments.length === 0 && diaryHomework.length === 0 && (
             <div className="px-4 py-6 text-center">
               <BookOpen size={22} className="mx-auto mb-2 text-gray-300" />
               <p className="text-sm font-semibold text-gray-500">No assignments issued yet</p>
@@ -220,8 +265,20 @@ function ChildHomeworkCard({ child, initiallyExpanded = false, hideHeader = fals
             </div>
           )}
 
-          {!loading && !error && assignments.length > 0 && (
+          {!loading && !error && (assignments.length > 0 || diaryHomework.length > 0) && (
             <>
+              {diaryHomework.length > 0 && <section className="border-b border-gray-100">
+                <div className="px-3 pt-3 pb-1">
+                  <h3 className="text-xs font-extrabold text-gray-800">Diary homework</h3>
+                  <p className="text-[10px] text-gray-500">Earlier diary posts are listed here; submission tracking is available for assignments below.</p>
+                </div>
+                <div className="divide-y divide-gray-50">{diaryHomework.map((notice) => <DiaryHomeworkRow key={notice.id} notice={notice} />)}</div>
+              </section>}
+
+              {assignments.length === 0 ? <div className="px-4 py-5 text-center">
+                <p className="text-xs font-semibold text-gray-500">No tracked assignments yet</p>
+                <p className="text-[10px] text-gray-400 mt-0.5">New homework published as an assignment will appear here with its submission status.</p>
+              </div> : <>
               {/* Filter tabs */}
               <div className="flex gap-2 px-3 pt-3">
                 {[
@@ -258,6 +315,7 @@ function ChildHomeworkCard({ child, initiallyExpanded = false, hideHeader = fals
                   ))}
                 </div>
               )}
+              </>}
             </>
           )}
         </div>

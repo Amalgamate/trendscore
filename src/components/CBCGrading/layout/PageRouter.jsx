@@ -805,7 +805,7 @@ const PageRouter = ({
             if (effectiveRole !== 'TEACHER') return <ComingSoon title="Digital Diary" description="The Diary experience is being prepared for this role." />;
             return <DigitalDiaryTeacherPage user={user} onNavigate={handleNavigate} />;
           case 'learning-assignments': return <AssignmentsPage onNavigate={handleNavigate} />;
-          case 'learning-assignment-create': return <AssignmentBuilder onNavigate={handleNavigate} />;
+          case 'learning-assignment-create': return <AssignmentBuilder initialClassId={pageParams?.classId} initialCategory={pageParams?.category} onNavigate={handleNavigate} />;
           case 'learning-assignment-edit': return <AssignmentBuilder assignmentId={pageParams?.assignmentId || pageParams?.id} onNavigate={handleNavigate} />;
           case 'learning-assignment-detail':
             if (effectiveRole === 'STUDENT') {

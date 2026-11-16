@@ -271,7 +271,13 @@ function DiaryNotesPanel({ diaryDate, child }) {
   const now      = new Date();
   const sevenDaysAgo = new Date(now); sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-  const childNotices = allNotices.filter((notice) => !notice.targetClassId || notice.targetClassId === child?.classId);
+  const childNotices = allNotices.filter((notice) => {
+    const category = String(notice.category || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+    if (['HOMEWORK', 'HOLIDAY_HOMEWORK', 'HOLIDAY_WORK'].includes(category)) return false;
+    const targetClassId = String(notice.targetClassId || notice.targetClass?.id || '');
+    const childClassId = String(child?.classId || child?.class?.id || '');
+    return !targetClassId || targetClassId === childClassId;
+  });
 
   const todayNotices = childNotices.filter((n) => {
     if (!n.publishedAt) return false;

@@ -69,7 +69,7 @@ const DEFAULT_FORM_DATA = {
 
 // ─── AssignmentBuilder Component ─────────────────────────────────────────────
 
-export default function AssignmentBuilder({ assignmentId, onNavigate }) {
+export default function AssignmentBuilder({ assignmentId, initialClassId, initialCategory, onNavigate }) {
   const params = useParams();
   const id = assignmentId || params.id || params.assignmentId;
   const navigate = useNavigate();
@@ -77,7 +77,11 @@ export default function AssignmentBuilder({ assignmentId, onNavigate }) {
   const teacherContext = useTeacherContext();
   const fileInputRef = useRef(null);
 
-  const [formData, setFormData] = useState(DEFAULT_FORM_DATA);
+  const [formData, setFormData] = useState(() => ({
+    ...DEFAULT_FORM_DATA,
+    classId: id ? '' : String(initialClassId || ''),
+    category: !id && ASSIGNMENT_CATEGORIES.includes(initialCategory) ? initialCategory : DEFAULT_FORM_DATA.category,
+  }));
   const [classes, setClasses] = useState([]);
   const [streams, setStreams] = useState([]);
   const [learningAreas, setLearningAreas] = useState([]);
