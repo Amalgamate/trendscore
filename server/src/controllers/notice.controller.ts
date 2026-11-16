@@ -12,6 +12,14 @@ const canManageNotices = (user: AuthRequest['user']) =>
 const canPublishClassDiary = (user: AuthRequest['user']) =>
   getCanonicalRoles(user).some((role) => hasPermission(role as Role, 'PUBLISH_CLASS_DIARY'));
 
+const isTeacherAssignedToClass = async (classId: string, userId: string) => Boolean(await prisma.class.findFirst({
+  where: {
+    id: classId,
+    OR: [{ teacherId: userId }, { teacherAssignments: { some: { teacherId: userId } } }],
+  },
+  select: { id: true },
+}));
+
 /**
  * Audience tokens a reader matches. A notice's targetAudience may be empty or
  * ALL (everyone) or a comma separated list of PARENTS, STUDENTS, TEACHERS, STAFF.
@@ -257,13 +265,49 @@ export class NoticeController {
 
   async updateNotice(req: AuthRequest, res: Response) {
     try {
-
+      const userId = req.user?.userId;
+      const isSchoolNoticeManager = canManageNotices(req.user);
       const existing = await prisma.notice.findFirst({ where: { id: req.params.id, archived: false } });
       if (!existing) {
         return res.status(404).json({ success: false, error: 'Notice not found' });
       }
 
-      const { title, content, category, priority, status, targetAudience, publishedAt, expiresAt } = req.body;
+      if (!isSchoolNoticeManager) {
+        if (
+          !userId ||
+          existing.createdById !== userId ||
+          !existing.targetClassId ||
+          String(existing.category || '').toUpperCase() !== 'HOMEWORK'
+        ) {
+          return res.status(403).json({ success: false, error: 'You can edit only your own class homework.' });
+        }
+        if (!await isTeacherAssignedToClass(existing.targetClassId, userId)) {
+          return res.status(403).json({ success: false, error: 'You are no longer assigned to this homework class.' });
+        }
+      }
+
+      const { title, content, category, priority, status, targetAudience, targetClassId, publishedAt, expiresAt } = req.body;
+      if (!isSchoolNoticeManager) {
+        const requestedAudience = targetAudience === undefined
+          ? String(existing.targetAudience || '').toUpperCase()
+          : String(targetAudience || '').toUpperCase();
+        const allowedAudiences = requestedAudience.split(',').map((token: string) => token.trim()).filter(Boolean);
+        if (
+          (targetClassId !== undefined && targetClassId !== existing.targetClassId) ||
+          (category !== undefined && String(category).toUpperCase() !== 'HOMEWORK') ||
+          (status !== undefined && status !== 'PUBLISHED') ||
+          !allowedAudiences.length ||
+          allowedAudiences.some((token: string) => !['PARENTS', 'STUDENTS'].includes(token))
+        ) {
+          return res.status(403).json({ success: false, error: 'Class homework must stay assigned to its class and families.' });
+        }
+      }
+
+      if (isSchoolNoticeManager && targetClassId) {
+        const targetClass = await prisma.class.findUnique({ where: { id: targetClassId }, select: { id: true } });
+        if (!targetClass) return res.status(400).json({ success: false, error: 'The selected class could not be found.' });
+      }
+
       const updated = await prisma.notice.update({
         where: { id: req.params.id },
         data: {
@@ -273,6 +317,7 @@ export class NoticeController {
           ...(priority !== undefined ? { priority } : {}),
           ...(status !== undefined ? { status } : {}),
           ...(targetAudience !== undefined ? { targetAudience } : {}),
+          ...(isSchoolNoticeManager && targetClassId !== undefined ? { targetClassId } : {}),
           ...(publishedAt ? { publishedAt: new Date(publishedAt) } : {}),
           ...(expiresAt !== undefined ? { expiresAt: expiresAt ? new Date(expiresAt) : null } : {})
         }
@@ -287,7 +332,6 @@ export class NoticeController {
   async deleteNotice(req: AuthRequest, res: Response) {
     try {
       const userId = req.user?.userId;
-      const userRole = req.user?.role;
       if (!userId) {
         return res.status(403).json({ success: false, error: 'Authentication required' });
       }
@@ -307,8 +351,17 @@ export class NoticeController {
       }
 
       const isOwner = existing.createdById === userId;
+      const isSchoolNoticeManager = canManageNotices(req.user);
+      if (!isSchoolNoticeManager) {
+        if (!isOwner || !existing.targetClassId || String(existing.category || '').toUpperCase() !== 'HOMEWORK') {
+          return res.status(403).json({ success: false, error: 'You can delete only your own class homework.' });
+        }
+        if (!await isTeacherAssignedToClass(existing.targetClassId, userId)) {
+          return res.status(403).json({ success: false, error: 'You are no longer assigned to this homework class.' });
+        }
+      }
       const isSchoolAdmin = hasAnyRole(req.user, ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER']);
-      const isSystemAdminOwner = isOwner && userRole === 'SUPER_ADMIN';
+      const isSystemAdminOwner = isOwner && hasAnyRole(req.user, ['SUPER_ADMIN']);
 
       // Authors can archive their own notices; school admins can archive any
       // notice (e.g. one posted by a staff member who has since left).

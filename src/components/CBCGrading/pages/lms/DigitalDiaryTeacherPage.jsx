@@ -4,7 +4,7 @@ import ClockInStatusWidget from '../../dashboard/widgets/teacher/ClockInStatusWi
 import {
   Activity, ArrowLeft, ArrowRight, Bell, BookOpen, Calendar,
   CalendarDays, Check, CheckCircle2, ChevronDown, ChevronRight,
-  ClipboardList, FileText, Loader2, MessageSquare,
+  ClipboardList, FileText, Loader2, MessageSquare, Pencil, Trash2,
   Users, AlertCircle,
 } from 'lucide-react';
 
@@ -29,6 +29,7 @@ export default function DigitalDiaryTeacherPage({ user, onNavigate }) {
   const [activeTab, setActiveTab] = useState('today');
   const [mobileHomeOpen, setMobileHomeOpen] = useState(true);
   const [entryPage, setEntryPage] = useState(null);
+  const [editingEntry, setEditingEntry] = useState(null);
   const [toast, setToast] = useState('');
   const teacherStats = dashboard?.stats || {};
   const currentHour = new Date().getHours();
@@ -77,9 +78,20 @@ export default function DigitalDiaryTeacherPage({ user, onNavigate }) {
     window.setTimeout(() => setToast(''), 4000);
   };
 
-  const handlePublished = (noticeTitle, className) => {
-    showToast(`"${noticeTitle}" published for ${className} families.`, 'success');
+  const handlePublished = (noticeTitle, className, wasEdited = false) => {
+    showToast(`"${noticeTitle}" ${wasEdited ? 'updated' : 'published'} for ${className} families.`, 'success');
     setEntryPage(null);
+    setEditingEntry(null);
+  };
+
+  const handleCompose = (kind) => {
+    setEditingEntry(null);
+    setEntryPage(kind);
+  };
+
+  const handleEditHomework = (entry) => {
+    setEditingEntry(entry);
+    setEntryPage('daily');
   };
 
   const handlePublishError = (message) => {
@@ -101,7 +113,7 @@ export default function DigitalDiaryTeacherPage({ user, onNavigate }) {
           <div className="flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#172554] text-white"><BookOpen size={18} /></div><div><div className="flex items-center gap-2"><h1 className="text-xl font-black tracking-tight text-slate-950">Teacher Workspace</h1></div></div></div>
           <div className={`flex flex-wrap items-center gap-2 ${mobileHomeOpen ? 'hidden md:flex' : ''}`}>
             {selectedClass ? (
-              <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2"><Users size={15} className="text-indigo-600" /><select aria-label="Select class" value={selectedClass.id} onChange={(event) => setClassId(event.target.value)} className="max-w-[150px] bg-transparent text-xs font-bold text-slate-800 outline-none">{classOptions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><ChevronDown size={14} className="text-slate-400" /></label>
+              <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2"><Users size={15} className="text-indigo-600" /><select aria-label="Select class" value={selectedClass.id} disabled={Boolean(editingEntry)} onChange={(event) => setClassId(event.target.value)} className="max-w-[150px] bg-transparent text-xs font-bold text-slate-800 outline-none disabled:cursor-not-allowed disabled:opacity-60">{classOptions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><ChevronDown size={14} className="text-slate-400" /></label>
             ) : (
               <span className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-500">{dashboardLoading ? 'Loading classes…' : 'No classes assigned'}</span>
             )}
@@ -118,7 +130,7 @@ export default function DigitalDiaryTeacherPage({ user, onNavigate }) {
 
         {mobileHomeOpen && <MobileWorkspaceMenu
           onSelect={(id) => { setActiveTab(id); setEntryPage(null); setMobileHomeOpen(false); }}
-          onCompose={(kind) => { setActiveTab('entries'); setEntryPage(kind); setMobileHomeOpen(false); }}
+          onCompose={(kind) => { setActiveTab('entries'); handleCompose(kind); setMobileHomeOpen(false); }}
           onNavigate={onNavigate}
         />}
 
@@ -132,8 +144,8 @@ export default function DigitalDiaryTeacherPage({ user, onNavigate }) {
 
         {activeTab === 'plan' && selectedClass && <ClassPlanWorkspace selectedClass={selectedClass} schedule={schedule} dashboardLoading={dashboardLoading} onNavigate={onNavigate} />}
         {activeTab === 'entries' && selectedClass && (entryPage
-          ? <DiaryEntryComposerPage kind={entryPage} selectedClass={selectedClass} selectedDate={selectedDate} onBack={() => setEntryPage(null)} onPublished={handlePublished} onError={handlePublishError} />
-          : <DiaryEntriesWorkspace selectedClass={selectedClass} onCompose={setEntryPage} />)}
+          ? <DiaryEntryComposerPage key={editingEntry?.id || `new-${entryPage}`} kind={entryPage} selectedClass={selectedClass} selectedDate={selectedDate} editingEntry={editingEntry} onBack={() => { setEntryPage(null); setEditingEntry(null); }} onPublished={handlePublished} onError={handlePublishError} />
+          : <DiaryEntriesWorkspace selectedClass={selectedClass} user={user} onCompose={handleCompose} onEditHomework={handleEditHomework} onHomeworkDeleted={(entry) => showToast(`"${entry.title}" removed from ${selectedClass.name} diary.`, 'success')} />)}
         {activeTab === 'assessment' && selectedClass && <AssessmentWorkspace selectedClass={selectedClass} />}
         {activeTab === 'attendance' && selectedClass && <AttendanceWorkspace selectedClass={selectedClass} />}
         {!selectedClass && !dashboardLoading && activeTab !== 'today' && (
@@ -171,10 +183,12 @@ function MobileWorkspaceMenu({ onSelect, onCompose, onNavigate }) {
   </section>;
 }
 
-function DiaryEntriesWorkspace({ selectedClass, onCompose }) {
+function DiaryEntriesWorkspace({ selectedClass, user, onCompose, onEditHomework, onHomeworkDeleted }) {
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [deletingId, setDeletingId] = useState(null);
+  const currentUserId = user?.userId || user?.id;
 
   const actions = [
     { kind: 'note', title: 'Write a class message', detail: 'Share an update or reminder', icon: MessageSquare, color: 'text-emerald-700 bg-emerald-50' },
@@ -191,7 +205,7 @@ function DiaryEntriesWorkspace({ selectedClass, onCompose }) {
       const list = (resp?.data || [])
         .filter((n) => {
           const audience = String(n.targetAudience || '').toUpperCase();
-          return !audience || audience.includes('PARENTS') || audience.includes('STUDENTS');
+          return n.targetClassId === selectedClass.id && (!audience || audience.includes('PARENTS') || audience.includes('STUDENTS'));
         })
         .sort((a, b) => new Date(b.publishedAt || b.createdAt) - new Date(a.publishedAt || a.createdAt));
       setEntries(list);
@@ -207,6 +221,24 @@ function DiaryEntriesWorkspace({ selectedClass, onCompose }) {
   useEffect(() => {
     fetchEntries();
   }, [selectedClass.id]);
+
+  const handleDeleteHomework = async (entry) => {
+    const confirmed = window.confirm(`Delete "${entry.title}" from ${selectedClass.name}? Families will no longer see it in the diary.`);
+    if (!confirmed) return;
+
+    setDeletingId(entry.id);
+    setError('');
+    try {
+      const response = await api.notices.delete(entry.id);
+      if (response?.success === false) throw new Error(response.error || response.message || 'Could not delete homework');
+      setEntries((current) => current.filter((item) => item.id !== entry.id));
+      onHomeworkDeleted?.(entry);
+    } catch (err) {
+      setError(err?.message || 'Could not delete this homework. Please try again.');
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const formatEntryDate = (value) => {
     if (!value) return '';
@@ -241,7 +273,8 @@ function DiaryEntriesWorkspace({ selectedClass, onCompose }) {
           const accent = meta.accent === 'violet' ? 'bg-violet-50 text-violet-800' : 'bg-emerald-50 text-emerald-800';
           const Icon = meta.accent === 'violet' ? BookOpen : MessageSquare;
           const dateLabel = formatEntryDate(entry.publishedAt || entry.createdAt);
-          return <div key={entry.id} className="flex w-full items-start gap-3 px-4 py-3 text-left">
+          const canManageHomework = meta.type === 'Homework' && entry.createdById === currentUserId;
+          return <div key={entry.id} className="flex w-full flex-wrap items-start gap-3 px-4 py-3 text-left">
             <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${accent}`}><Icon size={15} /></span>
             <span className="min-w-0 flex-1">
               <span className="flex flex-wrap items-center gap-2">
@@ -252,6 +285,15 @@ function DiaryEntriesWorkspace({ selectedClass, onCompose }) {
               <span className="mt-1 block truncate text-xs leading-relaxed text-slate-600">{entry.content}</span>
               {(meta.area || meta.due) && <span className="mt-1 block text-[11px] text-slate-500">{meta.area}{meta.area && meta.due ? ' · ' : ''}{meta.due}</span>}
             </span>
+            {canManageHomework && <div className="ml-auto flex shrink-0 items-center gap-1">
+              <button type="button" onClick={() => onEditHomework?.(entry)} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-[11px] font-bold text-slate-700 transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-800" aria-label={`Edit homework ${entry.title}`}>
+                <Pencil size={13} /> Edit
+              </button>
+              <button type="button" onClick={() => handleDeleteHomework(entry)} disabled={deletingId === entry.id} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-rose-200 px-2.5 text-[11px] font-bold text-rose-700 transition hover:bg-rose-50 disabled:cursor-wait disabled:opacity-60" aria-label={`Delete homework ${entry.title}`}>
+                {deletingId === entry.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                {deletingId === entry.id ? 'Deleting' : 'Delete'}
+              </button>
+            </div>}
           </div>;
         })}
       </div>
@@ -260,21 +302,22 @@ function DiaryEntriesWorkspace({ selectedClass, onCompose }) {
   </div>;
 }
 
-function DiaryEntryComposerPage({ kind, selectedClass, selectedDate, onBack, onPublished, onError }) {
+function DiaryEntryComposerPage({ kind, selectedClass, selectedDate, editingEntry, onBack, onPublished, onError }) {
   const isMessage = kind === 'note';
   const isHoliday = kind === 'holiday';
+  const isEditing = Boolean(editingEntry);
 
   // ── Form state ──
-  const [subject, setSubject] = useState('');
-  const [content, setContent] = useState('');
+  const [subject, setSubject] = useState(editingEntry?.title || '');
+  const [content, setContent] = useState(editingEntry?.content || '');
   const [learningArea, setLearningArea] = useState(selectedClass.subject || 'Mathematics');
-  const [dueDate, setDueDate] = useState('');
-  const [priority, setPriority] = useState('NORMAL');
+  const [dueDate, setDueDate] = useState(() => editingEntry?.expiresAt ? new Date(editingEntry.expiresAt).toISOString().slice(0, 10) : '');
+  const [priority, setPriority] = useState(editingEntry?.priority || 'NORMAL');
   const [completionMode, setCompletionMode] = useState('online');
   const [submitting, setSubmitting] = useState(false);
 
-  const headingText = isMessage ? 'Write a class message' : isHoliday ? 'Set holiday homework' : 'Set daily homework';
-  const publishLabel = isMessage ? 'Publish message' : 'Publish homework';
+  const headingText = isEditing ? 'Edit homework' : isMessage ? 'Write a class message' : isHoliday ? 'Set holiday homework' : 'Set daily homework';
+  const publishLabel = isEditing ? 'Save changes' : isMessage ? 'Publish message' : 'Publish homework';
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -291,18 +334,21 @@ function DiaryEntryComposerPage({ kind, selectedClass, selectedDate, onBack, onP
       status: 'PUBLISHED',
       targetAudience: 'PARENTS',
       targetClassId: selectedClass.id,
+      expiresAt: dueDate ? new Date(`${dueDate}T23:59:59`).toISOString() : null,
     };
 
     setSubmitting(true);
     try {
-      const res = await api.notices.create(payload);
+      const res = isEditing
+        ? await api.notices.update(editingEntry.id, payload)
+        : await api.notices.create(payload);
       if (res?.success === false) {
-        throw new Error(res?.error || res?.message || 'Server rejected the notice');
+        throw new Error(res?.error || res?.message || `Server rejected the ${isEditing ? 'update' : 'notice'}`);
       }
-      onPublished?.(subject.trim(), selectedClass.name);
+      onPublished?.(subject.trim(), selectedClass.name, isEditing);
     } catch (err) {
       const msg = err?.message?.includes('403')
-        ? 'You don\u2019t have permission to publish diary entries. Contact your school admin.'
+        ? `You don\u2019t have permission to ${isEditing ? 'edit this homework' : 'publish diary entries'}. Contact your school admin.`
         : err?.message?.includes('429')
         ? 'Too many entries published recently. Please wait a minute and try again.'
         : err?.message || 'Could not publish. Please try again.';
@@ -323,7 +369,7 @@ function DiaryEntryComposerPage({ kind, selectedClass, selectedDate, onBack, onP
         {!isMessage && <fieldset><legend className="text-xs font-bold text-slate-600">How will learners complete the work?</legend><div className="mt-2 grid gap-2 sm:grid-cols-2"><button type="button" aria-pressed={completionMode === 'online'} onClick={() => setCompletionMode('online')} className={`rounded-xl border p-3 text-left ${completionMode === 'online' ? 'border-indigo-300 bg-indigo-50 ring-1 ring-indigo-200' : 'border-slate-200 bg-white'}`}><span className="flex items-center gap-2 text-sm font-bold text-slate-800"><FileText size={16} className="text-indigo-600" /> Online submission</span><span className="mt-1 block text-xs text-slate-500">Learners submit work in TrendSCORE</span></button><button type="button" aria-pressed={completionMode === 'paper'} onClick={() => setCompletionMode('paper')} className={`rounded-xl border p-3 text-left ${completionMode === 'paper' ? 'border-emerald-300 bg-emerald-50 ring-1 ring-emerald-200' : 'border-slate-200 bg-white'}`}><span className="flex items-center gap-2 text-sm font-bold text-slate-800"><CheckCircle2 size={16} className="text-emerald-600" /> Paper / offline</span><span className="mt-1 block text-xs text-slate-500">Record class completion later</span></button></div></fieldset>}
         <div><p className="text-xs font-bold text-slate-600 mb-2">Priority</p><div className="flex gap-2">{[{ id: 'LOW', label: 'Low' }, { id: 'NORMAL', label: 'Normal' }, { id: 'HIGH', label: 'High' }, { id: 'URGENT', label: 'Urgent' }].map((opt) => <button key={opt.id} type="button" aria-pressed={priority === opt.id} onClick={() => setPriority(opt.id)} className={`rounded-xl border px-3 py-2 text-xs font-bold transition ${priority === opt.id ? (opt.id === 'URGENT' ? 'border-rose-300 bg-rose-50 text-rose-800 ring-1 ring-rose-200' : opt.id === 'HIGH' ? 'border-amber-300 bg-amber-50 text-amber-800 ring-1 ring-amber-200' : 'border-indigo-300 bg-indigo-50 text-indigo-800 ring-1 ring-indigo-200') : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'}`}>{opt.label}</button>)}</div></div>
       </Surface>
-      <div className="space-y-3"><Surface className="p-3.5"><p className="text-sm font-bold text-slate-900">For {selectedClass.name}</p><p className="mt-1 text-xs text-slate-600">Only parents and learners in this class will see this in their diary.</p></Surface><div className="flex flex-col gap-2"><button type="submit" disabled={submitting || !subject.trim() || !content.trim()} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#172554] px-4 py-3 text-sm font-bold text-white hover:bg-[#1e3a8a] disabled:cursor-not-allowed disabled:opacity-50 transition-colors">{submitting ? <><Loader2 size={16} className="animate-spin" /> Publishing\u2026</> : <><MessageSquare size={16} /> {publishLabel}</>}</button><button type="button" onClick={onBack} className="min-h-10 rounded-xl px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-white">Cancel</button></div></div>
+      <div className="space-y-3"><Surface className="p-3.5"><p className="text-sm font-bold text-slate-900">For {selectedClass.name}</p><p className="mt-1 text-xs text-slate-600">Only parents and learners in this class will see this in their diary.</p></Surface><div className="flex flex-col gap-2"><button type="submit" disabled={submitting || !subject.trim() || !content.trim()} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#172554] px-4 py-3 text-sm font-bold text-white hover:bg-[#1e3a8a] disabled:cursor-not-allowed disabled:opacity-50 transition-colors">{submitting ? <><Loader2 size={16} className="animate-spin" /> {isEditing ? 'Saving…' : 'Publishing…'}</> : <><MessageSquare size={16} /> {publishLabel}</>}</button><button type="button" onClick={onBack} className="min-h-10 rounded-xl px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-white">Cancel</button></div></div>
     </form>
   </div>;
 }

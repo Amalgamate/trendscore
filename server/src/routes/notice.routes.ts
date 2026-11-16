@@ -49,7 +49,7 @@ router.post(
 
 router.put(
   '/:id',
-  requirePermission('SEND_SCHOOL_NOTICES'),
+  requireAnyPermission(['SEND_SCHOOL_NOTICES', 'PUBLISH_CLASS_DIARY']),
   rateLimit({ windowMs: 60_000, maxRequests: 30 }),
   validate(noticeSchema.partial()),
   auditLog('UPDATE_NOTICE'),
@@ -58,7 +58,7 @@ router.put(
 
 router.delete(
   '/:id',
-  requirePermission('SEND_SCHOOL_NOTICES'),
+  requireAnyPermission(['SEND_SCHOOL_NOTICES', 'PUBLISH_CLASS_DIARY']),
   rateLimit({ windowMs: 60_000, maxRequests: 20 }),
   auditLog('DELETE_NOTICE'),
   asyncHandler(noticeController.deleteNotice.bind(noticeController))
