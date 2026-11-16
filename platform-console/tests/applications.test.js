@@ -169,8 +169,18 @@ test('school application package and lifecycle rules', async t => {
       reviewNotes: 'Package confirmed',
     }, 'reviewer@example.test');
     assert.equal(store.approveApplication(application.id, 'approver@example.test').applicationStatus, 'approved');
-    const provisioning = store.startApplicationProvisioning(application.id, 'admin@example.test');
+    const tenantKey = `zawadi-lifecycle-primary-${application.id.toLowerCase().slice(-12)}`;
+    const provisioning = store.startApplicationProvisioning(
+      application.id,
+      'admin@example.test',
+      'lifecycle-primary.trendscore.co.ke',
+      tenantKey,
+    );
     assert.equal(provisioning.application.applicationStatus, 'provisioning');
+    assert.equal(provisioning.application.provisioningTenantKey, tenantKey);
+    store.failApplicationProvisioning(application.id, 'Temporary setup error', 'admin@example.test', 'temporary detail');
+    const retry = store.startApplicationProvisioning(application.id, 'admin@example.test', 'lifecycle-primary.trendscore.co.ke');
+    assert.equal(retry.application.provisioningTenantKey, tenantKey);
 
     const readyAt = '2026-03-15T10:00:00.000Z';
     const ready = store.markApplicationReady(application.id, {
@@ -192,7 +202,7 @@ test('school application package and lifecycle rules', async t => {
     const events = store.listApplicationEvents(application.id);
     assert.deepEqual(
       events.filter(event => event.eventType !== 'activation_email').map(event => event.toStatus).filter(Boolean),
-      ['submitted', 'under_review', 'approved', 'provisioning', 'ready'],
+      ['submitted', 'under_review', 'approved', 'provisioning', 'approved', 'provisioning', 'ready'],
     );
   });
 });

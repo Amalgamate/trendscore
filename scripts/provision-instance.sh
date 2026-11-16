@@ -77,7 +77,7 @@ mapfile -t PARSED < <(printf '%s' "${PAYLOAD_JSON}" | jq -r '
   . as $p
   | ($p.name // "" | clean) as $name
   | if $name == "" then error("name is required") else . end
-  | ($name | slug) as $slug
+  | (($p.projectSlug // $name) | slug) as $slug
   | if $slug == "" then error("name produced empty slug") else . end
   | ($p.domain // "" | clean) as $domain
   | ($p.requestedBy // "" | clean) as $requestedBy
@@ -159,6 +159,10 @@ fi
 if [[ "${APP_TYPE}" == "school" ]]; then
   if [[ -z "${APPLICATION_ID}" || -z "${SUPER_ADMIN_EMAIL}" ]]; then
     echo "school provisioning requires an approved application id and admin email" >&2
+    exit 2
+  fi
+  if [[ ! "${SCHOOL_SLUG}" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
+    echo "school project slug is invalid" >&2
     exit 2
   fi
   if [[ "${SCHOOL_EDUCATION_LEVEL}" == "PRIMARY" && "${APPLICATION_PACKAGE_ID}" != "starter" && "${APPLICATION_PACKAGE_ID}" != "standard" && "${APPLICATION_PACKAGE_ID}" != "professional" ]]; then

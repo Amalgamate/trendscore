@@ -10,6 +10,7 @@ const { promisify } = require('util');
 const { execFile } = require('child_process');
 const Docker = require('dockerode');
 const si = require('systeminformation');
+const Redis = require('ioredis');
 const { createBillingStore } = require('./billing-store');
 const { createAgentsStore } = require('./agents-store');
 const { createLeadsStore } = require('./leads-store');
@@ -282,10 +283,12 @@ async function listFrontendImageTags(limit = 12) {
   return listImageTags(FRONTEND_IMAGE_REPO, limit);
 }
 
-async function buildDeployTargets() {
+async function buildDeployTargets(runtimeInstancesOverride = null) {
   const manifest = loadDeployManifest();
   const manifestDomains = buildManifestDomainIndex(manifest);
-  const { instances: runtimeInstances } = await collectRuntime();
+  const runtimeInstances = Array.isArray(runtimeInstancesOverride)
+    ? runtimeInstancesOverride
+    : (await collectRuntime()).instances;
   const byId = new Map();
 
   const upsertDemoFromRuntime = inst => {
@@ -1262,7 +1265,17 @@ async function getUsedPublishedPorts() {
   return usedPorts;
 }
 
-async function buildAutoAllocation({ name, appType, appRange, instances, preferredDomain = '' }) {
+function applicationTenantProjectName(application = {}) {
+  const saved = String(application.provisioningTenantKey || '').trim().toLowerCase();
+  if (/^zawadi-[a-z0-9]+(?:[-_][a-z0-9]+)*$/.test(saved)) return saved;
+
+  const schoolSlug = slugifyName(application.school || 'school').slice(0, 40).replace(/-+$/g, '') || 'school';
+  const applicationSuffix = String(application.id || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(-12);
+  if (!applicationSuffix) throw new Error('A school application ID is required to allocate an isolated tenant environment.');
+  return `zawadi-${schoolSlug}-${applicationSuffix}`;
+}
+
+async function buildAutoAllocation({ name, appType, appRange, instances, preferredDomain = '', tenantProjectName = '' }) {
   const usedPorts = await getUsedPublishedPorts();
 
   const fePort = nextAvailablePort(appRange.fe[0], appRange.fe[1], usedPorts);
@@ -1279,7 +1292,19 @@ async function buildAutoAllocation({ name, appType, appRange, instances, preferr
   const knownDomains = listKnownDomains(instances);
   const baseSlug = slugifyName(name || appType || 'school');
   const normalizedPreferredDomain = String(preferredDomain || '').trim().toLowerCase();
-  const domain = normalizedPreferredDomain || getSchoolDomainOverride(baseSlug) || nextAvailableDomain(baseSlug, knownDomains);
+  const reservedDomains = appType === 'school' ? new Set(Object.values(SCHOOL_DOMAIN_OVERRIDES)) : new Set();
+  reservedDomains.forEach(domain => knownDomains.add(domain));
+  const preferredDomainOwnedByTenant = normalizedPreferredDomain && instances.some(instance =>
+    String(instance?.domain || '').trim().toLowerCase() === normalizedPreferredDomain
+      && String(instance?.composeProject || '').trim().toLowerCase() === String(tenantProjectName || '').trim().toLowerCase());
+  const preferredDomainAvailable = normalizedPreferredDomain
+    && !reservedDomains.has(normalizedPreferredDomain)
+    && (!knownDomains.has(normalizedPreferredDomain) || preferredDomainOwnedByTenant);
+  const overrideDomain = getSchoolDomainOverride(baseSlug);
+  const availableOverrideDomain = overrideDomain && !knownDomains.has(overrideDomain) ? overrideDomain : '';
+  const domain = preferredDomainAvailable
+    ? normalizedPreferredDomain
+    : availableOverrideDomain || nextAvailableDomain(baseSlug, knownDomains);
   if (!domain) throw new Error('No available subdomain could be generated.');
 
   return { domain, fePort, bePort };
@@ -1341,7 +1366,91 @@ async function buildImageCatalog() {
   return catalog;
 }
 
-async function collectRuntime() {
+const RUNTIME_SNAPSHOT_TTL_MS = Math.max(1000, Number(process.env.CONSOLE_RUNTIME_SNAPSHOT_TTL_MS) || 15000);
+const RUNTIME_SNAPSHOT_KEY = 'platform-console:runtime:v1';
+let runtimeRedis = null;
+try {
+  if (process.env.CONSOLE_REDIS_URL) {
+    runtimeRedis = new Redis(process.env.CONSOLE_REDIS_URL, {
+    lazyConnect: true,
+    connectTimeout: 1000,
+    commandTimeout: 750,
+    enableOfflineQueue: false,
+    maxRetriesPerRequest: 1,
+    retryStrategy: times => Math.min(times * 500, 5000),
+    });
+  }
+} catch (_) {
+  console.warn('[RuntimeCache] Invalid Redis configuration; using the local runtime cache.');
+}
+let runtimeSnapshot = null;
+let runtimeSnapshotAt = 0;
+let runtimeSnapshotPromise = null;
+let runtimeRedisWarningLogged = false;
+
+if (runtimeRedis) {
+  runtimeRedis.on('error', () => {
+    if (runtimeRedisWarningLogged) return;
+    runtimeRedisWarningLogged = true;
+    console.warn('[RuntimeCache] Redis unavailable; using the local runtime cache.');
+  });
+  runtimeRedis.on('ready', () => {
+    runtimeRedisWarningLogged = false;
+    console.log('[RuntimeCache] Connected to Redis.');
+  });
+  runtimeRedis.connect().catch(() => {});
+}
+
+async function collectRuntime({ cache = false } = {}) {
+  if (!cache) return collectRuntimeSnapshot();
+
+  const now = Date.now();
+  if (runtimeSnapshot && now - runtimeSnapshotAt < RUNTIME_SNAPSHOT_TTL_MS) {
+    return runtimeSnapshot;
+  }
+  if (runtimeSnapshotPromise) return runtimeSnapshotPromise;
+
+  runtimeSnapshotPromise = (async () => {
+    if (runtimeRedis?.status === 'ready') {
+      try {
+        const cachedValue = await runtimeRedis.get(RUNTIME_SNAPSHOT_KEY);
+        if (cachedValue) {
+          const cachedSnapshot = JSON.parse(cachedValue);
+          const generatedAt = Date.parse(cachedSnapshot.generatedAt || '');
+          if (Number.isFinite(generatedAt) && Date.now() - generatedAt < RUNTIME_SNAPSHOT_TTL_MS) {
+            runtimeSnapshot = cachedSnapshot;
+            runtimeSnapshotAt = generatedAt;
+            return cachedSnapshot;
+          }
+        }
+      } catch (_) {
+        // A cache outage must not make console runtime data unavailable.
+      }
+    }
+
+    const snapshot = await collectRuntimeSnapshot();
+    runtimeSnapshot = snapshot;
+    runtimeSnapshotAt = Date.now();
+    if (runtimeRedis?.status === 'ready') {
+      try {
+        await runtimeRedis.set(
+          RUNTIME_SNAPSHOT_KEY,
+          JSON.stringify(snapshot),
+          'EX',
+          Math.max(1, Math.ceil(RUNTIME_SNAPSHOT_TTL_MS / 1000)),
+        );
+      } catch (_) {
+        // Keep the in-process snapshot if Redis is temporarily unavailable.
+      }
+    }
+    return snapshot;
+  })().finally(() => {
+    runtimeSnapshotPromise = null;
+  });
+  return runtimeSnapshotPromise;
+}
+
+async function collectRuntimeSnapshot() {
   const [containers, mem, disk, load, dockerDf] = await Promise.all([
     docker.listContainers({ all: true, size: true }),
     si.mem(),
@@ -1438,12 +1547,12 @@ async function collectRuntime() {
     diskUsedGb: Number((usedDiskBytes / (1024 ** 3)).toFixed(1)),
   };
 
-  return { instances, metrics };
+  return { instances, metrics, generatedAt: new Date().toISOString() };
 }
 
 app.get('/api/runtime', requireAuth, async (_req, res) => {
   try {
-    const runtime = await collectRuntime();
+    const runtime = await collectRuntime({ cache: true });
     res.json({
       ok: true,
       ...runtime,
@@ -1451,7 +1560,7 @@ app.get('/api/runtime', requireAuth, async (_req, res) => {
       deployments: readDeployStore().slice(0, 50),
       auditLogs: readAuditStore().slice(0, 200),
       mode: 'live',
-      generatedAt: new Date().toISOString(),
+      generatedAt: runtime.generatedAt,
     });
   } catch (error) {
     res.status(500).json({ ok: false, error: `Runtime fetch failed: ${error.message}` });
@@ -2010,6 +2119,7 @@ app.post('/api/applications/:id/provision', requireAuth, requireRole('super_admi
     if (!INSTANCE_PROVISION_SCRIPT) throw new Error('Instance provisioning script is not configured.');
 
     const appRange = APP_PORT_RANGES.school;
+    const tenantProjectName = applicationTenantProjectName(candidate);
     const { instances } = await collectRuntime();
     const allocation = await buildAutoAllocation({
       name: application.school,
@@ -2017,6 +2127,7 @@ app.post('/api/applications/:id/provision', requireAuth, requireRole('super_admi
       appRange,
       instances,
       preferredDomain: candidate.provisioningDomain || '',
+      tenantProjectName,
     });
     const manifestAddress = String(loadDeployManifest()?.defaults?.public_ipv4 || '').trim();
     const requiredAddress = manifestAddress || process.env.DEFAULT_HOST_IP || '185.127.16.124';
@@ -2059,7 +2170,12 @@ app.post('/api/applications/:id/provision', requireAuth, requireRole('super_admi
 
     // Check DNS before changing lifecycle state so a missing record leaves the
     // application approved and safe to retry after the applicant fixes DNS.
-    const started = leadsStore.startApplicationProvisioning(req.params.id, req.user.email, allocation.domain);
+    const started = leadsStore.startApplicationProvisioning(
+      req.params.id,
+      req.user.email,
+      allocation.domain,
+      tenantProjectName,
+    );
     if (started.alreadyProvisioning) {
       return res.status(409).json({ ok: false, error: 'Provisioning is already in progress for this application.' });
     }
@@ -2074,6 +2190,7 @@ app.post('/api/applications/:id/provision', requireAuth, requireRole('super_admi
     const [adminFirstName, ...adminLastParts] = String(application.name || '').trim().split(/\s+/);
     const payload = JSON.stringify({
       applicationId: application.id,
+      projectSlug: tenantProjectName.replace(/^zawadi-/, ''),
       appType: 'school',
       name: application.school,
       domain: allocation.domain,
@@ -3455,9 +3572,9 @@ app.get('/api/billing/schools', requireAuth, requireRole('super_admin', 'platfor
   try {
     const manifest = loadDeployManifest();
     const manifestById = new Map((manifest.instances || []).map(instance => [instance.id, instance]));
-    const { instances: runtimeInstances } = await collectRuntime();
+    const { instances: runtimeInstances } = await collectRuntime({ cache: true });
     const runtimeByProject = new Map(runtimeInstances.map(instance => [instance.composeProject, instance]));
-    const schools = (await buildDeployTargets())
+    const schools = (await buildDeployTargets(runtimeInstances))
       .filter(target => ['stack', 'main'].includes(target.kind))
       .map(target => {
         const saved = manifestById.get(target.id) || {};

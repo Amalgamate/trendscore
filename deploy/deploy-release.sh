@@ -1103,17 +1103,55 @@ deploy_console() {
   local console_port="${CONSOLE_PORT:-3100}"
   local console_env="${CONSOLE_ENV_FILE:-${APPS_DIR}/.env.console}"
   local console_data="${CONSOLE_DATA_DIR:-${APPS_DIR}/console-data}"
+  local console_network="zawadi-console-net"
+  local console_redis="zawadi-console-redis"
   local previous_image
   previous_image="$(docker_cmd inspect --format '{{.Config.Image}}' zawadi-console 2>/dev/null || true)"
 
   docker_cmd pull "${CONSOLE_IMAGE}"
+  if ! docker_cmd network inspect "${console_network}" >/dev/null 2>&1; then
+    docker_cmd network create --driver bridge "${console_network}" >/dev/null
+  fi
+  if ! docker_cmd inspect "${console_redis}" >/dev/null 2>&1; then
+    if ! docker_cmd image inspect redis:7-alpine >/dev/null 2>&1; then
+      docker_cmd pull redis:7-alpine
+    fi
+    docker_cmd run -d \
+      --name "${console_redis}" \
+      --restart always \
+      --label com.zawadi.service=platform-console-cache \
+      --network "${console_network}" \
+      --health-cmd 'redis-cli ping' \
+      --health-interval 10s \
+      --health-timeout 3s \
+      --health-retries 5 \
+      redis:7-alpine \
+      redis-server --save '' --appendonly no --maxmemory 128mb --maxmemory-policy allkeys-lru >/dev/null
+  else
+    docker_cmd start "${console_redis}" >/dev/null 2>&1 || true
+    if ! docker_cmd inspect --format '{{json .NetworkSettings.Networks}}' "${console_redis}" | grep -q "${console_network}"; then
+      docker_cmd network connect "${console_network}" "${console_redis}" >/dev/null 2>&1 || true
+    fi
+  fi
+  local redis_ready=false
+  for attempt in $(seq 1 15); do
+    if [[ "$(docker_cmd exec "${console_redis}" redis-cli ping 2>/dev/null || true)" == "PONG" ]]; then
+      redis_ready=true
+      break
+    fi
+    sleep 1
+  done
+  [[ "${redis_ready}" == "true" ]] || fail "Platform console Redis cache did not become ready. The existing console was left running."
+
   run_as_root mkdir -p "${console_data}"
   docker_cmd rm -f zawadi-console >/dev/null 2>&1 || true
   docker_cmd run -d \
     --name zawadi-console \
     --restart always \
     --label com.zawadi.service=platform-console \
+    --network "${console_network}" \
     --env-file "${console_env}" \
+    -e CONSOLE_REDIS_URL="redis://${console_redis}:6379/0" \
     -e CONSOLE_DATA_DIR=/app/data \
     -v /var/run/docker.sock:/var/run/docker.sock \
     -v "${APPS_DIR}:${APPS_DIR}" \
@@ -1138,7 +1176,9 @@ deploy_console() {
       --name zawadi-console \
       --restart always \
       --label com.zawadi.service=platform-console \
+      --network "${console_network}" \
       --env-file "${console_env}" \
+      -e CONSOLE_REDIS_URL="redis://${console_redis}:6379/0" \
       -e CONSOLE_DATA_DIR=/app/data \
       -v /var/run/docker.sock:/var/run/docker.sock \
       -v "${APPS_DIR}:${APPS_DIR}" \
