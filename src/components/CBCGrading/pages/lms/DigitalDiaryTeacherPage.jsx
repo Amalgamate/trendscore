@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import api, { dashboardAPI, attendanceAPI, assessmentAPI } from '../../../../services/api';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import api, { configAPI, dashboardAPI } from '../../../../services/api';
+import { useTeacherContext } from '../../../../hooks/useTeacherContext';
 import ClockInStatusWidget from '../../dashboard/widgets/teacher/ClockInStatusWidget';
 import {
   Activity, ArrowLeft, ArrowRight, Bell, BookOpen, Calendar,
@@ -20,6 +21,28 @@ function SmallLabel({ children }) {
   return <p className="text-[11px] font-bold uppercase tracking-[.12em] text-slate-400">{children}</p>;
 }
 
+function getDiaryLearningAreaOptions(subjects = []) {
+  const options = (Array.isArray(subjects) ? subjects : [])
+    .map((subject) => typeof subject === 'string'
+      ? subject.trim()
+      : String(subject?.name || subject?.label || '').trim())
+    .filter((subject) => subject && !/^(class\s*teacher|class|assigned class|daily attendance)$/i.test(subject));
+
+  return [...new Map(options.map((subject) => [subject.toLowerCase(), subject])).values()];
+}
+
+function getHomeworkTitleParts(title, learningAreaOptions) {
+  const rawTitle = String(title || '').trim();
+  const separator = rawTitle.indexOf(':');
+  if (separator < 1) return { learningArea: '', title: rawTitle };
+
+  const titleArea = rawTitle.slice(0, separator).trim();
+  const assignedArea = learningAreaOptions.find((area) => area.toLowerCase() === titleArea.toLowerCase());
+  return assignedArea
+    ? { learningArea: assignedArea, title: rawTitle.slice(separator + 1).trim() }
+    : { learningArea: '', title: rawTitle };
+}
+
 export default function DigitalDiaryTeacherPage({ user, onNavigate }) {
   const [dashboard, setDashboard] = useState(null);
   const [dashboardLoading, setDashboardLoading] = useState(true);
@@ -30,6 +53,10 @@ export default function DigitalDiaryTeacherPage({ user, onNavigate }) {
   const [mobileHomeOpen, setMobileHomeOpen] = useState(true);
   const [entryPage, setEntryPage] = useState(null);
   const [editingEntry, setEditingEntry] = useState(null);
+  const [lmsFormOptions, setLmsFormOptions] = useState({ classes: [], learningAreas: [] });
+  const [learningAreaOptionsLoading, setLearningAreaOptionsLoading] = useState(true);
+  const [learningAreaOptionsError, setLearningAreaOptionsError] = useState('');
+  const teacherContext = useTeacherContext();
   const [toast, setToast] = useState('');
   const teacherStats = dashboard?.stats || {};
   const currentHour = new Date().getHours();
@@ -44,9 +71,57 @@ export default function DigitalDiaryTeacherPage({ user, onNavigate }) {
     id: String(item.id || `assigned-${index}`),
     name: item.name || 'Assigned class',
     count: Number(item.learnerCount || 0),
-    subject: item.subjects?.[0] || 'Class',
   }));
   const selectedClass = classOptions.find((item) => item.id === classId) || classOptions[0] || null;
+
+  const learningAreaOptions = useMemo(() => {
+    if (!selectedClass) return [];
+    const configuredClass = lmsFormOptions.classes.find((item) => String(item.id) === selectedClass.id);
+    if (!configuredClass) return [];
+    if (teacherContext.error) return [];
+
+    const gradeAreas = lmsFormOptions.learningAreas.filter(
+      (area) => String(area.gradeLevel || '') === String(configuredClass.grade || ''),
+    );
+    if (!teacherContext.restricted || String(teacherContext.classTeacherOf?.id || '') === selectedClass.id) {
+      return getDiaryLearningAreaOptions(gradeAreas);
+    }
+
+    const allowedAreaIds = new Set(
+      (teacherContext.subjectAssignments || [])
+        .filter((assignment) => (
+          String(assignment.classId || '') === selectedClass.id ||
+          (!assignment.classId && String(assignment.grade || '') === String(configuredClass.grade || ''))
+        ))
+        .map((assignment) => String(assignment.learningAreaId || '')),
+    );
+    return getDiaryLearningAreaOptions(gradeAreas.filter((area) => allowedAreaIds.has(String(area.id))));
+  }, [lmsFormOptions, selectedClass, teacherContext.error, teacherContext.restricted, teacherContext.classTeacherOf, teacherContext.subjectAssignments]);
+
+  useEffect(() => {
+    let isMounted = true;
+    configAPI.getLmsFormOptions()
+      .then(({ options, failed }) => {
+        if (!isMounted) return;
+        setLmsFormOptions({
+          classes: options.classes || [],
+          learningAreas: options.learningAreas || [],
+        });
+        if (failed.includes('classes') || failed.includes('learningAreas')) {
+          setLearningAreaOptionsError('Could not load the school learning areas. Refresh the page and try again.');
+        }
+      })
+      .catch((error) => {
+        if (!isMounted) return;
+        console.error('Failed to load diary learning areas:', error);
+        setLearningAreaOptionsError('Could not load the school learning areas. Refresh the page and try again.');
+      })
+      .finally(() => {
+        if (isMounted) setLearningAreaOptionsLoading(false);
+      });
+
+    return () => { isMounted = false; };
+  }, []);
 
   const loadDashboard = useCallback(() => {
     setDashboardLoading(true);
@@ -85,6 +160,13 @@ export default function DigitalDiaryTeacherPage({ user, onNavigate }) {
   };
 
   const handleCompose = (kind) => {
+    if (kind === 'daily' || kind === 'holiday') {
+      onNavigate?.('learning-assignment-create', {
+        classId: selectedClass?.id,
+        category: kind === 'holiday' ? 'HOLIDAY_WORK' : 'HOMEWORK',
+      });
+      return;
+    }
     setEditingEntry(null);
     setEntryPage(kind);
   };
@@ -102,8 +184,6 @@ export default function DigitalDiaryTeacherPage({ user, onNavigate }) {
     { id: 'today', label: 'My Day Today', icon: CalendarDays, color: 'bg-[#2563eb]', tint: 'bg-blue-50', border: 'border-blue-500' },
     { id: 'plan', label: 'Class Plan', icon: Calendar, color: 'bg-[#16a34a]', tint: 'bg-emerald-50', border: 'border-emerald-500' },
     { id: 'entries', label: 'Diary Entries', icon: MessageSquare, color: 'bg-[#9333ea]', tint: 'bg-purple-50', border: 'border-purple-500' },
-    { id: 'assessment', label: 'Record Scores', icon: Activity, color: 'bg-[#dc2626]', tint: 'bg-red-50', border: 'border-red-500' },
-    { id: 'attendance', label: 'Take Attendance', icon: Check, color: 'bg-[#0f766e]', tint: 'bg-teal-50', border: 'border-teal-600' },
   ];
 
   return (
@@ -126,7 +206,15 @@ export default function DigitalDiaryTeacherPage({ user, onNavigate }) {
           <ClockInStatusWidget user={user} variant="compact" />
         </section>
 
-        <nav className="hidden overflow-x-auto px-1 py-1 scrollbar-none lg:block" role="tablist" aria-label="Teacher workspace sections"><div className="flex min-w-max items-center gap-2.5">{tabs.map(({ id, label, icon: Icon, color }) => <button key={id} role="tab" aria-selected={activeTab === id} onClick={() => { setActiveTab(id); setMobileHomeOpen(false); }} className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-4 text-xs font-extrabold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2 sm:px-5 sm:text-sm ${color} ${activeTab === id ? 'ring-2 ring-slate-900 ring-offset-2' : 'opacity-90 hover:opacity-100'}`}><Icon size={16} />{label}</button>)}</div></nav>
+        <nav className="hidden overflow-x-auto px-1 py-1 scrollbar-none lg:block" aria-label="Teacher workspace and modules">
+          <div className="flex min-w-max items-center gap-2.5">
+            <div role="tablist" aria-label="Teacher workspace sections" className="flex items-center gap-2.5">
+              {tabs.map(({ id, label, icon: Icon, color }) => <button key={id} type="button" role="tab" aria-selected={activeTab === id} onClick={() => { setActiveTab(id); setMobileHomeOpen(false); }} className={`inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-4 text-xs font-extrabold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2 sm:px-5 sm:text-sm ${color} ${activeTab === id ? 'ring-2 ring-slate-900 ring-offset-2' : 'opacity-90 hover:opacity-100'}`}><Icon size={16} />{label}</button>)}
+            </div>
+            <button type="button" onClick={() => onNavigate?.('assess-summative-assessment')} className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl bg-[#dc2626] px-4 text-xs font-extrabold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2 sm:px-5 sm:text-sm"><Activity size={16} />Record Scores</button>
+            <button type="button" onClick={() => onNavigate?.('attendance-daily')} className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl bg-[#0f766e] px-4 text-xs font-extrabold text-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2 sm:px-5 sm:text-sm"><Check size={16} />Take Attendance</button>
+          </div>
+        </nav>
 
         {mobileHomeOpen && <MobileWorkspaceMenu
           onSelect={(id) => { setActiveTab(id); setEntryPage(null); setMobileHomeOpen(false); }}
@@ -137,17 +225,17 @@ export default function DigitalDiaryTeacherPage({ user, onNavigate }) {
         {!mobileHomeOpen && <div className="mb-2 lg:hidden"><button type="button" onClick={() => { setActiveTab('today'); setEntryPage(null); setMobileHomeOpen(true); }} className="inline-flex min-h-10 items-center gap-2 rounded-lg px-2 text-sm font-bold text-indigo-800 hover:bg-white"><ArrowLeft size={16} /> Teacher Workspace</button></div>}
 
         {activeTab === 'today' && <div className={`${mobileHomeOpen ? 'hidden lg:block' : ''} space-y-3`}>
-          <div className="grid gap-1 rounded-xl border border-slate-200 bg-white px-3 sm:grid-cols-3 sm:divide-x sm:divide-slate-200">{[{ icon: Users, label: 'My learners', value: dashboardLoading ? '…' : dashboardError ? '—' : (teacherStats.myStudents ?? 0), page: 'teacher-learner-analysis' }, { icon: Check, label: 'Registers to complete', value: dashboardLoading ? '…' : dashboardError ? '—' : attendanceDue.length, tab: 'attendance' }, { icon: ClipboardList, label: 'Scores to review', value: dashboardLoading ? '…' : dashboardError ? '—' : assessmentsToMark.length, tab: 'assessment' }].map(({ icon: Icon, label, value, tab, page }) => <button key={label} onClick={() => page ? onNavigate?.(page) : (setActiveTab(tab), setMobileHomeOpen(false))} className="flex min-h-14 items-center gap-2.5 px-2 text-left hover:bg-slate-50 sm:px-3"><Icon size={16} className="shrink-0 text-indigo-700" /><span className="min-w-0 flex-1 text-xs font-semibold text-slate-700">{label}</span><span className="text-sm font-extrabold text-slate-950">{value}</span><ChevronRight size={14} className="text-slate-500" /></button>)}</div>
+          <div className="grid gap-1 rounded-xl border border-slate-200 bg-white px-3 sm:grid-cols-3 sm:divide-x sm:divide-slate-200">{[{ icon: Users, label: 'My learners', value: dashboardLoading ? '…' : dashboardError ? '—' : (teacherStats.myStudents ?? 0), page: 'teacher-learner-analysis' }, { icon: Check, label: 'Registers to complete', value: dashboardLoading ? '…' : dashboardError ? '—' : attendanceDue.length, page: 'attendance-daily' }, { icon: ClipboardList, label: 'Scores to review', value: dashboardLoading ? '…' : dashboardError ? '—' : assessmentsToMark.length, page: 'assess-summative-assessment' }].map(({ icon: Icon, label, value, page }) => <button key={label} onClick={() => onNavigate?.(page)} className="flex min-h-14 items-center gap-2.5 px-2 text-left hover:bg-slate-50 sm:px-3"><Icon size={16} className="shrink-0 text-indigo-700" /><span className="min-w-0 flex-1 text-xs font-semibold text-slate-700">{label}</span><span className="text-sm font-extrabold text-slate-950">{value}</span><ChevronRight size={14} className="text-slate-500" /></button>)}</div>
           {dashboardError && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">Daily overview unavailable. Refresh to try again.</p>}
-          <Surface className="overflow-hidden"><div className="flex items-center justify-between border-b border-slate-100 px-4 py-3"><div><SmallLabel>UP NEXT</SmallLabel><h2 className="mt-0.5 text-sm font-extrabold">Your day</h2></div><span className="text-[11px] font-semibold text-slate-600">{formatDate(selectedDate)}</span></div><div className="grid gap-0 sm:grid-cols-2 sm:divide-x sm:divide-slate-100"><div className="p-4">{dashboardLoading ? <p className="text-xs text-slate-700">Loading daily tasks…</p> : nextAction ? <button onClick={() => nextAction.navigateTo === 'attendance-daily' ? setActiveTab('attendance') : nextAction.navigateTo === 'assess-summative-assessment' ? setActiveTab('assessment') : setActiveTab('plan')} className="flex w-full items-start gap-3 rounded-xl bg-indigo-50 p-3 text-left"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#2939a7] text-white"><Bell size={15} /></span><span><strong className="block text-xs text-slate-950">{nextAction.title}</strong><span className="mt-1 block text-[11px] leading-relaxed text-slate-700">{nextAction.description}</span><span className="mt-1.5 block text-[11px] font-bold text-indigo-900">{nextAction.actionLabel}</span></span></button> : <p className="text-xs text-slate-700">No urgent tasks are waiting.</p>}</div><div className="p-4"><div className="flex items-center justify-between"><SmallLabel>TODAY’S CLASSES</SmallLabel><button onClick={() => setActiveTab('plan')} className="text-[11px] font-bold text-indigo-800">Class plan <ChevronRight size={12} className="inline" /></button></div>{schedule.length ? <div className="mt-1 divide-y divide-slate-100">{schedule.slice(0, 3).map((item, index) => <div key={`${item.id || item.subject}-${index}`} className="flex items-center justify-between gap-2 py-2"><div className="min-w-0"><p className="truncate text-xs font-bold text-slate-900">{item.subject || item.learningArea || 'Lesson'}</p><p className="truncate text-[10px] text-slate-600">{item.className || item.class?.name || item.class?.stream || 'Assigned class'}</p></div><span className="shrink-0 text-[10px] font-semibold text-slate-700">{item.time || item.startTime || ''}</span></div>)}</div> : <p className="mt-2 text-xs text-slate-700">{dashboardLoading ? 'Loading schedule…' : 'No lessons scheduled today.'}</p>}</div></div></Surface>
+          <Surface className="overflow-hidden"><div className="flex items-center justify-between border-b border-slate-100 px-4 py-3"><div><SmallLabel>UP NEXT</SmallLabel><h2 className="mt-0.5 text-sm font-extrabold">Your day</h2></div><span className="text-[11px] font-semibold text-slate-600">{formatDate(selectedDate)}</span></div><div className="grid gap-0 sm:grid-cols-2 sm:divide-x sm:divide-slate-100"><div className="p-4">{dashboardLoading ? <p className="text-xs text-slate-700">Loading daily tasks…</p> : nextAction ? <button onClick={() => onNavigate?.(nextAction.navigateTo)} className="flex w-full items-start gap-3 rounded-xl bg-indigo-50 p-3 text-left"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#2939a7] text-white"><Bell size={15} /></span><span><strong className="block text-xs text-slate-950">{nextAction.title}</strong><span className="mt-1 block text-[11px] leading-relaxed text-slate-700">{nextAction.description}</span><span className="mt-1.5 block text-[11px] font-bold text-indigo-900">{nextAction.actionLabel}</span></span></button> : <p className="text-xs text-slate-700">No urgent tasks are waiting.</p>}</div><div className="p-4"><div className="flex items-center justify-between"><SmallLabel>TODAY’S CLASSES</SmallLabel><button onClick={() => setActiveTab('plan')} className="text-[11px] font-bold text-indigo-800">Class plan <ChevronRight size={12} className="inline" /></button></div>{schedule.length ? <div className="mt-1 divide-y divide-slate-100">{schedule.slice(0, 3).map((item, index) => <div key={`${item.id || item.subject}-${index}`} className="flex items-center justify-between gap-2 py-2"><div className="min-w-0"><p className="truncate text-xs font-bold text-slate-900">{item.subject || item.learningArea || 'Lesson'}</p><p className="truncate text-[10px] text-slate-600">{item.className || item.class?.name || item.class?.stream || 'Assigned class'}</p></div><span className="shrink-0 text-[10px] font-semibold text-slate-700">{item.time || item.startTime || ''}</span></div>)}</div> : <p className="mt-2 text-xs text-slate-700">{dashboardLoading ? 'Loading schedule…' : 'No lessons scheduled today.'}</p>}</div></div></Surface>
         </div>}
 
         {activeTab === 'plan' && selectedClass && <ClassPlanWorkspace selectedClass={selectedClass} schedule={schedule} dashboardLoading={dashboardLoading} onNavigate={onNavigate} />}
         {activeTab === 'entries' && selectedClass && (entryPage
-          ? <DiaryEntryComposerPage key={editingEntry?.id || `new-${entryPage}`} kind={entryPage} selectedClass={selectedClass} selectedDate={selectedDate} editingEntry={editingEntry} onBack={() => { setEntryPage(null); setEditingEntry(null); }} onPublished={handlePublished} onError={handlePublishError} />
+          ? entryPage !== 'note' && (learningAreaOptionsLoading || teacherContext.loading)
+            ? <Surface className="flex items-center gap-2 p-4 text-sm font-semibold text-slate-700"><Loader2 size={16} className="animate-spin text-indigo-700" />Loading your assigned learning areas…</Surface>
+          : <DiaryEntryComposerPage key={`${editingEntry?.id || `new-${entryPage}`}-${selectedClass.id}`} kind={entryPage} selectedClass={selectedClass} selectedDate={selectedDate} editingEntry={editingEntry} learningAreaOptions={learningAreaOptions} learningAreaOptionsError={learningAreaOptionsError || (teacherContext.error ? 'Could not verify your teaching assignments. Refresh the page and try again.' : '')} onBack={() => { setEntryPage(null); setEditingEntry(null); }} onPublished={handlePublished} onError={handlePublishError} />
           : <DiaryEntriesWorkspace selectedClass={selectedClass} user={user} onCompose={handleCompose} onEditHomework={handleEditHomework} onHomeworkDeleted={(entry) => showToast(`"${entry.title}" removed from ${selectedClass.name} diary.`, 'success')} />)}
-        {activeTab === 'assessment' && selectedClass && <AssessmentWorkspace selectedClass={selectedClass} />}
-        {activeTab === 'attendance' && selectedClass && <AttendanceWorkspace selectedClass={selectedClass} />}
         {!selectedClass && !dashboardLoading && activeTab !== 'today' && (
           <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center">
             <Users size={28} className="mx-auto mb-2 text-slate-300" />
@@ -173,8 +261,8 @@ function MobileWorkspaceMenu({ onSelect, onCompose, onNavigate }) {
     { label: 'Write a class message', icon: MessageSquare, color: 'bg-[#149447]', compose: 'note' },
     { label: 'Set daily homework', icon: BookOpen, color: 'bg-[#2563eb]', compose: 'daily' },
     { label: 'Set holiday homework', icon: CalendarDays, color: 'bg-[#7c3aed]', compose: 'holiday' },
-    { label: 'Record scores', icon: Activity, color: 'bg-[#dc2626]', tab: 'assessment' },
-    { label: 'Take attendance', icon: Check, color: 'bg-[#0f766e]', tab: 'attendance' },
+    { label: 'Record scores', icon: Activity, color: 'bg-[#dc2626]', page: 'assess-summative-assessment' },
+    { label: 'Take attendance', icon: Check, color: 'bg-[#0f766e]', page: 'attendance-daily' },
     { label: 'Review my learners', icon: Users, color: 'bg-[#334155]', page: 'teacher-learner-analysis' },
   ];
   return <section className="space-y-3 py-1 lg:hidden" aria-label="Teacher workspace pages">
@@ -192,8 +280,8 @@ function DiaryEntriesWorkspace({ selectedClass, user, onCompose, onEditHomework,
 
   const actions = [
     { kind: 'note', title: 'Write a class message', detail: 'Share an update or reminder', icon: MessageSquare, color: 'text-emerald-700 bg-emerald-50' },
-    { kind: 'daily', title: 'Set daily homework', detail: 'Give learners work for today', icon: BookOpen, color: 'text-blue-700 bg-blue-50' },
-    { kind: 'holiday', title: 'Set holiday homework', detail: 'Prepare work for the break', icon: Calendar, color: 'text-violet-700 bg-violet-50' },
+    { kind: 'daily', title: 'Set daily homework', detail: 'Create a tracked assignment for this class', icon: BookOpen, color: 'text-blue-700 bg-blue-50' },
+    { kind: 'holiday', title: 'Set holiday homework', detail: 'Create a tracked holiday assignment', icon: Calendar, color: 'text-violet-700 bg-violet-50' },
   ];
 
   const fetchEntries = async () => {
@@ -251,11 +339,14 @@ function DiaryEntriesWorkspace({ selectedClass, user, onCompose, onEditHomework,
   const getEntryMeta = (entry) => {
     const category = entry.category || 'General';
     if (category.toLowerCase() === 'homework') {
-      const area = entry.title?.split(':')[0] || entry.learningArea || 'Homework';
+      const title = String(entry.title || '');
+      const separator = title.indexOf(':');
+      const area = separator > 0 ? title.slice(0, separator).trim() : entry.learningArea || 'Homework';
+      const displayTitle = separator > 0 ? title.slice(separator + 1).trim() : title;
       const due = entry.expiresAt
         ? `Due ${new Intl.DateTimeFormat('en-KE', { day: 'numeric', month: 'short' }).format(new Date(entry.expiresAt))}`
         : '';
-      return { type: 'Homework', area, due, accent: 'violet' };
+      return { type: 'Homework', area, due, displayTitle, accent: 'violet' };
     }
     return { type: 'Class message', area: '', due: '', accent: 'emerald' };
   };
@@ -278,7 +369,7 @@ function DiaryEntriesWorkspace({ selectedClass, user, onCompose, onEditHomework,
             <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${accent}`}><Icon size={15} /></span>
             <span className="min-w-0 flex-1">
               <span className="flex flex-wrap items-center gap-2">
-                <strong className="text-xs text-slate-900">{entry.title}</strong>
+                <strong className="text-xs text-slate-900">{meta.displayTitle || entry.title}</strong>
                 {dateLabel && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-bold text-slate-700">{dateLabel}</span>}
                 {meta.type && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-bold text-slate-600">{meta.type}</span>}
               </span>
@@ -302,15 +393,16 @@ function DiaryEntriesWorkspace({ selectedClass, user, onCompose, onEditHomework,
   </div>;
 }
 
-function DiaryEntryComposerPage({ kind, selectedClass, selectedDate, editingEntry, onBack, onPublished, onError }) {
+function DiaryEntryComposerPage({ kind, selectedClass, selectedDate, editingEntry, learningAreaOptions, learningAreaOptionsError, onBack, onPublished, onError }) {
   const isMessage = kind === 'note';
   const isHoliday = kind === 'holiday';
   const isEditing = Boolean(editingEntry);
+  const initialHomework = getHomeworkTitleParts(editingEntry?.title, learningAreaOptions);
 
   // ── Form state ──
-  const [subject, setSubject] = useState(editingEntry?.title || '');
+  const [subject, setSubject] = useState(initialHomework.title);
   const [content, setContent] = useState(editingEntry?.content || '');
-  const [learningArea, setLearningArea] = useState(selectedClass.subject || 'Mathematics');
+  const [learningArea, setLearningArea] = useState(initialHomework.learningArea);
   const [dueDate, setDueDate] = useState(() => editingEntry?.expiresAt ? new Date(editingEntry.expiresAt).toISOString().slice(0, 10) : '');
   const [priority, setPriority] = useState(editingEntry?.priority || 'NORMAL');
   const [completionMode, setCompletionMode] = useState('online');
@@ -322,12 +414,16 @@ function DiaryEntryComposerPage({ kind, selectedClass, selectedDate, editingEntr
   const handleSubmit = async (event) => {
     event.preventDefault();
     if (!subject.trim() || !content.trim()) return;
+    if (!isMessage && !learningAreaOptions.includes(learningArea)) {
+      onError?.('No subject is assigned to you for this class yet. Ask your school admin to assign your learning areas.');
+      return;
+    }
 
     // Build the notice payload. targetAudience: 'PARENTS' so it appears in
     // parent diary feeds (server filters by role tokens — see
     // notice.controller.ts isNoticeVisibleTo).
     const payload = {
-      title: subject.trim(),
+      title: isMessage ? subject.trim() : `${learningArea}: ${subject.trim()}`,
       content: content.trim(),
       category: isMessage ? 'General' : 'Homework',
       priority,
@@ -363,142 +459,28 @@ function DiaryEntryComposerPage({ kind, selectedClass, selectedDate, editingEntr
     <div className="flex flex-wrap items-end justify-between gap-2"><div><SmallLabel>{selectedClass.name} · {formatDate(selectedDate)}</SmallLabel><h2 className="mt-1 text-xl font-black tracking-tight text-slate-950">{headingText}</h2></div></div>
     <form onSubmit={handleSubmit} className="grid items-start gap-3 xl:grid-cols-[minmax(0,1fr)_260px]">
       <Surface className="space-y-3 p-3.5 sm:p-4">
-        {!isMessage && <div className="grid gap-3 sm:grid-cols-2"><label className="block text-xs font-bold text-slate-600">Learning area<select value={learningArea} onChange={(e) => setLearningArea(e.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm font-medium text-slate-800 outline-none focus:border-indigo-500"><option>{selectedClass.subject || 'General'}</option><option>English</option><option>Science</option><option>Mathematics</option><option>Social Studies</option><option>Kiswahili</option><option>Religious Education</option><option>Creative Arts</option><option>Pre-Technical Studies</option></select></label><label className="block text-xs font-bold text-slate-600">Due date<input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-[11px] text-sm text-slate-800 outline-none focus:border-indigo-500" /></label></div>}
+        {!isMessage && <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block text-xs font-bold text-slate-600">Learning area
+            <select required value={learningArea} disabled={!learningAreaOptions.length} onChange={(e) => setLearningArea(e.target.value)} aria-describedby="diary-learning-area-help" className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm font-medium text-slate-800 outline-none focus:border-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500">
+              {learningAreaOptions.length
+                ? <><option value="">Choose a learning area</option>{learningAreaOptions.map((area) => <option key={area} value={area}>{area}</option>)}</>
+                : <option value="">No assigned subjects</option>}
+            </select>
+            <span id="diary-learning-area-help" className={`mt-1.5 block text-xs ${learningAreaOptions.length ? 'text-slate-500' : 'font-medium text-amber-800'}`}>
+              {learningAreaOptions.length
+                ? 'Only learning areas assigned to you for this class are listed.'
+                : learningAreaOptionsError || 'No learning areas are assigned to you for this class yet. Ask your school admin to assign your subjects before publishing homework.'}
+            </span>
+          </label>
+          <label className="block text-xs font-bold text-slate-600">Due date<input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-[11px] text-sm text-slate-800 outline-none focus:border-indigo-500" /></label>
+        </div>}
         <label className="block text-xs font-bold text-slate-600">{isMessage ? 'Message subject' : 'Assignment title'}<input required value={subject} onChange={(e) => setSubject(e.target.value)} maxLength={200} placeholder={isMessage ? 'e.g. Reminder for tomorrow' : 'e.g. Fractions practice'} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3.5 py-3 text-sm font-medium text-slate-800 outline-none placeholder:font-normal placeholder:text-slate-400 focus:border-indigo-500" /></label>
         <label className="block text-xs font-bold text-slate-600">{isMessage ? 'Message' : 'Instructions for learners'}<textarea required rows={7} value={content} onChange={(e) => setContent(e.target.value)} maxLength={10000} placeholder={isMessage ? 'Write the update or reminder for your class…' : 'Explain the work, how to complete it, and what to submit…'} className="mt-1.5 w-full resize-y rounded-xl border border-slate-200 px-3.5 py-3 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:border-indigo-500" /></label>
         {!isMessage && <fieldset><legend className="text-xs font-bold text-slate-600">How will learners complete the work?</legend><div className="mt-2 grid gap-2 sm:grid-cols-2"><button type="button" aria-pressed={completionMode === 'online'} onClick={() => setCompletionMode('online')} className={`rounded-xl border p-3 text-left ${completionMode === 'online' ? 'border-indigo-300 bg-indigo-50 ring-1 ring-indigo-200' : 'border-slate-200 bg-white'}`}><span className="flex items-center gap-2 text-sm font-bold text-slate-800"><FileText size={16} className="text-indigo-600" /> Online submission</span><span className="mt-1 block text-xs text-slate-500">Learners submit work in TrendSCORE</span></button><button type="button" aria-pressed={completionMode === 'paper'} onClick={() => setCompletionMode('paper')} className={`rounded-xl border p-3 text-left ${completionMode === 'paper' ? 'border-emerald-300 bg-emerald-50 ring-1 ring-emerald-200' : 'border-slate-200 bg-white'}`}><span className="flex items-center gap-2 text-sm font-bold text-slate-800"><CheckCircle2 size={16} className="text-emerald-600" /> Paper / offline</span><span className="mt-1 block text-xs text-slate-500">Record class completion later</span></button></div></fieldset>}
         <div><p className="text-xs font-bold text-slate-600 mb-2">Priority</p><div className="flex gap-2">{[{ id: 'LOW', label: 'Low' }, { id: 'NORMAL', label: 'Normal' }, { id: 'HIGH', label: 'High' }, { id: 'URGENT', label: 'Urgent' }].map((opt) => <button key={opt.id} type="button" aria-pressed={priority === opt.id} onClick={() => setPriority(opt.id)} className={`rounded-xl border px-3 py-2 text-xs font-bold transition ${priority === opt.id ? (opt.id === 'URGENT' ? 'border-rose-300 bg-rose-50 text-rose-800 ring-1 ring-rose-200' : opt.id === 'HIGH' ? 'border-amber-300 bg-amber-50 text-amber-800 ring-1 ring-amber-200' : 'border-indigo-300 bg-indigo-50 text-indigo-800 ring-1 ring-indigo-200') : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'}`}>{opt.label}</button>)}</div></div>
       </Surface>
-      <div className="space-y-3"><Surface className="p-3.5"><p className="text-sm font-bold text-slate-900">For {selectedClass.name}</p><p className="mt-1 text-xs text-slate-600">Only parents and learners in this class will see this in their diary.</p></Surface><div className="flex flex-col gap-2"><button type="submit" disabled={submitting || !subject.trim() || !content.trim()} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#172554] px-4 py-3 text-sm font-bold text-white hover:bg-[#1e3a8a] disabled:cursor-not-allowed disabled:opacity-50 transition-colors">{submitting ? <><Loader2 size={16} className="animate-spin" /> {isEditing ? 'Saving…' : 'Publishing…'}</> : <><MessageSquare size={16} /> {publishLabel}</>}</button><button type="button" onClick={onBack} className="min-h-10 rounded-xl px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-white">Cancel</button></div></div>
+      <div className="space-y-3"><Surface className="p-3.5"><p className="text-sm font-bold text-slate-900">For {selectedClass.name}</p><p className="mt-1 text-xs text-slate-600">Only parents and learners in this class will see this in their diary.</p></Surface><div className="flex flex-col gap-2"><button type="submit" disabled={submitting || !subject.trim() || !content.trim() || (!isMessage && (Boolean(learningAreaOptionsError) || !learningAreaOptions.includes(learningArea)))} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-[#172554] px-4 py-3 text-sm font-bold text-white hover:bg-[#1e3a8a] disabled:cursor-not-allowed disabled:opacity-50 transition-colors">{submitting ? <><Loader2 size={16} className="animate-spin" /> {isEditing ? 'Saving…' : 'Publishing…'}</> : <><MessageSquare size={16} /> {publishLabel}</>}</button><button type="button" onClick={onBack} className="min-h-10 rounded-xl px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-white">Cancel</button></div></div>
     </form>
-  </div>;
-}
-
-function AssessmentWorkspace({ selectedClass }) {
-  const [assessed, setAssessed] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  const fetchAssessments = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const resp = await assessmentAPI.getFormative({ classId: selectedClass.id });
-      if (resp?.success === false) throw new Error(resp.error || resp.message || 'Failed to load assessments');
-      setAssessed(resp?.data || []);
-    } catch (err) {
-      console.error('Failed to fetch assessments:', err);
-      setError(err?.message || 'Could not load assessments.');
-      setAssessed([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchAssessments();
-  }, [selectedClass.id]);
-
-  return <div className="space-y-3"><div className="flex flex-wrap items-end justify-between gap-2"><div><SmallLabel>{selectedClass.name}</SmallLabel><h2 className="mt-1 text-xl font-black tracking-tight">Record scores</h2><p className="mt-1 text-sm text-slate-700">Enter each learner's score, then review your assessment.</p></div></div>
-    <Surface className="overflow-hidden">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-3"><h3 className="font-extrabold text-slate-950">Recent assessments · {selectedClass.name}</h3>{loading && <Loader2 size={14} className="animate-spin text-slate-400" />}</div>
-      {error && <div className="flex items-start gap-2 border-b border-slate-100 bg-amber-50 px-4 py-3 text-xs text-amber-900"><AlertCircle size={14} className="mt-0.5 shrink-0" /> {error}</div>}
-      {!loading && assessed.length === 0 && <div className="px-4 py-6 text-center"><p className="text-xs text-slate-500">No assessments recorded yet.</p></div>}
-      <div className="divide-y divide-slate-100">
-        {assessed.map((item) => {
-          const learner = item.learner || item;
-          const learnerName = learner.name || `${learner.firstName || ''} ${learner.lastName || ''}`.trim() || 'Learner';
-          const initials = (learnerName.match(/\b\w/g) || []).slice(0, 2).join('').toUpperCase() || '?';
-          const area = item.learningArea || item.subject || item.area || '—';
-          const score = item.score != null ? `${item.score} / ${item.outOf || item.maxScore || 20}` : '—';
-          const state = item.score != null ? 'Recorded' : 'To assess';
-          return <div key={item.id || learnerName} className="flex flex-wrap items-center gap-3 px-4 py-3"><div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-xs font-extrabold text-slate-700">{initials}</div><div className="min-w-[130px] flex-1"><p className="text-sm font-bold text-slate-900">{learnerName}</p><p className="text-xs text-slate-600">{area}</p></div><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${state === 'Recorded' ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-900'}`}>{state}</span><span className="min-w-20 text-right text-sm font-extrabold text-slate-900">{score}</span></div>;
-        })}
-      </div>
-    </Surface>
-  </div>;
-}
-
-function AttendanceWorkspace({ selectedClass }) {
-  const [learners, setLearners] = useState([]);
-  const [marks, setMarks] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [saving, setSaving] = useState(false);
-  const today = new Date().toISOString().split('T')[0];
-  const options = [{ id: 'P', label: 'Present', color: 'border-emerald-200 text-emerald-700' }, { id: 'L', label: 'Late', color: 'border-amber-200 text-amber-700' }, { id: 'A', label: 'Absent', color: 'border-rose-200 text-rose-700' }, { id: 'S', label: 'Sick', color: 'border-orange-200 text-orange-700' }, { id: 'E', label: 'Excused', color: 'border-sky-200 text-sky-700' }];
-  const statusMap = { P: 'PRESENT', L: 'LATE', A: 'ABSENT', S: 'SICK', E: 'EXCUSED' };
-
-  const fetchLearners = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const resp = await attendanceAPI.getDailyClassReport(selectedClass.id, today);
-      if (resp?.success === false) throw new Error(resp.error || resp.message || 'Failed to load class roster');
-      const list = (resp?.data?.records || resp?.data?.learners || resp?.data || []);
-      const mapped = Array.isArray(list) ? list : [];
-      setLearners(mapped);
-      const existing = {};
-      mapped.forEach((l) => {
-        const id = l.id || l.learnerId;
-        const status = (l.status || l.attendanceStatus || '').toUpperCase();
-        const code = Object.entries(statusMap).find(([_, v]) => v === status)?.[0] || '';
-        if (code) existing[id] = code;
-      });
-      setMarks(existing);
-    } catch (err) {
-      console.error('Failed to fetch attendance roster:', err);
-      setError(err?.message || 'Could not load class roster for attendance.');
-      setLearners([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchLearners();
-  }, [selectedClass.id, today]);
-
-  const setMark = (id, value) => setMarks((current) => ({ ...current, [id]: value }));
-
-  const handleSave = async () => {
-    const entries = Object.entries(marks).filter(([_, code]) => code);
-    if (!entries.length) return;
-    setSaving(true);
-    try {
-      const records = entries.map(([learnerId, code]) => ({
-        learnerId,
-        classId: selectedClass.id,
-        date: today,
-        status: statusMap[code] || 'PRESENT',
-      }));
-      const resp = await attendanceAPI.markBulk({ records });
-      if (resp?.success === false) throw new Error(resp.error || resp.message || 'Failed to save attendance');
-    } catch (err) {
-      console.error('Failed to save attendance:', err);
-      setError(err?.message || 'Could not save attendance.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const markedCount = Object.values(marks).filter(Boolean).length;
-
-  return <div className="space-y-3"><div className="flex flex-wrap items-end justify-between gap-2"><div><SmallLabel>{selectedClass.name} · {formatDate(new Date())}</SmallLabel><h2 className="mt-1 text-xl font-black tracking-tight">Take attendance</h2><p className="mt-1 text-sm text-slate-700">Choose a status for each learner.</p></div><div className="text-right"><span className="block text-sm font-bold text-slate-800">{learners.length} learners in class</span></div></div>
-    <Surface className="overflow-hidden">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-4 py-2.5"><h3 className="text-sm font-bold text-slate-900">Mark today's register</h3>{loading && <Loader2 size={14} className="animate-spin text-slate-400" />}{!loading && <div className="flex gap-2 text-xs"><span className="font-bold text-emerald-800">{Object.values(marks).filter((mark) => mark === 'P').length} present</span><span className="font-bold text-amber-900">{Object.values(marks).filter((mark) => mark === 'L').length} late</span></div>}</div>
-      {error && <div className="flex items-start gap-2 border-b border-slate-100 bg-amber-50 px-4 py-3 text-xs text-amber-900"><AlertCircle size={14} className="mt-0.5 shrink-0" /> {error}</div>}
-      {!loading && learners.length === 0 && <div className="px-4 py-6 text-center"><p className="text-xs text-slate-500">No learners found in this class.</p></div>}
-      <div className="divide-y divide-slate-100">
-        {learners.map((learner) => {
-          const id = learner.id || learner.learnerId;
-          const name = learner.name || `${learner.firstName || ''} ${learner.lastName || ''}`.trim() || 'Learner';
-          const initials = (name.match(/\b\w/g) || []).slice(0, 2).join('').toUpperCase() || '?';
-          return <div key={id} className="flex flex-wrap items-center gap-2.5 px-3 py-3 sm:px-4"><div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-extrabold text-slate-700">{initials}</div><div className="min-w-[120px] flex-1"><p className="text-sm font-bold text-slate-900">{name}</p></div><div className="flex gap-1">{options.map((option) => <button key={option.id} title={option.label} aria-label={`${option.label}: ${name}`} aria-pressed={marks[id] === option.id} onClick={() => setMark(id, option.id)} className={`flex h-9 w-9 items-center justify-center rounded-full border text-xs font-bold transition ${marks[id] === option.id ? 'border-indigo-900 bg-indigo-900 text-white shadow-sm' : `${option.color} bg-white hover:bg-slate-50`}`}>{option.id}</button>)}</div></div>;
-        })}
-      </div>
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 px-4 py-3"><p className="text-xs text-slate-700">{markedCount} of {learners.length} marked</p><button onClick={handleSave} disabled={saving || markedCount === 0} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-[#172554] px-4 py-2 text-sm font-bold text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors">{saving ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} Save register</button></div>
-    </Surface>
   </div>;
 }
 
