@@ -450,6 +450,10 @@ async function runDeployReleaseOnHost(scriptPath, env, extraScriptArgs = []) {
   const dockerArgs = [
     'run', '--rm',
     '--privileged',
+    // Host-side commands run in a chroot. In particular, Certbot must be able
+    // to reach the host's systemd-resolved stub (127.0.0.53), so share the
+    // host network namespace instead of giving the helper an isolated bridge.
+    '--network', 'host',
     '--pid', 'host',
     '-v', '/:/host',
     '-v', '/var/run/docker.sock:/var/run/docker.sock',
