@@ -594,7 +594,7 @@ if [[ "${APP_TYPE}" == "school" ]]; then
 
   echo "[provision] ensuring active school row exists"
   SCHOOL_ID=$("${COMPOSE_CMD[@]}" --env-file "${ENV_FILE}" -p "${PROJECT_NAME}" -f "${STACK_COMPOSE_FILE}" exec -T db \
-    psql -U "${DB_USER}" -d "${DB_NAME}" -A -t \
+    psql -U "${DB_USER}" -d "${DB_NAME}" -q -A -t \
     -v ON_ERROR_STOP=1 \
     -v school_id="${SCHOOL_SLUG}" \
     -v school_name="${SCHOOL_NAME}" \
