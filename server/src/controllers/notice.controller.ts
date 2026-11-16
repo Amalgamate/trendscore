@@ -60,6 +60,24 @@ const withoutAuthorEmail = (notice: any) =>
     ? { ...notice, createdBy: { id: notice.createdBy.id, firstName: notice.createdBy.firstName, lastName: notice.createdBy.lastName } }
     : notice;
 
+/** Role metadata is loaded only to enforce safe diary visibility. */
+const withoutAuthorRoles = (notice: any) => {
+  if (!notice.createdBy) return notice;
+  const createdBy = { ...notice.createdBy };
+  delete createdBy.role;
+  delete createdBy.roles;
+  return { ...notice, createdBy };
+};
+
+/** Old teacher diary posts have no trustworthy class target; never expose them as school-wide. */
+const isUnscopedTeacherDiary = (notice: any) => {
+  if (notice.targetClassId) return false;
+  const roles = [...new Set([notice.createdBy?.role, ...(notice.createdBy?.roles || [])]
+    .filter(Boolean)
+    .map((role) => String(role).toUpperCase()))];
+  return roles.includes('TEACHER') && !roles.some((role) => hasPermission(role as Role, 'SEND_SCHOOL_NOTICES'));
+};
+
 
 
 export class NoticeController {
@@ -84,7 +102,9 @@ export class NoticeController {
               id: true,
               firstName: true,
               lastName: true,
-              email: true
+              email: true,
+              role: true,
+              roles: true
             }
           }
         },
@@ -96,18 +116,23 @@ export class NoticeController {
         : isDiaryPublisher
           ? notices.filter((notice) =>
               notice.createdById === userId || isNoticeVisibleTo(notice, req.user, now)
-            ).map(withoutAuthorEmail)
-          : notices.filter((notice) => isNoticeVisibleTo(notice, req.user, now)).map(withoutAuthorEmail);
+            )
+          : notices.filter((notice) => isNoticeVisibleTo(notice, req.user, now));
 
       const audienceRoles = getCanonicalRoles(req.user);
-      const scopedNotices = audienceRoles.some((role) => ['PARENT', 'STUDENT'].includes(role))
-        ? await (async () => {
-            const classIds = await learnerClassIdsFor(req.user);
-            return visibleNotices.filter((notice) => !notice.targetClassId || classIds.has(notice.targetClassId));
-          })()
+      const isFamilyAccount = audienceRoles.some((role) => ['PARENT', 'STUDENT'].includes(role));
+      const classIds = isFamilyAccount ? await learnerClassIdsFor(req.user) : null;
+      const scopedNotices = isFamilyAccount
+        ? visibleNotices.filter((notice) => {
+            if (notice.targetClassId) return classIds!.has(notice.targetClassId);
+            return !isUnscopedTeacherDiary(notice);
+          })
         : visibleNotices;
+      const responseNotices = isManager
+        ? scopedNotices.map(withoutAuthorRoles)
+        : scopedNotices.map(withoutAuthorEmail);
 
-      return res.json({ success: true, data: scopedNotices });
+      return res.json({ success: true, data: responseNotices });
     } catch (error: any) {
       return res.status(500).json({ success: false, error: error.message || 'Failed to fetch notices' });
     }
@@ -128,7 +153,9 @@ export class NoticeController {
               id: true,
               firstName: true,
               lastName: true,
-              email: true
+              email: true,
+              role: true,
+              roles: true
             }
           }
         }
@@ -136,6 +163,17 @@ export class NoticeController {
 
       if (!notice) {
         return res.status(404).json({ success: false, error: 'Notice not found' });
+      }
+
+      const audienceRoles = getCanonicalRoles(req.user);
+      if (audienceRoles.some((role) => ['PARENT', 'STUDENT'].includes(role))) {
+        const classIds = await learnerClassIdsFor(req.user);
+        if (
+          (notice.targetClassId && !classIds.has(notice.targetClassId)) ||
+          isUnscopedTeacherDiary(notice)
+        ) {
+          return res.status(404).json({ success: false, error: 'Notice not found' });
+        }
       }
 
       if (!canManageNotices(req.user)) {
@@ -146,7 +184,7 @@ export class NoticeController {
         return res.json({ success: true, data: withoutAuthorEmail(notice) });
       }
 
-      return res.json({ success: true, data: notice });
+      return res.json({ success: true, data: withoutAuthorRoles(notice) });
     } catch (error: any) {
       return res.status(500).json({ success: false, error: error.message || 'Failed to fetch notice' });
     }
@@ -179,13 +217,19 @@ export class NoticeController {
         if (!targetClass) return res.status(403).json({ success: false, error: 'You can only publish diary notes to a class assigned to you.' });
       }
       const audience = String(targetAudience || '').trim().toUpperCase();
-      if (!isSchoolNoticeManager && audience) {
-        const allowed = audience.split(',').map((t) => t.trim()).filter(Boolean);
-        const forbidden = allowed.some((t) => ['ALL', 'STAFF', 'TEACHERS'].includes(t.toUpperCase()));
-        if (forbidden) {
+      if (!isSchoolNoticeManager) {
+        if (!targetClassId) {
+          return res.status(400).json({
+            success: false,
+            error: 'Choose one of your assigned classes before publishing a diary entry.',
+          });
+        }
+
+        const allowedAudiences = audience.split(',').map((token) => token.trim()).filter(Boolean);
+        if (!allowedAudiences.length || allowedAudiences.some((token) => !['PARENTS', 'STUDENTS'].includes(token))) {
           return res.status(403).json({
             success: false,
-            error: 'Teachers can only publish diary entries to parents or students, not school-wide audiences.',
+            error: 'Class diary entries can only be shared with parents or students.',
           });
         }
       }

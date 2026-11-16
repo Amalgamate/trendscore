@@ -892,7 +892,7 @@ const PageRouter = ({
           case 'comm-notices':
             return user?.role === 'PARENT'
               ? <UnifiedInboxPage user={user} onNavigate={handleNavigate} />
-              : <NoticesPage initialTab={pageParams.activeTab} />;
+              : <NoticesPage initialTab={pageParams.activeTab} onNavigate={handleNavigate} />;
           case 'comm-messages': return <UnifiedInboxPage user={user} onNavigate={handleNavigate} />;
           case 'comm-broadcasts': return <BroadcastMessagesPage onNavigate={handleNavigate} />;
           case 'comm-history':
