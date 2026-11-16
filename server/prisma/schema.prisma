@@ -320,6 +320,8 @@ model Notice {
   priority       String    @default("NORMAL")
   status         String    @default("PUBLISHED")
   targetAudience String?
+  targetClassId  String?
+  targetClass    Class?    @relation(fields: [targetClassId], references: [id], onDelete: SetNull)
   publishedAt    DateTime  @default(now())
   expiresAt      DateTime?
   createdAt      DateTime  @default(now())
@@ -331,6 +333,7 @@ model Notice {
 
   @@index([status, publishedAt])
   @@index([archived])
+  @@index([targetClassId, status, publishedAt])
   @@map("notices")
 }
 
@@ -341,6 +344,7 @@ model Class {
   grade                   String
   stream                  String?
   teacherId               String?
+  diaryNotices            Notice[]
   // When true, the assigned class teacher is exempt from the attendance lock
   // window for this class. Toggled at assignment time by admins/head teachers.
   attendanceLockExempt    Boolean                  @default(false)
@@ -6230,3 +6234,4 @@ model PathwayImportJob {
   @@index([domain, status])
   @@map("pathway_import_jobs")
 }
+
