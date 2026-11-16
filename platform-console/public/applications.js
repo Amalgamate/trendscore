@@ -215,7 +215,10 @@
       const button = document.createElement('button');
       button.className = 'btn';
       button.type = 'button';
-      button.textContent = 'Review';
+      const canInstall = application.applicationStatus === 'approved';
+      if (canInstall) button.classList.add('application-install-now');
+      button.textContent = canInstall ? 'Install Now' : 'Review';
+      button.setAttribute('aria-label', `${canInstall ? 'Install' : 'Review'} ${application.school || 'school application'}`);
       button.addEventListener('click', () => openApplication(application.id));
       action.append(button);
     }
