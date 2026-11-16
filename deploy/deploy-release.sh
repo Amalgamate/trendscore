@@ -170,10 +170,18 @@ EOF
   nginx -t
   run_as_root systemctl reload nginx
 
-  curl --fail --show-error --silent --location --max-time 30 \
-    --resolve "${domain}:443:127.0.0.1" "https://${domain}/" --output /dev/null
-  openssl s_client -connect 127.0.0.1:443 -servername "$domain" </dev/null 2>/dev/null \
-    | openssl x509 -noout -checkhost "$domain" >/dev/null
+  tls_route_ready=false
+  for attempt in $(seq 1 10); do
+    if curl --fail --silent --location --max-time 30 \
+      --resolve "${domain}:443:127.0.0.1" "https://${domain}/" --output /dev/null 2>/dev/null \
+      && openssl s_client -connect 127.0.0.1:443 -servername "$domain" </dev/null 2>/dev/null \
+        | openssl x509 -noout -checkhost "$domain" >/dev/null 2>&1; then
+      tls_route_ready=true
+      break
+    fi
+    sleep 2
+  done
+  [[ "$tls_route_ready" == true ]] || fail "Nginx did not begin serving a valid HTTPS certificate for ${domain} after reload."
 
   set_env() {
     local key="$1" value="$2"
