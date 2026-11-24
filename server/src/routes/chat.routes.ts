@@ -43,6 +43,9 @@ router.post('/bot',  rateLimit({ windowMs: 10_000, maxRequests: 10 }), asyncHand
 
 // Parent-controlled WhatsApp assistant account linking and consent controls.
 router.get('/parent/whatsapp', asyncHandler(parentWhatsAppController.status));
+// Default path — the school messages the parent and they reply YES.
+router.post('/parent/whatsapp/confirm', requireCsrf, rateLimit({ windowMs: 60 * 60_000, maxRequests: 5 }), asyncHandler(parentWhatsAppController.requestConfirmation));
+// Fallback path, kept for numbers that cannot receive the consent message.
 router.post('/parent/whatsapp/link-code', requireCsrf, rateLimit({ windowMs: 60 * 60_000, maxRequests: 5 }), asyncHandler(parentWhatsAppController.createLinkCode));
 router.patch('/parent/whatsapp', requireCsrf, asyncHandler(parentWhatsAppController.updateSettings));
 router.delete('/parent/whatsapp', requireCsrf, asyncHandler(parentWhatsAppController.disconnect));

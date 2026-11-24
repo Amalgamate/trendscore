@@ -61,6 +61,9 @@ export const chatAPI = {
     }),
 
   getWhatsAppAssistant: () => fetchWithAuth('/chat/parent/whatsapp'),
+  requestWhatsAppConfirmation: (consent) => fetchWithAuth('/chat/parent/whatsapp/confirm', {
+    method: 'POST', body: JSON.stringify({ consent }),
+  }),
   createWhatsAppLinkCode: (consent) => fetchWithAuth('/chat/parent/whatsapp/link-code', {
     method: 'POST', body: JSON.stringify({ consent }),
   }),

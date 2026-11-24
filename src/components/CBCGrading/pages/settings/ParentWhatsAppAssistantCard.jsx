@@ -1,73 +1,102 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { Check, Copy, Loader2, MessageCircle, ShieldCheck, Unlink } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Check, Loader2, MessageCircle, ShieldCheck, Smartphone, Unlink } from 'lucide-react';
 import { chatAPI } from '../../../../services/api';
 import { useNotifications } from '../../hooks/useNotifications';
 
+/**
+ * Parent WhatsApp assistant — one decision, one button.
+ *
+ * The parent is never asked to copy a code. They confirm consent, tap once, and
+ * either the tap is enough (the school already holds their number) or the school
+ * messages that number and they reply YES on the same phone they are holding.
+ */
 const ParentWhatsAppAssistantCard = () => {
   const { showSuccess, showError } = useNotifications();
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [consent, setConsent] = useState(false);
+  const [awaiting, setAwaiting] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
   const [linkCode, setLinkCode] = useState('');
-  const [expiresAt, setExpiresAt] = useState(0);
-  const [now, setNow] = useState(Date.now());
+  // Guards against the poll callback firing after unmount.
+  const activeRef = useRef(true);
+
+  const applyStatus = useCallback((data) => {
+    if (!activeRef.current || !data) return;
+    setStatus(data);
+    if (data.linked) {
+      setAwaiting(false);
+      setLinkCode('');
+    }
+  }, []);
 
   const refreshStatus = useCallback(async () => {
     const response = await chatAPI.getWhatsAppAssistant();
-    if (response?.success) setStatus(response.data);
+    if (response?.success) applyStatus(response.data);
     return response?.data;
-  }, []);
+  }, [applyStatus]);
 
   useEffect(() => {
-    let active = true;
+    activeRef.current = true;
     const load = async () => {
       try {
         const response = await chatAPI.getWhatsAppAssistant();
-        if (active && response?.success) setStatus(response.data);
+        if (!activeRef.current) return;
+        if (response?.success) {
+          setStatus(response.data);
+          // Resume the "waiting for your YES" screen after a page reload.
+          if (response.data?.awaitingConfirmation) setAwaiting(true);
+        }
       } catch (error) {
-        if (active) showError(error.message || 'Could not load WhatsApp assistant settings');
+        if (activeRef.current) showError(error.message || 'Could not load WhatsApp assistant settings');
       } finally {
-        if (active) setLoading(false);
+        if (activeRef.current) setLoading(false);
       }
     };
     load();
-    return () => { active = false; };
+    return () => { activeRef.current = false; };
   }, [showError]);
 
+  // While a confirmation is pending, poll for the link landing.
   useEffect(() => {
-    if (!linkCode || !expiresAt) return undefined;
+    if (!awaiting) return undefined;
     const timer = window.setInterval(async () => {
-      setNow(Date.now());
-      if (Date.now() >= expiresAt) {
-        setLinkCode('');
-        setExpiresAt(0);
-        return;
-      }
       try {
         const next = await refreshStatus();
-        if (next?.linked) {
-          setLinkCode('');
-          setExpiresAt(0);
-          showSuccess('WhatsApp number linked successfully');
-        }
-      } catch { /* keep showing the issued code while the status check retries */ }
+        if (next?.linked) showSuccess('WhatsApp assistant is on');
+      } catch { /* keep waiting; the challenge expires on its own */ }
     }, 5000);
     return () => window.clearInterval(timer);
-  }, [expiresAt, linkCode, refreshStatus, showSuccess]);
+  }, [awaiting, refreshStatus, showSuccess]);
+
+  const turnOn = async () => {
+    setBusy(true);
+    try {
+      const response = await chatAPI.requestWhatsAppConfirmation(true);
+      if (!response?.success) throw new Error(response?.message || 'Could not turn on the assistant');
+      applyStatus(response.data?.status);
+      setAwaiting(true);
+      await refreshStatus();
+      showSuccess(`Check WhatsApp on ${response.data?.phone || 'your phone'} and reply YES`);
+    } catch (error) {
+      showError(error.message || 'Could not turn on the WhatsApp assistant');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const requestCode = async () => {
     setBusy(true);
     try {
-      const response = await chatAPI.createWhatsAppLinkCode(consent);
+      const response = await chatAPI.createWhatsAppLinkCode(true);
       const data = response?.data;
       if (!data?.code) throw new Error(response?.message || 'Could not create a link code');
       setLinkCode(data.code);
-      setExpiresAt(Date.now() + (data.expiresInSeconds || 600) * 1000);
-      setNow(Date.now());
-      showSuccess('Secure link code created. Send it from the WhatsApp number on your parent profile.');
+      setAwaiting(false);
+      showSuccess(`Send “LINK ${data.code}” from your WhatsApp to the school number`);
     } catch (error) {
-      showError(error.message || 'Could not create a WhatsApp link code');
+      showError(error.message || 'Could not create a link code');
     } finally {
       setBusy(false);
     }
@@ -78,8 +107,8 @@ const ParentWhatsAppAssistantCard = () => {
     try {
       const response = await chatAPI.updateWhatsAppAssistant(!status?.enabled);
       if (!response?.success) throw new Error(response?.message || 'Could not update the assistant');
-      setStatus(response.data);
-      showSuccess(response.data.enabled ? 'WhatsApp assistant resumed' : 'WhatsApp assistant paused');
+      applyStatus(response.data);
+      showSuccess(response.data.enabled ? 'Assistant turned back on' : 'Assistant paused');
     } catch (error) {
       showError(error.message || 'Could not update the assistant');
     } finally {
@@ -88,36 +117,29 @@ const ParentWhatsAppAssistantCard = () => {
   };
 
   const disconnect = async () => {
-    if (!window.confirm('Disconnect WhatsApp from your parent account? You will need to link it again before viewing records in WhatsApp.')) return;
+    if (!window.confirm('Turn off the WhatsApp assistant for this number? You can turn it back on any time.')) return;
     setBusy(true);
     try {
       await chatAPI.disconnectWhatsAppAssistant();
       setStatus((current) => ({ ...current, linked: false, enabled: false, phone: null, linkedAt: null }));
+      setAwaiting(false);
       setLinkCode('');
-      setExpiresAt(0);
       setConsent(false);
-      showSuccess('WhatsApp assistant disconnected');
+      setManualOpen(false);
+      showSuccess('WhatsApp assistant turned off');
     } catch (error) {
-      showError(error.message || 'Could not disconnect WhatsApp');
+      showError(error.message || 'Could not turn off WhatsApp');
     } finally {
       setBusy(false);
     }
   };
 
-  const copyInstructions = async () => {
-    try {
-      await navigator.clipboard.writeText(`LINK ${linkCode}`);
-      showSuccess('Link command copied');
-    } catch {
-      showError('Could not copy the link command. Please type it in WhatsApp.');
-    }
-  };
-
-  const secondsRemaining = Math.max(0, Math.ceil((expiresAt - now) / 1000));
   const waNumber = String(status?.whatsappNumber || '').replace(/\D/g, '');
   const whatsappHref = waNumber && linkCode
     ? `https://wa.me/${waNumber}?text=${encodeURIComponent(`LINK ${linkCode}`)}`
     : null;
+
+  const canTurnOn = Boolean(consent && status?.phoneReady && status?.assistantAvailable) && !busy;
 
   return (
     <section className="border border-emerald-200 bg-white p-5 sm:p-6" aria-labelledby="parent-whatsapp-title">
@@ -130,69 +152,126 @@ const ParentWhatsAppAssistantCard = () => {
             <h2 id="parent-whatsapp-title" className="text-lg font-bold text-gray-950">WhatsApp school assistant</h2>
             {status?.linked && (
               <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-800">
-                <Check size={13} /> Linked
+                <Check size={13} /> On
               </span>
             )}
           </div>
           <p className="mt-1 text-sm text-gray-600">
-            Securely ask for fee balances and results the school has published for learners linked to your parent account.
+            Ask for fee balances and published results on WhatsApp, for the learners on your own parent account.
           </p>
         </div>
       </div>
 
       {loading ? (
-        <div className="mt-5 flex items-center gap-2 text-sm text-gray-500"><Loader2 size={16} className="animate-spin" />Loading assistant settings…</div>
+        <div className="mt-5 flex items-center gap-2 text-sm text-gray-500"><Loader2 size={16} className="animate-spin" />Loading…</div>
       ) : status?.linked ? (
+        /* ── Already on ───────────────────────────────────────────────────── */
         <div className="mt-5 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3 border border-gray-200 bg-gray-50 p-4">
             <div>
-              <p className="text-sm font-bold text-gray-900">Connected number</p>
+              <p className="text-sm font-bold text-gray-900">Number on the assistant</p>
               <p className="mt-1 text-sm text-gray-600">{status.phone || 'WhatsApp number linked'}</p>
-              <p className="mt-1 text-xs text-gray-500">{status.enabled ? 'Assistant replies are active.' : 'Assistant replies are paused.'}</p>
-              {!status.assistantAvailable && <p className="mt-2 text-xs font-semibold text-amber-800">The school WhatsApp session is offline. Ask a school administrator to reconnect it in Settings → Communication → WhatsApp.</p>}
+              <p className="mt-1 text-xs text-gray-500">{status.enabled ? 'Replying to your messages.' : 'Currently paused.'}</p>
+              {!status.assistantAvailable && <p className="mt-2 text-xs font-semibold text-amber-800">The school’s WhatsApp is offline. Ask a school administrator to reconnect it in Settings → Communication → WhatsApp.</p>}
             </div>
             <div className="flex flex-wrap gap-2">
               <button type="button" onClick={toggleEnabled} disabled={busy} className="h-10 border border-gray-300 bg-white px-4 text-sm font-bold text-gray-800 hover:bg-gray-100 disabled:opacity-60">
-                {busy ? 'Saving…' : status.enabled ? 'Pause assistant' : 'Resume assistant'}
+                {busy ? 'Saving…' : status.enabled ? 'Pause' : 'Turn back on'}
               </button>
               <button type="button" onClick={disconnect} disabled={busy} className="inline-flex h-10 items-center gap-2 border border-red-200 bg-white px-4 text-sm font-bold text-red-700 hover:bg-red-50 disabled:opacity-60">
-                <Unlink size={15} />Disconnect
+                <Unlink size={15} />Turn off
               </button>
             </div>
           </div>
           <p className="flex items-start gap-2 text-xs leading-5 text-gray-500">
             <ShieldCheck size={15} className="mt-0.5 shrink-0 text-emerald-700" />
-            Only this parent account’s accessible learners are looked up. Never send a password or M-Pesa PIN in chat.
+            Only learners linked to your parent account are looked up. Never send a password or M-Pesa PIN in chat.
           </p>
         </div>
+      ) : awaiting ? (
+        /* ── Waiting for YES ──────────────────────────────────────────────── */
+        <div className="mt-5 space-y-4">
+          <div className="border border-emerald-200 bg-emerald-50 p-4">
+            <div className="flex items-start gap-3">
+              <Smartphone size={20} className="mt-0.5 shrink-0 text-emerald-800" />
+              <div>
+                <p className="text-sm font-bold text-emerald-950">Check WhatsApp on {status?.profilePhone || 'your phone'}</p>
+                <p className="mt-1 text-sm text-emerald-900">
+                  We sent you a message. Reply <span className="font-black">YES</span> and the assistant turns on by itself — nothing else to do.
+                </p>
+                <p className="mt-2 text-xs text-emerald-800">The message expires in 15 minutes. If it never arrives, try again below.</p>
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={turnOn} disabled={busy} className="inline-flex h-10 items-center gap-2 border border-emerald-300 bg-white px-4 text-sm font-bold text-emerald-900 hover:bg-emerald-50 disabled:opacity-60">
+              {busy ? <Loader2 size={16} className="animate-spin" /> : <MessageCircle size={16} />}Send again
+            </button>
+            <button type="button" onClick={() => setManualOpen(true)} className="h-10 px-2 text-sm font-bold text-gray-600 underline hover:text-gray-900">
+              Didn’t get a message?
+            </button>
+          </div>
+        </div>
       ) : (
+        /* ── Off — the single consent screen ──────────────────────────────── */
         <div className="mt-5 space-y-4">
           {!status?.phoneReady && (
-            <p className="border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Add a valid Kenyan phone number to Personal Details and save before linking WhatsApp.</p>
+            <p className="border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Add a phone number to your profile first, then come back here.</p>
           )}
           {!status?.assistantAvailable && (
-            <p className="border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">The school WhatsApp session is offline or has not been paired. Ask a school administrator to connect it in Settings → Communication → WhatsApp, then try again.</p>
+            <p className="border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">The school’s WhatsApp is offline. Ask a school administrator to connect it in Settings → Communication → WhatsApp.</p>
           )}
-          <label className="flex cursor-pointer items-start gap-3 border border-gray-200 bg-gray-50 p-4 text-sm leading-5 text-gray-700">
+
+          {status?.phoneReady && (
+            <div className="border border-gray-200 bg-gray-50 p-4">
+              <p className="text-xs font-bold uppercase tracking-wide text-gray-500">We will use this number</p>
+              <p className="mt-1 text-lg font-black text-gray-950">{status.profilePhone || '—'}</p>
+              <p className="mt-1 text-xs text-gray-500">This is the number on your profile. To use a different one, change it in Personal Details first.</p>
+            </div>
+          )}
+
+          <label className="flex cursor-pointer items-start gap-3 text-sm leading-5 text-gray-700">
             <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} className="mt-1 h-4 w-4 accent-emerald-700" />
-            <span>I agree to link the WhatsApp number on my profile. The assistant may retrieve fee balances and school-published results only for learners accessible from my parent account. Your message is delivered through the school’s WhatsApp session and is not stored by this assistant. If the school enables its local AI classifier, your message text is used only to route your request; fee and result records stay in the school database.</span>
+            <span>
+              Yes, turn on the WhatsApp assistant. It may show fee balances and results the school has published for
+              <strong> my own learners only</strong>, and I can turn it off any time with STOP.
+            </span>
           </label>
-          <button type="button" onClick={requestCode} disabled={busy || !consent || !status?.phoneReady || !status?.assistantAvailable} className="inline-flex h-11 items-center gap-2 bg-emerald-700 px-5 text-sm font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50">
+
+          <button
+            type="button"
+            onClick={turnOn}
+            disabled={!canTurnOn}
+            className="inline-flex h-11 items-center gap-2 bg-emerald-700 px-5 text-sm font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50"
+          >
             {busy ? <Loader2 size={16} className="animate-spin" /> : <MessageCircle size={16} />}
-            Create secure link code
+            Turn on WhatsApp assistant
           </button>
 
-          {linkCode && secondsRemaining > 0 && (
-            <div className="border border-emerald-200 bg-emerald-50 p-4">
-              <p className="text-sm font-bold text-emerald-950">Finish linking within {Math.ceil(secondsRemaining / 60)} min</p>
-              <p className="mt-1 text-sm text-emerald-900">Send this one-time command from the WhatsApp number shown in your parent profile:</p>
-              <div className="mt-3 flex flex-wrap items-center gap-3">
-                <code className="border border-emerald-200 bg-white px-4 py-2 text-lg font-black tracking-[0.2em] text-emerald-950">LINK {linkCode}</code>
-                <button type="button" onClick={copyInstructions} className="inline-flex h-10 items-center gap-2 border border-emerald-300 bg-white px-3 text-sm font-bold text-emerald-900 hover:bg-emerald-100"><Copy size={15} />Copy command</button>
-                {whatsappHref && <a href={whatsappHref} target="_blank" rel="noreferrer" className="inline-flex h-10 items-center border border-emerald-300 bg-white px-3 text-sm font-bold text-emerald-900 hover:bg-emerald-100">Open WhatsApp</a>}
-              </div>
-              <p className="mt-2 text-xs text-emerald-800">The code works once and expires automatically. This page will update after the message is verified.</p>
-              {status?.whatsappNumber && <p className="mt-1 text-xs text-emerald-800">School WhatsApp: {status.whatsappNumber}</p>}
+          <button type="button" onClick={() => setManualOpen((open) => !open)} className="block text-xs font-bold text-gray-500 underline hover:text-gray-800">
+            Having trouble? Use a code instead
+          </button>
+
+          {manualOpen && (
+            <div className="border border-gray-200 bg-white p-4">
+              <p className="text-sm text-gray-700">We will show a short code. Send it from your WhatsApp to the school number.</p>
+              <button
+                type="button"
+                onClick={requestCode}
+                disabled={busy || !status?.phoneReady || !status?.assistantAvailable}
+                className="mt-3 inline-flex h-10 items-center border border-gray-300 bg-white px-4 text-sm font-bold text-gray-800 hover:bg-gray-100 disabled:opacity-50"
+              >
+                Show a code
+              </button>
+              {linkCode && (
+                <div className="mt-3 border border-emerald-200 bg-emerald-50 p-3">
+                  <p className="text-sm text-emerald-900">Send this to the school on WhatsApp:</p>
+                  <code className="mt-2 inline-block border border-emerald-200 bg-white px-3 py-2 text-base font-black tracking-[0.2em] text-emerald-950">LINK {linkCode}</code>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {whatsappHref && <a href={whatsappHref} target="_blank" rel="noreferrer" className="inline-flex h-9 items-center border border-emerald-300 bg-white px-3 text-sm font-bold text-emerald-900 hover:bg-emerald-100">Open WhatsApp</a>}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

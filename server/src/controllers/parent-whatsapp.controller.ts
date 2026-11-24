@@ -30,6 +30,25 @@ export const parentWhatsAppController = {
     });
   },
 
+  /**
+   * Default linking path: message the number on the parent's profile and wait
+   * for them to reply YES. No code is shown to the parent.
+   *
+   * Returns the refreshed status so the popup can render the "check your
+   * WhatsApp" state from server truth instead of guessing locally.
+   */
+  async requestConfirmation(req: AuthRequest, res: Response) {
+    linkConsentSchema.parse(req.body);
+    const userId = getUserId(req);
+    const data = await parentWhatsAppLinkService.requestConfirmation(userId);
+    const status = await parentWhatsAppLinkService.getStatus(userId);
+    res.json({
+      success: true,
+      data: { ...data, status },
+      message: `We sent a WhatsApp message to ${data.phone}. Reply YES to turn the assistant on.`,
+    });
+  },
+
   async updateSettings(req: AuthRequest, res: Response) {
     const { enabled } = enabledSchema.parse(req.body);
     const data = await parentWhatsAppLinkService.setEnabled(getUserId(req), enabled);
