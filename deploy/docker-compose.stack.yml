@@ -72,12 +72,9 @@ services:
       RATE_LIMIT_ENABLED: "true"
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      WABA_PHONE_NUMBER_ID: ${WABA_PHONE_NUMBER_ID:-}
-      WABA_DISPLAY_PHONE: ${WABA_DISPLAY_PHONE:-}
-      WABA_ACCESS_TOKEN: ${WABA_ACCESS_TOKEN:-}
-      WABA_VERIFY_TOKEN: ${WABA_VERIFY_TOKEN:-}
-      WABA_APP_SECRET: ${WABA_APP_SECRET:-}
-      WABA_API_VERSION: ${WABA_API_VERSION:-v27.0}
+      # Baileys session storage. Must be a volume — /app is rebuilt from the image
+      # on every deploy, so a Paired session would otherwise be lost each release.
+      WHATSAPP_AUTH_DIR: /app/whatsapp-auth
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:1.5b}
       OLLAMA_INTENT_TIMEOUT_MS: ${OLLAMA_INTENT_TIMEOUT_MS:-1800}
@@ -89,6 +86,8 @@ services:
       VAPID_SUBJECT: ${VAPID_SUBJECT}
     ports:
       - "${BACKEND_PORT}:5000"
+    volumes:
+      - whatsapp_auth:/app/whatsapp-auth
     networks:
       - app_net
 
@@ -121,3 +120,4 @@ volumes:
   db_data:
   redis_data:
   ollama_data:
+  whatsapp_auth:

@@ -24,7 +24,7 @@
 
 import prisma from '../config/database';
 import { SmsService } from './sms.service';
-import { whatsAppBusinessService, isWabaConfigured } from '../domains/communication/whatsapp-business.service';
+import { sendWhatsAppText, isWhatsAppChannelReady } from '../domains/communication/whatsapp-channel';
 import { NotificationService, NotificationType } from './notification.service';
 import logger from '../utils/logger';
 
@@ -278,10 +278,10 @@ export class AttendanceNotificationService {
       logger.warn('[AttendanceNotification] SMS exception', { learnerId, error: smsErr.message });
     }
 
-    // ── WhatsApp delivery (WABA only, if configured) ────────────────────────
-    if (isWabaConfigured()) {
+    // ── WhatsApp delivery (paired Baileys session, if connected) ────────────
+    if (isWhatsAppChannelReady()) {
       try {
-        const waResult = await whatsAppBusinessService.sendText({ to: phone, body: message });
+        const waResult = await sendWhatsAppText(phone, message);
         logger.info('[AttendanceNotification] WhatsApp sent', {
           learnerId,
           type,

@@ -7,6 +7,8 @@
 
 > **Implementation update — 8 August 2026:** The original assessment below is retained as the baseline snapshot. TrendSCORE now has an authenticated `/api/ai/chat` orchestrator, provider routing, a tool registry, seven Pathways tools, role and learner-ownership enforcement, pathway-stage guards, CSRF protection, exact-input confirmations stored in Redis with a development memory fallback, persistent `AuditLog` records for tool outcomes, tenant/user-scoped conversation history, and a frontend assistant with explicit confirmation controls. Focused TypeScript, persistence, security and UI lint gates pass. Production rollout still requires live-provider end-to-end testing, production Redis configuration, AI-specific rate limits/usage budgets, and operational monitoring.
 
+> **WhatsApp implementation note — 24 November 2026:** The dual-transport notes below describe the historical assessment. The current server implementation uses Baileys for WhatsApp sends and parent-assistant inbound messages; the server-side WABA adapter and webhook have been retired. See [the current parent WhatsApp setup](integrations/parent-whatsapp-assistant.md).
+
 ---
 
 ## Executive Summary
@@ -128,12 +130,8 @@ TrendScore has **two WhatsApp integrations** with graceful fallback:
 - **Rate Limiting:** 1-second delay between bulk messages
 - **Status:** Operational but requires phone to be online
 
-#### B. WhatsApp Business API (WABA — Official)
-- **Library:** Custom axios-based adapter (`whatsapp-business.service.ts`)
-- **Auth:** Meta Graph API with permanent access token
-- **Features:** Text messages, template messages (for 24h+ window), webhook verification
-- **Fallback:** If WABA fails or is unconfigured, system falls back to Baileys
-- **Feature Flag:** Activates only when `WABA_PHONE_NUMBER_ID` is set
+#### B. WhatsApp Business API (WABA — retired)
+Removed. The Meta Cloud API adapter (`whatsapp-business.service.ts`), its signed webhook, and all `WABA_*` configuration are gone; Baileys (above) is the only WhatsApp transport. Schools that previously used WABA were never configured in production, so no migration is required.
 
 ### WhatsApp Capabilities Matrix
 

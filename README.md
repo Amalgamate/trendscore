@@ -51,8 +51,8 @@ TrendScore brings the everyday work of a school into one secure, role-aware plat
 | Timetable, planner, schemes of work, transport, boarding, inventory, assets, and library | **Complete** | Core operational module flows are implemented. |
 | LMS and Digital Learning Hub | **WIP** | Courses, lessons, assignments, submissions, marking, resources, progress, analytics, and marketplace foundations exist; Digital Campus expansion continues. |
 | Notices, SMS, email, broadcasts, notifications, and templates | **Complete** | Provider configuration, templates, contact groups, inboxes, notifications, and delivery workflows are implemented. |
-| WhatsApp outbound notifications and reports | **WIP** | Official Meta Cloud API outbound adapter and legacy QR/Baileys sender are present; production consolidation is still required. |
-| School inside WhatsApp (inbound parent self-service) | **WIP** | Architecture and outbound foundation exist, but secure inbound conversation, identity, and parent-service workflows remain to be built. |
+| WhatsApp outbound notifications and reports | **Implemented** | Baileys sends through the school's paired WhatsApp account; an administrator must pair the account in **Settings → Communication → WhatsApp**. |
+| School inside WhatsApp (inbound parent self-service) | **Implemented; release pending** | Baileys receives parent requests; verified parents can query fee balances and published results for their linked learners. |
 | AI intelligence and in-app copilot | **WIP** | Deterministic intelligence, provider-backed chat, permissioned tools, and LMS AI features exist; additional tool coverage and governance hardening continue. |
 | USSD self-service | **Not started** | No menu, session, identity, or transaction flow has been implemented. |
 | Voice / VOIP | **Not started** | No SIP, WebRTC, telephony adapter, calling UI, recording, or call-log workflow has been implemented. |
@@ -254,37 +254,35 @@ Voice and VOIP are a planned extension of this communication layer. The reposito
 
 ### School inside WhatsApp — readiness and implementation path
 
-TrendScore is preparing to let verified parents use key school services directly in WhatsApp. This is **WIP**, not a released parent self-service channel.
+TrendScore lets verified parents look up fee balances and published assessment results over WhatsApp. Transport is [Baileys](https://github.com/WhiskeySockets/Baileys) over a paired school number — there is no Meta Business account or webhook involved.
 
 | Layer | Current readiness | Notes |
 | --- | --- | --- |
-| Official Meta provider | **WIP** | The WhatsApp Cloud API adapter sends text and approved templates, including absence notifications, when `WABA_*` credentials are configured. |
-| Legacy sender | **WIP** | A QR/Baileys service supports report sharing, tests, and staff-initiated sends; it should be migrated behind a provider flag and retired from production parent journeys. |
-| Inbound webhook | **Not started** | The adapter can verify Meta’s GET challenge, but `/api/webhooks` currently mounts SMS callbacks only—there is no signed WhatsApp POST handler. |
-| Parent identity | **Not started** | Parent-to-learner access rules exist, but a WhatsApp phone-number binding, verification, and recovery process is not yet implemented. |
-| Parent conversation | **Not started** | There is no WhatsApp conversation state, durable message inbox, delivery-status processing, idempotency store, or human-handoff workflow. |
-| Read-only parent services | **Not started** | The existing parent, fee, attendance, report, and Pathways services need channel-safe, parent-scoped adapters. |
+| Outbound sender | **Implemented** | Baileys sends text and media through the school's paired account, including attendance, LMS, school-trigger, and fee-reminder notifications. |
+| Inbound assistant | **Implemented; release pending** | Parent replies arrive over Baileys (`messages.upsert`). No public webhook or inbound port is needed. |
+| Parent identity | **Implemented; release pending** | A parent links their own number by sending `LINK <code>` from the phone saved on their profile. Codes are single-use, hashed in Redis, valid 10 minutes, and rate-limited to 5/hour. |
+| Read-only parent services | **Implemented; release pending** | Fee balance and published summative/formative results, scoped to learners reachable from the parent's own accounts. |
+| Parent conversation | **Not started** | No persistent conversation state, durable message inbox, delivery-status processing, or human-handoff workflow. Replies are stateless and operational only. |
 | Conversational payments and approvals | **Not started** | These require canonical payment handling, explicit confirmation, idempotency, and audit guarantees before exposure in WhatsApp. |
 
-The target flow is deliberately channel-neutral so WhatsApp, future USSD, the parent portal, and a mobile app can use the same authorised business services:
+The pipeline is deliberately channel-neutral so WhatsApp, future USSD, the parent portal, and a mobile app can use the same authorised business services:
 
 ```text
 Parent WhatsApp
-  → Meta Cloud API signed webhook
-  → verify signature + deduplicate provider message ID
-  → resolve school from business phone number
-  → bind and verify parent identity
-  → conversation/session and human-handoff layer
+  → paired Baileys socket (messages.upsert, type = notify)
+  → deduplicate provider message ID, drop groups/broadcasts/fromMe
+  → resolve parent by phone → verify role, status, and profile phone match
+  → classify intent (local Ollama, deterministic fallback)
   → permission-checked TrendScore domain service
-  → audited reply, approved template, or confirmation prompt
+  → reply over the same session
 ```
 
 Recommended delivery sequence:
 
-1. Keep official Meta Cloud API in **outbound-only** mode for absent-learner alerts, fee reminders, report-ready notices, and approval notifications.
-2. Add signed inbound webhook ingestion, normalized messages and statuses, durable inbox records, deduplication, monitoring, and a support handoff—without exposing school data yet.
-3. Add a parent linking flow: the parent confirms their WhatsApp number through the parent portal or an OTP, then is limited to linked active learners.
-4. Release a numbered, read-only menu for verified parents: fee balance, attendance summary, report availability, notices, and Pathways status.
+1. ~~Pair the school number and ship outbound sends~~ — **done**. Absence alerts, fee reminders, report-ready notices, and approval notifications go out over Baileys.
+2. ~~Add inbound ingestion, deduplication, and parent linking~~ — **done**. `LINK <code>`, `STOP`/`START`, and read-only fee + result lookups are live.
+3. Add a durable inbox and delivery-status tracking — inbound messages are currently processed in memory and not persisted, so there is no support handoff trail.
+4. Release a numbered, read-only menu for verified parents: attendance summary, notices, and Pathways status (fee balance and results already exist).
 5. Add AI only as a presentation layer over permission-checked tools; it must never access Prisma or issue direct database mutations.
 6. Add write or financial actions only with explicit confirmation, idempotency keys, audit logs, a clear rollback path, and human escalation.
 

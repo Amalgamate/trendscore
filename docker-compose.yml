@@ -54,12 +54,8 @@ services:
       NODE_ENV: production
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      WABA_PHONE_NUMBER_ID: ${WABA_PHONE_NUMBER_ID:-}
-      WABA_DISPLAY_PHONE: ${WABA_DISPLAY_PHONE:-}
-      WABA_ACCESS_TOKEN: ${WABA_ACCESS_TOKEN:-}
-      WABA_VERIFY_TOKEN: ${WABA_VERIFY_TOKEN:-}
-      WABA_APP_SECRET: ${WABA_APP_SECRET:-}
-      WABA_API_VERSION: ${WABA_API_VERSION:-v27.0}
+      # Baileys session storage — persisted so QR pairing survives container rebuilds.
+      WHATSAPP_AUTH_DIR: /app/whatsapp-auth
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:1.5b}
       OLLAMA_INTENT_TIMEOUT_MS: ${OLLAMA_INTENT_TIMEOUT_MS:-1800}
@@ -68,6 +64,8 @@ services:
     depends_on:
       - db
       - redis
+    volumes:
+      - whatsapp_auth:/app/whatsapp-auth
     networks:
       - zawadi-network
 
@@ -101,3 +99,4 @@ volumes:
   postgres_data:
   redis_data:
   ollama_data:
+  whatsapp_auth:
