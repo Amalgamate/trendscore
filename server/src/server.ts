@@ -127,8 +127,11 @@ app.use(sanitizeResponse);
 app.use(express.json({
   limit: '50mb',
   verify: (req, _res, buffer) => {
-    if (req.originalUrl.startsWith('/api/webhooks/whatsapp')) {
-      (req as typeof req & { rawBody?: Buffer }).rawBody = Buffer.from(buffer);
+    // Verify receives the raw IncomingMessage; originalUrl is added by Express
+    // routing, so it must be read through the Request type.
+    const request = req as typeof req & { originalUrl?: string; rawBody?: Buffer };
+    if (request.originalUrl?.startsWith('/api/webhooks/whatsapp')) {
+      request.rawBody = Buffer.from(buffer);
     }
   },
 }));

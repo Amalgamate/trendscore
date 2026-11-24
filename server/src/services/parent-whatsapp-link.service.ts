@@ -10,8 +10,11 @@ const LINK_CODE_TTL_SECONDS = 10 * 60;
 const LINK_CODE_RATE_TTL_SECONDS = 60 * 60;
 const MAX_LINK_CODES_PER_HOUR = 5;
 const MAX_LINK_ATTEMPTS = 5;
-const isParentAccount = (user: { role: string; roles?: string[] } | null | undefined) =>
-  user?.role === 'PARENT' || Boolean(user?.roles?.includes('PARENT'));
+// Type predicate so callers narrow a possibly-null user to non-null on success.
+const isParentAccount = (
+  user: { role: string; roles?: string[] } | null | undefined,
+): user is { role: string; roles?: string[] } =>
+  Boolean(user) && (user!.role === 'PARENT' || Boolean(user!.roles?.includes('PARENT')));
 
 interface LinkChallenge {
   userId: string;
