@@ -110,4 +110,51 @@ describe('ParentAccessService', () => {
 
     await expect(service.getAccessibleLearnerIds('parent-1')).resolves.toEqual(['direct-1']);
   });
+
+  it('never counts family-linked learners as accessible unless the learner is active', async () => {
+    mockedPrisma.learner.findMany.mockResolvedValue([]);
+    mockedPrisma.familyMember.findUnique.mockResolvedValue({
+      status: 'ACTIVE',
+      canLogin: true,
+      canViewReports: true,
+      familyAccount: {
+        status: 'ACTIVE',
+        archived: false,
+        learners: [{ learnerId: 'shared-1' }],
+      },
+    });
+
+    await service.getAccessibleLearnerIds('parent-1');
+
+    // The archived filter must live on the learner relation, not just on the
+    // family link. Without it a family whose only learners have left still
+    // passes the "has at least one learner" gates.
+    expect(mockedPrisma.familyMember.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({
+          familyAccount: expect.objectContaining({
+            select: expect.objectContaining({
+              learners: expect.objectContaining({
+                where: { learner: { is: { archived: false } } },
+              }),
+            }),
+          }),
+        }),
+      }),
+    );
+  });
+
+  it('returns no learners when every family link points at an archived learner', async () => {
+    mockedPrisma.learner.findMany.mockResolvedValue([]);
+    // The database applies the archived filter, so an all-archived family comes
+    // back with an empty learner list rather than reusing the link rows.
+    mockedPrisma.familyMember.findUnique.mockResolvedValue({
+      status: 'ACTIVE',
+      canLogin: true,
+      canViewReports: true,
+      familyAccount: { status: 'ACTIVE', archived: false, learners: [] },
+    });
+
+    await expect(service.getAccessibleLearnerIds('parent-1')).resolves.toEqual([]);
+  });
 });

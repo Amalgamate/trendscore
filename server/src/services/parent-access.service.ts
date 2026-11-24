@@ -31,6 +31,12 @@ export class ParentAccessService {
               status: true,
               archived: true,
               learners: {
+                // Archived learners must not grant access. Without this filter a
+                // family link to a learner who has since left keeps that learner
+                // reachable — enough to pass the "has at least one learner" gates
+                // (WhatsApp linking, fee lookups) on a family with no current
+                // learners at all.
+                where: { learner: { is: { archived: false } } },
                 select: { learnerId: true },
               },
             },
