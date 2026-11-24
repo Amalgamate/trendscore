@@ -260,7 +260,7 @@ TrendScore lets verified parents look up fee balances and published assessment r
 | --- | --- | --- |
 | Outbound sender | **Implemented** | Baileys sends text and media through the school's paired account, including attendance, LMS, school-trigger, and fee-reminder notifications. |
 | Inbound assistant | **Implemented; release pending** | Parent replies arrive over Baileys (`messages.upsert`). No public webhook or inbound port is needed. |
-| Parent identity | **Implemented; release pending** | A parent links their own number by sending `LINK <code>` from the phone saved on their profile. Codes are single-use, hashed in Redis, valid 10 minutes, and rate-limited to 5/hour. |
+| Parent identity | **Implemented; release pending** | One tap plus a `YES` reply. The parent consents in **My Profile** and the school messages the number already on their profile; replying `YES` links the account. The challenge is single-use, hashed in Redis, valid 15 minutes, and rate-limited to 5/hour. A `LINK <code>` fallback remains for numbers that cannot receive the message. |
 | Read-only parent services | **Implemented; release pending** | Fee balance and published summative/formative results, scoped to learners reachable from the parent's own accounts. |
 | Parent conversation | **Not started** | No persistent conversation state, durable message inbox, delivery-status processing, or human-handoff workflow. Replies are stateless and operational only. |
 | Conversational payments and approvals | **Not started** | These require canonical payment handling, explicit confirmation, idempotency, and audit guarantees before exposure in WhatsApp. |
@@ -280,7 +280,7 @@ Parent WhatsApp
 Recommended delivery sequence:
 
 1. ~~Pair the school number and ship outbound sends~~ — **done**. Absence alerts, fee reminders, report-ready notices, and approval notifications go out over Baileys.
-2. ~~Add inbound ingestion, deduplication, and parent linking~~ — **done**. `LINK <code>`, `STOP`/`START`, and read-only fee + result lookups are live.
+2. ~~Add inbound ingestion, deduplication, and parent linking~~ — **done**. One-tap consent with a `YES` reply (`LINK <code>` fallback), `STOP`/`START`, and read-only fee + result lookups are live.
 3. Add a durable inbox and delivery-status tracking — inbound messages are currently processed in memory and not persisted, so there is no support handoff trail.
 4. Release a numbered, read-only menu for verified parents: attendance summary, notices, and Pathways status (fee balance and results already exist).
 5. Add AI only as a presentation layer over permission-checked tools; it must never access Prisma or issue direct database mutations.

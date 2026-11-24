@@ -21,6 +21,23 @@ export class ParentWhatsAppAssistantService {
     const message = text.trim().slice(0, 1000);
     if (!message) return;
 
+    // Consent confirmation comes first: a bare "YES" is only meaningful while a
+    // link challenge is open, and confirmFromInbound() returns false otherwise so
+    // an ordinary "yes" still reaches the intent router below.
+    if (await parentWhatsAppLinkService.confirmFromInbound(from, message)) {
+      await this.reply(from, [
+        '✅ Turned on.',
+        '',
+        'You can now ask me:',
+        '• fees — outstanding balances',
+        '• results — latest published results',
+        '',
+        'Your child’s details are only ever shown for learners linked to your own parent account.',
+        'Send STOP any time to pause these replies.',
+      ].join('\n'));
+      return;
+    }
+
     const linkCommand = message.match(/^link\s+([a-f0-9]{16})$/i);
     if (linkCommand) {
       const linked = await parentWhatsAppLinkService.completeLink(from, linkCommand[1]);
