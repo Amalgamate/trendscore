@@ -65,6 +65,7 @@ export { communicationAPI };
 export { broadcastAPI };
 export { userAPI };
 export { schoolAPI };
+export { chatAPI };
 export { facilityAPI };
 export { teacherAPI };
 export { parentAPI };

@@ -8,6 +8,8 @@ import { chatController } from '../controllers/chat.controller';
 import { chatbotController } from '../controllers/chatbot.controller';
 import { asyncHandler } from '../utils/async.util';
 import { rateLimit } from '../middleware/enhanced-rateLimit.middleware';
+import { requireCsrf } from '../middleware/csrf.middleware';
+import { parentWhatsAppController } from '../controllers/parent-whatsapp.controller';
 
 const router = Router();
 const send = rateLimit({ windowMs: 10_000, maxRequests: 20 }); // 20 msgs / 10s
@@ -38,5 +40,11 @@ router.post('/messages/:id/reactions',  asyncHandler(chatController.toggleReacti
 
 // Chatbot
 router.post('/bot',  rateLimit({ windowMs: 10_000, maxRequests: 10 }), asyncHandler(chatbotController.chat));
+
+// Parent-controlled WhatsApp assistant account linking and consent controls.
+router.get('/parent/whatsapp', asyncHandler(parentWhatsAppController.status));
+router.post('/parent/whatsapp/link-code', requireCsrf, rateLimit({ windowMs: 60 * 60_000, maxRequests: 5 }), asyncHandler(parentWhatsAppController.createLinkCode));
+router.patch('/parent/whatsapp', requireCsrf, asyncHandler(parentWhatsAppController.updateSettings));
+router.delete('/parent/whatsapp', requireCsrf, asyncHandler(parentWhatsAppController.disconnect));
 
 export default router;

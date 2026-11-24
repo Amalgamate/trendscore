@@ -54,11 +54,31 @@ services:
       NODE_ENV: production
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      WABA_PHONE_NUMBER_ID: ${WABA_PHONE_NUMBER_ID:-}
+      WABA_DISPLAY_PHONE: ${WABA_DISPLAY_PHONE:-}
+      WABA_ACCESS_TOKEN: ${WABA_ACCESS_TOKEN:-}
+      WABA_VERIFY_TOKEN: ${WABA_VERIFY_TOKEN:-}
+      WABA_APP_SECRET: ${WABA_APP_SECRET:-}
+      WABA_API_VERSION: ${WABA_API_VERSION:-v27.0}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:1.5b}
+      OLLAMA_INTENT_TIMEOUT_MS: ${OLLAMA_INTENT_TIMEOUT_MS:-1800}
       TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-0}
       SECURE_COOKIES: ${SECURE_COOKIES:-true}
     depends_on:
       - db
       - redis
+    networks:
+      - zawadi-network
+
+  # Optional local intent classifier. Enable with `docker compose --profile ai up -d ollama`.
+  # Only inbound message text is sent to this local classifier; fee/result records stay in the database.
+  ollama:
+    image: ${OLLAMA_IMAGE:-ollama/ollama:latest}
+    profiles: ["ai"]
+    restart: always
+    volumes:
+      - ollama_data:/root/.ollama
     networks:
       - zawadi-network
 
@@ -80,3 +100,4 @@ networks:
 volumes:
   postgres_data:
   redis_data:
+  ollama_data:

@@ -233,6 +233,24 @@ class RedisCacheService {
     }
   }
 
+  /** Atomically consume security-sensitive state without a production memory fallback. */
+  async takeSecurityValue<T>(key: string): Promise<T | null> {
+    if (process.env.NODE_ENV !== 'production') return this.take<T>(key);
+    if (!this.useRedis || !this.redis) throw new SecurityStateUnavailableError();
+    let value: string | null;
+    try {
+      value = await this.redis.eval(
+        "local v = redis.call('GET', KEYS[1]); if v then redis.call('DEL', KEYS[1]); end; return v",
+        1,
+        key,
+      ) as string | null;
+    } catch {
+      throw new SecurityStateUnavailableError();
+    }
+    if (value === null) return null;
+    try { return JSON.parse(value) as T; } catch { return value as T; }
+  }
+
   /**
    * Set a value in cache with TTL
    */
