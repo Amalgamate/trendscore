@@ -4,7 +4,8 @@ import { parentAccessService } from './parent-access.service';
 import { redisCacheService } from './redis-cache.service';
 import { normalizeKenyanPhone } from '../utils/phone.util';
 import { ApiError } from '../utils/error.util';
-import { isWabaConfigured } from '../domains/communication/whatsapp-business.service';
+import { isWhatsAppChannelReady } from '../domains/communication/whatsapp-channel';
+import { whatsappService } from './whatsapp.service';
 
 const LINK_CODE_TTL_SECONDS = 10 * 60;
 const LINK_CODE_RATE_TTL_SECONDS = 60 * 60;
@@ -52,8 +53,9 @@ export class ParentWhatsAppLinkService {
     let currentPhone: string | null = null;
     try { currentPhone = parent.phone ? normalizeKenyanPhone(parent.phone).digits : null; } catch { /* profile may have no valid phone yet */ }
     const validLink = Boolean(link && currentPhone && link.phone === currentPhone);
-    const displayPhone = String(process.env.WABA_DISPLAY_PHONE || '').trim();
-    const displayPhoneDigits = displayPhone.replace(/\D/g, '');
+    // With Baileys the school number is whatever account the admin paired, so read
+    // it from the live session instead of a WABA_DISPLAY_PHONE env var.
+    const displayPhoneDigits = whatsappService.getLinkedNumber() || '';
     const validDisplayPhone = /^\d{8,15}$/.test(displayPhoneDigits);
 
     return {
@@ -63,7 +65,9 @@ export class ParentWhatsAppLinkService {
       linkedAt: validLink ? link!.linkedAt : null,
       phoneReady: Boolean(currentPhone),
       whatsappNumber: validDisplayPhone ? `+${displayPhoneDigits}` : null,
-      assistantAvailable: isWabaConfigured() && Boolean(process.env.WABA_APP_SECRET && process.env.WABA_VERIFY_TOKEN) && validDisplayPhone,
+      // Available once an admin has paired the school's Baileys session — there is
+      // no separate provider credential to check any more.
+      assistantAvailable: isWhatsAppChannelReady() && validDisplayPhone,
     };
   }
 
@@ -76,6 +80,9 @@ export class ParentWhatsAppLinkService {
       throw new ApiError(403, 'An active parent account is required to link WhatsApp');
     }
     if (!parent.phone) throw new ApiError(400, 'Add a valid phone number to your profile before linking WhatsApp');
+    if (!isWhatsAppChannelReady() || !whatsappService.getLinkedNumber()) {
+      throw new ApiError(503, 'The school WhatsApp account is offline. Ask an administrator to reconnect it, then try again.');
+    }
 
     const phone = normalizeKenyanPhone(parent.phone).digits;
     const learnerIds = await parentAccessService.getAccessibleLearnerIds(userId);

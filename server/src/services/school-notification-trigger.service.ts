@@ -12,7 +12,7 @@
  *   1. In-app notification  → NotificationService.createNotification()
  *      (writes to user_notifications table, emits socket.io, sends web push)
  *   2. SMS                   → SmsService.sendSms()
- *   3. WhatsApp (WABA)       → whatsAppBusinessService.sendText()
+ *   3. WhatsApp (Baileys)    → sendWhatsAppText()
  *
  * Design principles:
  *   - Fire-and-forget: every method catches its own errors and logs them.
@@ -35,9 +35,9 @@ import {
 } from './notification.service';
 import { SmsService } from './sms.service';
 import {
-  whatsAppBusinessService,
-  isWabaConfigured,
-} from '../domains/communication/whatsapp-business.service';
+  sendWhatsAppText,
+  isWhatsAppChannelReady,
+} from '../domains/communication/whatsapp-channel';
 import logger from '../utils/logger';
 import { resolveStudentUserIdsForLearners } from './student-account-link.service';
 
@@ -192,11 +192,10 @@ async function dispatchToRecipient(
         ),
     );
 
-    // 3. WhatsApp (WABA only)
-    if (isWabaConfigured()) {
+    // 3. WhatsApp (paired Baileys session)
+    if (isWhatsAppChannelReady()) {
       tasks.push(
-        whatsAppBusinessService
-          .sendText({ to: recipient.phone, body: payload.message })
+        sendWhatsAppText(recipient.phone, payload.message)
           .then((result) => {
             logger.info('[SchoolNotification] WhatsApp sent', {
               success: result.success,

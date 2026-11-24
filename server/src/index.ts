@@ -9,11 +9,17 @@ import prisma from './config/database';
 import http from 'http';
 import { initializeSocket } from './services/socket.service';
 import { ensureSuperAdmin } from './utils/setup-admin';
+import { registerParentWhatsAppInbound } from './services/parent-whatsapp-assistant.service';
 import logger from './utils/logger';
 import { PRODUCT_DISPLAY_NAME } from './config/productIdentity';
 
 const PORT = process.env.PORT || 5000;
 const skipSuperAdminBootstrap = (process.env.SKIP_SUPERADMIN_BOOTSTRAP || 'false').toLowerCase() === 'true';
+
+// WhatsApp may reconnect from a saved Baileys session while the database is
+// still bootstrapping. Register the consumer before any awaited startup work so
+// messages arriving during that window are not silently discarded.
+registerParentWhatsAppInbound();
 
 async function startServer() {
   try {
@@ -29,6 +35,7 @@ async function startServer() {
     }
 
     const httpServer = http.createServer(app);
+
     const io = initializeSocket(httpServer);
     app.set('io', io);
 

@@ -149,6 +149,7 @@ const ParentWhatsAppAssistantCard = () => {
               <p className="text-sm font-bold text-gray-900">Connected number</p>
               <p className="mt-1 text-sm text-gray-600">{status.phone || 'WhatsApp number linked'}</p>
               <p className="mt-1 text-xs text-gray-500">{status.enabled ? 'Assistant replies are active.' : 'Assistant replies are paused.'}</p>
+              {!status.assistantAvailable && <p className="mt-2 text-xs font-semibold text-amber-800">The school WhatsApp session is offline. Ask a school administrator to reconnect it in Settings → Communication → WhatsApp.</p>}
             </div>
             <div className="flex flex-wrap gap-2">
               <button type="button" onClick={toggleEnabled} disabled={busy} className="h-10 border border-gray-300 bg-white px-4 text-sm font-bold text-gray-800 hover:bg-gray-100 disabled:opacity-60">
@@ -170,11 +171,11 @@ const ParentWhatsAppAssistantCard = () => {
             <p className="border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Add a valid Kenyan phone number to Personal Details and save before linking WhatsApp.</p>
           )}
           {!status?.assistantAvailable && (
-            <p className="border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">The school has not finished configuring WhatsApp yet. Please contact the school office before trying to link your number.</p>
+            <p className="border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">The school WhatsApp session is offline or has not been paired. Ask a school administrator to connect it in Settings → Communication → WhatsApp, then try again.</p>
           )}
           <label className="flex cursor-pointer items-start gap-3 border border-gray-200 bg-gray-50 p-4 text-sm leading-5 text-gray-700">
             <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} className="mt-1 h-4 w-4 accent-emerald-700" />
-            <span>I agree to link the WhatsApp number on my profile. The assistant may retrieve fee balances and school-published results only for learners accessible from my parent account. WhatsApp messages are processed by Meta and the school’s assistant service. If the school enables its local AI classifier, your message text is used only to route your request; fee and result records stay in the school database.</span>
+            <span>I agree to link the WhatsApp number on my profile. The assistant may retrieve fee balances and school-published results only for learners accessible from my parent account. Your message is delivered through the school’s WhatsApp session and is not stored by this assistant. If the school enables its local AI classifier, your message text is used only to route your request; fee and result records stay in the school database.</span>
           </label>
           <button type="button" onClick={requestCode} disabled={busy || !consent || !status?.phoneReady || !status?.assistantAvailable} className="inline-flex h-11 items-center gap-2 bg-emerald-700 px-5 text-sm font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50">
             {busy ? <Loader2 size={16} className="animate-spin" /> : <MessageCircle size={16} />}

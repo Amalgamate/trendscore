@@ -3,33 +3,69 @@
  * @see https://github.com/WhiskeySockets/Baileys
  */
 
-import makeWASocket, {
-  useMultiFileAuthState,
-  DisconnectReason,
-  fetchLatestBaileysVersion,
-  makeCacheableSignalKeyStore,
-  proto,
-  MediaType,
-  Browsers,
-} from '@whiskeysockets/baileys';
-import { Boom } from '@hapi/boom';
+import type makeWASocketType from '@whiskeysockets/baileys';
+import type { WAMessage } from '@whiskeysockets/baileys';
 import { PRODUCT_DISPLAY_NAME } from '../config/productIdentity';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as pino from 'pino';
 
-// Auth state persisted to disk — survives server restarts
-const AUTH_FOLDER = path.resolve(__dirname, '../../whatsapp-auth');
+/**
+ * Baileys ships ESM only, so a top-level `import` makes this module (and every
+ * module that transitively imports it) unparseable under Jest's CJS runtime.
+ * Several notification services import the channel facade, and those are in the
+ * graph of the HTTP e2e tests — so loading Baileys eagerly would break suites
+ * that never touch WhatsApp. Resolve it on first use instead.
+ */
+type BaileysModule = typeof import('@whiskeysockets/baileys');
+let baileys: BaileysModule | null = null;
+function loadBaileys(): BaileysModule {
+  if (!baileys) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    baileys = require('@whiskeysockets/baileys') as BaileysModule;
+  }
+  return baileys;
+}
+
+// Auth state persisted to disk — survives server restarts.
+// WHATSAPP_AUTH_DIR lets the container point this at a persistent volume;
+// /app is not a volume, so the default would be lost on every redeploy.
+const AUTH_FOLDER = process.env.WHATSAPP_AUTH_DIR
+  ? path.resolve(process.env.WHATSAPP_AUTH_DIR)
+  : path.resolve(__dirname, '../../whatsapp-auth');
+
+/** Inbound text extracted from a Baileys upsert. */
+export interface InboundWhatsAppMessage {
+  /** Digits-only sender, e.g. "254712345678". */
+  phone: string;
+  /** Raw WhatsApp id for the sender, e.g. "254712345678@s.whatsapp.net". */
+  jid: string;
+  text: string;
+  messageId: string;
+  /** True for the socket owner's own messages (outbound echo). */
+  fromMe: boolean;
+}
+
+export type InboundHandler = (message: InboundWhatsAppMessage) => Promise<void> | void;
 
 type ConnectionStatus = 'disconnected' | 'qr_needed' | 'authenticated' | 'initializing';
 
 class WhatsAppService {
-  private sock: ReturnType<typeof makeWASocket> | null = null;
+  private sock: ReturnType<BaileysModule['default']> | null = null;
   private status: ConnectionStatus = 'disconnected';
   private qrCode: string | null = null;
   private reconnectTimeout: NodeJS.Timeout | null = null;
   private initializePromise: Promise<void> | null = null;
   private manualLogout = false;
+
+  private inboundHandlers: InboundHandler[] = [];
+  /**
+   * Baileys can deliver the same upsert more than once (reconnects, retries).
+   * Keep recent message ids so a parent never gets a duplicate reply.
+   */
+  private processedMessageIds = new Map<string, number>();
+  private readonly PROCESSED_TTL_MS = 24 * 60 * 60 * 1000;
+  private readonly PROCESSED_MAX = 2000;
 
   constructor() {
     console.log('[WhatsApp] Baileys service ready. Call initialize() to connect.');
@@ -42,6 +78,22 @@ class WhatsAppService {
 
   getStatus(): { status: ConnectionStatus; qrCode: string | null } {
     return { status: this.status, qrCode: this.qrCode };
+  }
+
+  /**
+   * The WhatsApp number this session is paired as, in digits only
+   * (e.g. "254712345678"), or null when not connected.
+   *
+   * Replaces WABA_DISPLAY_PHONE — with Baileys the school's number is whatever
+   * account was scanned, so it is authoritative rather than configured.
+   */
+  getLinkedNumber(): string | null {
+    if (this.status !== 'authenticated') return null;
+    const id = this.sock?.user?.id;
+    if (!id) return null;
+    // Multi-device ids look like "254712345678:12@s.whatsapp.net".
+    const digits = String(id).split('@')[0].split(':')[0].replace(/\D/g, '');
+    return /^\d{8,15}$/.test(digits) ? digits : null;
   }
 
   async initialize(): Promise<void> {
@@ -76,6 +128,7 @@ class WhatsAppService {
       try {
         this.sock.ev.removeAllListeners('connection.update');
         this.sock.ev.removeAllListeners('creds.update');
+        this.sock.ev.removeAllListeners('messages.upsert');
         this.sock.end(undefined);
       } catch (socketCleanupErr) {
         console.error('[WhatsApp] Socket cleanup warning:', socketCleanupErr);
@@ -89,6 +142,14 @@ class WhatsAppService {
 
     try {
       if (!fs.existsSync(AUTH_FOLDER)) fs.mkdirSync(AUTH_FOLDER, { recursive: true });
+
+      const {
+        default: makeWASocket,
+        useMultiFileAuthState,
+        fetchLatestBaileysVersion,
+        makeCacheableSignalKeyStore,
+        Browsers,
+      } = loadBaileys();
 
       const { state, saveCreds } = await useMultiFileAuthState(AUTH_FOLDER);
       const { version } = await fetchLatestBaileysVersion();
@@ -112,6 +173,11 @@ class WhatsAppService {
       // Save auth credentials whenever they update
       this.sock.ev.on('creds.update', saveCreds);
 
+      // Inbound messages — the only path by which WhatsApp text reaches the app.
+      this.sock.ev.on('messages.upsert', (upsert) => {
+        void this.handleUpsert(upsert);
+      });
+
       this.sock.ev.on('connection.update', (update) => {
         try {
           const { connection, lastDisconnect, qr } = update;
@@ -127,8 +193,8 @@ class WhatsAppService {
             this.status = 'disconnected';
             this.qrCode = null;
             
-            const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
-            const shouldReconnect = statusCode !== DisconnectReason.loggedOut && !this.manualLogout;
+            const statusCode = (lastDisconnect?.error as any)?.output?.statusCode;
+            const shouldReconnect = statusCode !== loadBaileys().DisconnectReason.loggedOut && !this.manualLogout;
 
             console.log('[WhatsApp] Connection closed. Status code:', statusCode, '| Reconnect:', shouldReconnect);
             
@@ -136,7 +202,7 @@ class WhatsAppService {
               console.error('[WhatsApp] Disconnect error details:', lastDisconnect.error);
             }
 
-            if (statusCode === DisconnectReason.loggedOut) {
+            if (statusCode === loadBaileys().DisconnectReason.loggedOut) {
               console.log('[WhatsApp] Session invalid or logged out. Clearing auth data to generate a fresh QR code...');
               if (fs.existsSync(AUTH_FOLDER)) {
                 fs.rmSync(AUTH_FOLDER, { recursive: true, force: true });
@@ -175,6 +241,120 @@ class WhatsAppService {
     }
   }
 
+  /**
+   * Register a consumer for inbound text messages.
+   * Returns an unsubscribe function.
+   */
+  onInbound(handler: InboundHandler): () => void {
+    this.inboundHandlers.push(handler);
+    return () => {
+      this.inboundHandlers = this.inboundHandlers.filter((registered) => registered !== handler);
+    };
+  }
+
+  /** Digits-only form of a WhatsApp JID ("254712345678@s.whatsapp.net" -> "254712345678"). */
+  private jidToPhone(jid: string): string {
+    const user = jid.split('@')[0] || '';
+    // Multi-device JIDs may carry a ":device" suffix.
+    return user.split(':')[0].replace(/[^0-9]/g, '');
+  }
+
+  private markProcessed(messageId: string): boolean {
+    const now = Date.now();
+    if (this.processedMessageIds.size > this.PROCESSED_MAX) {
+      for (const [id, seenAt] of this.processedMessageIds) {
+        if (now - seenAt > this.PROCESSED_TTL_MS) this.processedMessageIds.delete(id);
+      }
+      // Still oversized after pruning stale entries — drop the oldest half.
+      if (this.processedMessageIds.size > this.PROCESSED_MAX) {
+        const excess = this.processedMessageIds.size - Math.floor(this.PROCESSED_MAX / 2);
+        let removed = 0;
+        for (const id of this.processedMessageIds.keys()) {
+          if (removed >= excess) break;
+          this.processedMessageIds.delete(id);
+          removed += 1;
+        }
+      }
+    }
+    if (this.processedMessageIds.has(messageId)) return false;
+    this.processedMessageIds.set(messageId, now);
+    return true;
+  }
+
+  /** Extract the text body from the handful of message shapes we support. */
+  private extractText(message: any): string | null {
+    if (!message) return null;
+    let content = message;
+    // Unwrap the common WhatsApp containers without decoding media payloads.
+    for (let depth = 0; depth < 3; depth += 1) {
+      const wrapped = content?.ephemeralMessage?.message
+        || content?.viewOnceMessage?.message
+        || content?.viewOnceMessageV2?.message
+        || content?.documentWithCaptionMessage?.message;
+      if (!wrapped) break;
+      content = wrapped;
+    }
+    const text =
+      content.conversation ??
+      content.extendedTextMessage?.text ??
+      content.imageMessage?.caption ??
+      content.videoMessage?.caption ??
+      null;
+    if (typeof text !== 'string') return null;
+    const trimmed = text.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  private async handleUpsert(upsert: { type?: string; messages?: any[] }): Promise<void> {
+    // 'notify' = newly received. 'append' is history/backfill and must be ignored,
+    // otherwise a reconnect would replay old messages into the assistant.
+    if (upsert?.type !== 'notify') return;
+    const messages = Array.isArray(upsert.messages) ? upsert.messages : [];
+    if (messages.length === 0) return;
+
+    for (const incoming of messages) {
+      try {
+        // Prefer the phone-number JID when Baileys supplies it alongside a LID.
+        const jid: string = (incoming?.key as any)?.remoteJidAlt || incoming?.key?.remoteJid || '';
+        if (!jid) continue;
+        // Skip groups, broadcasts, status updates and newsletters.
+        if (jid.endsWith('@g.us') || jid.endsWith('@broadcast') || jid === 'status@broadcast') continue;
+        if (!jid.endsWith('@s.whatsapp.net')) continue;
+        // Skip the owner's own outbound echo.
+        if (incoming?.key?.fromMe) continue;
+
+        const messageId: string = incoming?.key?.id || '';
+        if (!messageId) continue;
+        if (!this.markProcessed(`${jid}:${messageId}`)) continue;
+
+        const text = this.extractText(incoming?.message);
+        if (!text) continue;
+
+        const phone = this.jidToPhone(jid);
+        if (!phone) continue;
+
+        const payload: InboundWhatsAppMessage = {
+          phone,
+          jid,
+          text,
+          messageId,
+          fromMe: Boolean(incoming?.key?.fromMe),
+        };
+
+        for (const handler of this.inboundHandlers) {
+          try {
+            await handler(payload);
+          } catch (handlerError: any) {
+            // One failing consumer must not stop the others.
+            console.error('[WhatsApp] Inbound handler error:', handlerError?.message || handlerError);
+          }
+        }
+      } catch (err: any) {
+        console.error('[WhatsApp] Failed to process inbound message:', err?.message || err);
+      }
+    }
+  }
+
   async logout(): Promise<{ success: boolean; message: string }> {
     try {
       this.manualLogout = true;
@@ -185,6 +365,7 @@ class WhatsAppService {
       if (this.sock) {
         this.sock.ev.removeAllListeners('connection.update');
         this.sock.ev.removeAllListeners('creds.update');
+        this.sock.ev.removeAllListeners('messages.upsert');
         await this.sock.logout();
         this.sock = null;
       }
@@ -207,6 +388,7 @@ class WhatsAppService {
     if (this.sock) {
       this.sock.ev.removeAllListeners('connection.update');
       this.sock.ev.removeAllListeners('creds.update');
+      this.sock.ev.removeAllListeners('messages.upsert');
       this.sock.end(undefined);
       this.sock = null;
     }

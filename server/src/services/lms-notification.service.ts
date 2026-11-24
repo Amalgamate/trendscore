@@ -16,9 +16,9 @@ import {
 } from './notification.service';
 import { SmsService } from './sms.service';
 import {
-  whatsAppBusinessService,
-  isWabaConfigured,
-} from '../domains/communication/whatsapp-business.service';
+  sendWhatsAppText,
+  isWhatsAppChannelReady,
+} from '../domains/communication/whatsapp-channel';
 import logger from '../utils/logger';
 import type {
   LearningAssignment,
@@ -120,10 +120,10 @@ async function sendParentChannelNotification(
     logger.warn('[LMSNotification] SMS exception', { learnerId, error: smsErr?.message });
   }
 
-  // WhatsApp delivery (WABA only, if configured)
-  if (isWabaConfigured()) {
+  // WhatsApp delivery (paired Baileys session, if connected)
+  if (isWhatsAppChannelReady()) {
     try {
-      const waResult = await whatsAppBusinessService.sendText({ to: phone, body: message });
+      const waResult = await sendWhatsAppText(phone, message);
       logger.info('[LMSNotification] WhatsApp sent', {
         learnerId,
         success: waResult.success,

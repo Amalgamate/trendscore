@@ -3,7 +3,8 @@ import { normalizeKenyanPhone } from '../utils/phone.util';
 import { parentAccessService } from './parent-access.service';
 import { parentWhatsAppLinkService } from './parent-whatsapp-link.service';
 import { classifyParentWhatsAppIntent } from './parent-whatsapp-intent.service';
-import { whatsAppBusinessService } from '../domains/communication/whatsapp-business.service';
+import { whatsappService, InboundWhatsAppMessage } from './whatsapp.service';
+import logger from '../utils/logger';
 
 const formatKes = (amount: number) => new Intl.NumberFormat('en-KE', {
   minimumFractionDigits: 0,
@@ -211,9 +212,39 @@ export class ParentWhatsAppAssistantService {
   }
 
   private async reply(to: string, body: string): Promise<void> {
-    const result = await whatsAppBusinessService.sendText({ to, body });
-    if (!result.success) throw new Error(`WhatsApp assistant reply failed: ${result.error || 'provider unavailable'}`);
+    if (whatsappService.getStatus().status !== 'authenticated') {
+      throw new Error('WhatsApp assistant reply failed: session is not connected');
+    }
+    const result = await whatsappService.sendMessage({ to, message: body });
+    if (!result.success) throw new Error(`WhatsApp assistant reply failed: ${result.error || result.message}`);
   }
 }
 
 export const parentWhatsAppAssistantService = new ParentWhatsAppAssistantService();
+
+let inboundRegistered = false;
+
+/**
+ * Route inbound Baileys messages into the parent assistant.
+ *
+ * Safe to call before pairing: the handler only runs when a message actually
+ * arrives, which cannot happen until an admin has scanned the QR code.
+ * Idempotent so repeated startup paths do not stack duplicate handlers.
+ */
+export function registerParentWhatsAppInbound(): void {
+  if (inboundRegistered) return;
+  inboundRegistered = true;
+
+  whatsappService.onInbound(async (inbound: InboundWhatsAppMessage) => {
+    try {
+      await parentWhatsAppAssistantService.handleMessage(inbound.phone, inbound.text);
+    } catch (error: any) {
+      logger.warn('[ParentWhatsAppAssistant] Failed to handle inbound message', {
+        error: error?.message || String(error),
+        messageId: inbound.messageId,
+      });
+    }
+  });
+
+  logger.info('[ParentWhatsAppAssistant] Inbound handler registered');
+}

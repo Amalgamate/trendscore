@@ -224,7 +224,7 @@ MOBILESASA_API_KEY
 RESEND_API_KEY
 MPESA_*
 ZKTECO_*                        ← Phase 4
-WABA_*                          ← Phase 3 (WhatsApp Business)
+WHATSAPP_AUTH_DIR               ← Baileys session directory (persist this volume)
 ```
 
 ---
