@@ -38,10 +38,23 @@ Ollama is used only to classify a message as `FEES`, `RESULTS`, or `HELP`; the s
 
 ## Parent linking and controls
 
-1. Parent signs in and opens **My Profile**.
-2. Parent confirms consent and creates a one-time code.
-3. Parent sends `LINK <code>` from the WhatsApp number saved on their own parent account, within 10 minutes.
-4. The backend verifies the code, account role/status, and current phone match before linking.
-5. Parent can pause/resume replies with `STOP` / `START`, or pause and disconnect from **My Profile**.
+The default flow asks the parent for one decision and one tap. There is no code to copy.
 
-The code is stored as a hash in Redis and consumed atomically. Raw inbound message text is not persisted by this assistant.
+1. Parent signs in and opens **My Profile**.
+2. The card shows the number already saved on the parent profile and a single consent checkbox.
+3. Parent taps **Turn on WhatsApp assistant**. The school WhatsApp account messages that number: *"Reply YES to confirm."*
+4. Parent replies `YES` from the same phone. The backend consumes the pending challenge atomically and links the account, then confirms in the chat with a short list of what they can ask.
+
+A bare `YES` only counts while a challenge is open. With no pending challenge it falls through to normal intent handling, so ordinary conversation is unaffected.
+
+Guardrails: the challenge lasts 15 minutes, is single-use, is keyed by phone hash in Redis, and is rate-limited to 5 requests/hour per parent. The link is re-validated at confirmation time — account role, `ACTIVE` status, current-phone match, at least one accessible learner, and no other parent owning the number. If the school session is disconnected, the request fails with `503` and no challenge is left behind.
+
+**Fallback.** Numbers that cannot receive the consent message can still use **Having trouble? Use a code instead**. That issues a 16-character `LINK <code>` valid for 10 minutes, hashed in Redis, with a 5-attempt cap. It is deliberately hidden behind a link so it is not the default path.
+
+**Turning off.** `STOP` / `START` in chat, or pause and disconnect from **My Profile**.
+
+Raw inbound message text is not persisted by this assistant.
+
+## School-supplied numbers
+
+The parent's `User.phone` is the single number used for both login and WhatsApp — there is no separate WhatsApp column. In the parents bulk CSV, `WhatsApp Number` acts as a fallback when `Phone` is blank, so schools that only hold WhatsApp numbers can still onboard parents. When both columns are present and differ after normalization, `Phone` wins because it is the login identity, and the import row is returned with a warning telling the operator which number was saved.

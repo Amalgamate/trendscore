@@ -10,7 +10,7 @@ import csvParser from 'csv-parser';
 import { Parser } from 'json2csv';
 import { Readable } from 'stream';
 import { z } from 'zod';
-import { buildParentLoginEmail, parentService } from '../../services/parent.service';
+import { buildParentLoginEmail, normalizeParentPhoneForFamily, parentService } from '../../services/parent.service';
 
 const router = Router();
 
@@ -19,16 +19,51 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 }
 });
 
+// `Phone` is the login identity, so at least one of Phone / WhatsApp Number must
+// be usable. The row-level check lives in resolveParentPhone() so the error
+// message can name the column the operator actually left blank.
 const parentSchema = z.object({
   'First Name': z.string().min(1, 'First name is required'),
   'Last Name': z.string().min(1, 'Last name is required'),
   'Email': z.string().email('Invalid email').optional().or(z.literal('')),
-  'Phone': z.string().min(1, 'Phone is required'),
+  'Phone': z.string().optional(),
   'Phone 2': z.string().optional(),
   'WhatsApp Number': z.string().optional(),
   'Student Admission Numbers': z.string().optional(),
   'Status': z.enum(['ACTIVE', 'INACTIVE']).optional(),
 });
+
+interface ResolvedParentPhone {
+  /** The number saved on the parent account — used for login and WhatsApp. */
+  phone: string;
+  /** Set when the row also carried a WhatsApp number that differs from Phone. */
+  warning?: string;
+}
+
+/**
+ * Decide which column becomes the parent's phone number.
+ *
+ * Schools often only hold a WhatsApp number, so `WhatsApp Number` acts as a
+ * fallback when `Phone` is blank. When both are present and differ we keep
+ * `Phone`, because that is the account's login identity — silently switching it
+ * would change how the parent signs in. The mismatch is reported instead.
+ */
+const resolveParentPhone = (row: {
+  'Phone'?: string;
+  'WhatsApp Number'?: string;
+}): ResolvedParentPhone | null => {
+  const phone = normalizeParentPhoneForFamily(row['Phone']);
+  const whatsapp = normalizeParentPhoneForFamily(row['WhatsApp Number']);
+
+  if (!phone && !whatsapp) return null;
+  if (!phone) return { phone: whatsapp! };
+  if (!whatsapp || whatsapp === phone) return { phone };
+
+  return {
+    phone,
+    warning: 'WhatsApp Number differs from Phone. Phone was saved as the login and WhatsApp number — update the parent profile if the WhatsApp number is the correct one.',
+  };
+};
 
 /**
  * POST /api/bulk/parents/upload
@@ -82,7 +117,18 @@ router.post(
     for (const item of results) {
       try {
         const csvData = item.data;
-        const loginEmail = buildParentLoginEmail(csvData['Phone']);
+        const resolvedPhone = resolveParentPhone(csvData);
+        if (!resolvedPhone) {
+          failed.push({
+            line: item.line,
+            email: csvData['Email'] || null,
+            name: `${csvData['First Name']} ${csvData['Last Name']}`,
+            reason: 'Phone is required before issuing a parent login account. Add a value in the Phone or WhatsApp Number column.'
+          });
+          continue;
+        }
+
+        const loginEmail = buildParentLoginEmail(resolvedPhone.phone);
         if (!loginEmail) {
           failed.push({
             line: item.line,
@@ -109,7 +155,7 @@ router.post(
 
         const parent = await parentService.getOrCreateParent({
           name: `${csvData['First Name']} ${csvData['Last Name']}`,
-          phone: csvData['Phone'],
+          phone: resolvedPhone.phone,
           status: (csvData['Status'] as UserStatus) || 'ACTIVE'
         });
 
@@ -134,7 +180,7 @@ router.post(
                 data: {
                   parentId: parent.id,
                   guardianName: `${csvData['First Name']} ${csvData['Last Name']}`,
-                  guardianPhone: csvData['Phone'],
+                  guardianPhone: resolvedPhone.phone,
                 }
               });
               await parentService.linkLearnerToParentFamily({
@@ -151,7 +197,8 @@ router.post(
           line: item.line,
           id: parent.id,
           email: parent.email,
-          name: `${csvData['First Name']} ${csvData['Last Name']}`
+          name: `${csvData['First Name']} ${csvData['Last Name']}`,
+          ...(resolvedPhone.warning ? { warning: resolvedPhone.warning } : {}),
         });
 
       } catch (error) {
@@ -270,6 +317,18 @@ router.get(
       'Phone 2': '0798765432',
       'WhatsApp Number': '0712345678',
       'Student Admission Numbers': '1001, 1002',
+      'Status': 'ACTIVE'
+    },
+    {
+      // WhatsApp Number alone is accepted and becomes the parent's phone.
+      'ID': '2',
+      'First Name': 'Peter',
+      'Last Name': 'Otieno',
+      'Email': '',
+      'Phone': '',
+      'Phone 2': '',
+      'WhatsApp Number': '0722000111',
+      'Student Admission Numbers': '1003',
       'Status': 'ACTIVE'
     }
   ];
