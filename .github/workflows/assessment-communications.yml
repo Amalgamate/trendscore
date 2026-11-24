@@ -93,6 +93,9 @@ jobs:
 
       - name: Typecheck server
         working-directory: server
+        env:
+          # The server typecheck exceeds the default ~2GB heap; match ci.yml (PR #222).
+          NODE_OPTIONS: --max-old-space-size=4096
         run: npx tsc --noEmit --pretty false
 
       - name: Run assessment SMS delivery regression tests

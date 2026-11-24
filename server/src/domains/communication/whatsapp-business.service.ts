@@ -67,7 +67,7 @@ function getConfig() {
     phoneNumberId: process.env.WABA_PHONE_NUMBER_ID ?? '',
     accessToken:   process.env.WABA_ACCESS_TOKEN    ?? '',
     verifyToken:   process.env.WABA_VERIFY_TOKEN    ?? '',
-    apiVersion:    process.env.WABA_API_VERSION     ?? 'v19.0',
+    apiVersion:    process.env.WABA_API_VERSION     ?? 'v27.0',
   };
 }
 
@@ -215,7 +215,7 @@ export class WhatsAppBusinessService {
 
   verifyWebhook(mode: string, token: string, challenge: string): string | null {
     const { verifyToken } = getConfig();
-    if (mode === 'subscribe' && token === verifyToken) {
+    if (verifyToken && mode === 'subscribe' && token === verifyToken) {
       return challenge;
     }
     return null;

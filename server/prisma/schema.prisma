@@ -86,6 +86,7 @@ model User {
   formativeAssessments       FormativeAssessment[]       @relation("TeacherFormativeAssessments")
   familyMembership           FamilyMember?
   invitedFamilyMembers       FamilyMember[]              @relation("FamilyMemberInviter")
+  whatsappAssistantLink      ParentWhatsAppLink?
   learners                   Learner[]                   @relation("ParentLearners")
   studentLearner             Learner?                    @relation("StudentLearner")
   approvedLeaves             LeaveRequest[]              @relation("ApprovedLeaves")
@@ -2065,6 +2066,25 @@ model ParentSmsReply {
   @@index([fromPhone, receivedAt])
   @@index([schoolId, processed])
   @@map("parent_sms_replies")
+}
+
+/// Explicit, parent-controlled link between a verified WhatsApp sender and
+/// this school account. A link is created only after a one-time code issued
+/// from the authenticated parent profile is returned by the signed WABA webhook.
+model ParentWhatsAppLink {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  phone     String   @unique
+  enabled   Boolean  @default(true)
+  consentAt DateTime @default(now())
+  linkedAt  DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  parent User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([enabled, updatedAt])
+  @@map("parent_whatsapp_links")
 }
 
 // ── Presence Platform ─────────────────────────────────────────────────────────

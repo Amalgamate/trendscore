@@ -5,6 +5,7 @@ import { userAPI } from '../../../../services/api/user.api';
 import { useAuth } from '../../../../hooks/useAuth';
 import { useNotifications } from '../../hooks/useNotifications';
 import ProfilePhotoModal from '../../shared/ProfilePhotoModal';
+import ParentWhatsAppAssistantCard from './ParentWhatsAppAssistantCard';
 
 const emptyProfile = {
   firstName: '',
@@ -318,6 +319,12 @@ const SelfProfilePage = ({ user: initialUser, onNavigate, onLogout, backTarget =
               </button>
             </div>
           </form>
+
+          {(profileUser?.role === 'PARENT' || profileUser?.roles?.includes?.('PARENT')) && (
+            <div className="lg:col-span-2">
+              <ParentWhatsAppAssistantCard />
+            </div>
+          )}
         </div>
       </div>
       <ProfilePhotoModal

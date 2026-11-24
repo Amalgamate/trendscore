@@ -72,6 +72,15 @@ services:
       RATE_LIMIT_ENABLED: "true"
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      WABA_PHONE_NUMBER_ID: ${WABA_PHONE_NUMBER_ID:-}
+      WABA_DISPLAY_PHONE: ${WABA_DISPLAY_PHONE:-}
+      WABA_ACCESS_TOKEN: ${WABA_ACCESS_TOKEN:-}
+      WABA_VERIFY_TOKEN: ${WABA_VERIFY_TOKEN:-}
+      WABA_APP_SECRET: ${WABA_APP_SECRET:-}
+      WABA_API_VERSION: ${WABA_API_VERSION:-v27.0}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:1.5b}
+      OLLAMA_INTENT_TIMEOUT_MS: ${OLLAMA_INTENT_TIMEOUT_MS:-1800}
       TRUST_PROXY_HOPS: ${TRUST_PROXY_HOPS:-0}
       SECURE_COOKIES: "true"
       HTTPS_ONLY: ${HTTPS_ONLY:-false}
@@ -93,6 +102,17 @@ services:
     networks:
       - app_net
 
+  # Optional per-school Ollama sidecar; enable only where local inference is desired.
+  # Set OLLAMA_BASE_URL=http://ollama:11434 in the school env and start with --profile ai.
+  ollama:
+    image: ${OLLAMA_IMAGE:-ollama/ollama:latest}
+    profiles: ["ai"]
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - app_net
+
 networks:
   app_net:
     driver: bridge
@@ -100,3 +120,4 @@ networks:
 volumes:
   db_data:
   redis_data:
+  ollama_data:

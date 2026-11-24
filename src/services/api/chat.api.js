@@ -60,6 +60,15 @@ export const chatAPI = {
       body: JSON.stringify({ message, context }),
     }),
 
+  getWhatsAppAssistant: () => fetchWithAuth('/chat/parent/whatsapp'),
+  createWhatsAppLinkCode: (consent) => fetchWithAuth('/chat/parent/whatsapp/link-code', {
+    method: 'POST', body: JSON.stringify({ consent }),
+  }),
+  updateWhatsAppAssistant: (enabled) => fetchWithAuth('/chat/parent/whatsapp', {
+    method: 'PATCH', body: JSON.stringify({ enabled }),
+  }),
+  disconnectWhatsAppAssistant: () => fetchWithAuth('/chat/parent/whatsapp', { method: 'DELETE' }),
+
   // User search
   searchUsers: (q) => fetchWithAuth(`/chat/users/search?q=${encodeURIComponent(q)}`),
 };
