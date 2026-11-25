@@ -28,18 +28,11 @@ import {
 } from '../permissions/AIPermissionLayer';
 import prisma from '../../config/database';
 import type { AIContext } from '../types';
-import { parentAccessService } from '../../services/parent-access.service';
+import { assertLearnerRecordAccess, assertTeacherClassAccess } from '../../services/learner-record-access.service';
 import { assertLearnerPathwayStage } from '../../middleware/pathwayStage.middleware';
 import { ApiError } from '../../utils/error.util';
 
 const PATHWAY_CODES = ['STEM', 'SOCIAL_SCIENCES', 'ARTS_SPORTS'] as const;
-const PATHWAY_STAFF_ROLES = new Set([
-  'SUPER_ADMIN',
-  'ADMIN',
-  'HEAD_TEACHER',
-  'HEAD_OF_CURRICULUM',
-  'TEACHER',
-]);
 
 function requiredString(value: unknown, field: string): string {
   if (typeof value !== 'string' || !value.trim()) {
@@ -57,29 +50,11 @@ function requiredPathway(value: unknown, field: string): typeof PATHWAY_CODES[nu
 }
 
 async function assertLearnerAccess(learnerId: string, context: AIContext): Promise<void> {
-  if (PATHWAY_STAFF_ROLES.has(context.user.role)) return;
-
-  if (context.user.role === 'PARENT') {
-    if (await parentAccessService.canAccessLearner(context.user.id, learnerId)) return;
-    throw new ApiError(403, 'Access denied: not your child');
-  }
-
-  if (context.user.role === 'STUDENT') {
-    const user = await prisma.user.findUnique({
-      where: { id: context.user.id },
-      select: { username: true },
-    });
-    const learner = user?.username
-      ? await prisma.learner.findUnique({
-          where: { admissionNumber: user.username },
-          select: { id: true },
-        })
-      : null;
-    if (learner?.id === learnerId) return;
-    throw new ApiError(403, 'Access denied: not your own record');
-  }
-
-  throw new ApiError(403, 'Access denied: pathway records are restricted');
+  await assertLearnerRecordAccess(
+    { userId: context.user.id, role: context.user.role },
+    learnerId,
+    ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER', 'PARENT', 'STUDENT'],
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -170,10 +145,14 @@ registerTool({
   name: 'get_class_pathway_summary',
   description: 'Get the pathway distribution and recommendation status for an entire class. Shows STEM / Social / Arts counts and how many are finalized vs pending.',
   category: 'READ',
-  allowedRoles: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER'],
+  allowedRoles: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER'],
   requiresConfirmation: false,
-  execute: async (input: { classId: string }, _context: AIContext) => {
+  execute: async (input: { classId: string }, context: AIContext) => {
     const classId = requiredString(input?.classId, 'classId');
+    await assertTeacherClassAccess(
+      { userId: context.user.id, role: context.user.role },
+      classId,
+    );
     const cls = await prisma.class.findUnique({
       where: { id: classId },
       select: { name: true },

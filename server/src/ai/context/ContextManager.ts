@@ -8,6 +8,8 @@
 
 import prisma from '../../config/database';
 import type { AIContext, UserRole } from '../types';
+import { assertLearnerRecordAccess, assertTeacherClassAccess } from '../../services/learner-record-access.service';
+import { ApiError } from '../../utils/error.util';
 
 interface BuildContextOptions {
   userId: string;
@@ -44,6 +46,26 @@ export async function buildAIContext(opts: BuildContextOptions): Promise<AIConte
   // Resolve selected entity name (non-critical — skip on failure)
   let selectedEntity: AIContext['selectedEntity'];
   if (selectedEntityId && selectedEntityType) {
+    // These IDs come from the browser and are hints, not trusted authorization.
+    // Enforce the same object scope before putting a learner/class/staff name
+    // into the provider prompt.
+    if (selectedEntityType === 'learner') {
+      await assertLearnerRecordAccess(
+        { userId, role },
+        selectedEntityId,
+        ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER', 'PARENT', 'STUDENT'],
+      );
+    } else if (selectedEntityType === 'class') {
+      await assertTeacherClassAccess({ userId, role }, selectedEntityId);
+    } else if (selectedEntityType === 'teacher' || selectedEntityType === 'staff') {
+      const canViewStaff = ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER'].includes(role);
+      if (!canViewStaff && selectedEntityId !== userId) {
+        throw new ApiError(403, 'You can only provide your own staff context.');
+      }
+    } else if (selectedEntityType === 'parent' && selectedEntityId !== userId &&
+      !['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER'].includes(role)) {
+      throw new ApiError(403, 'You can only provide your own parent context.');
+    }
     selectedEntity = await resolveEntityName(selectedEntityId, selectedEntityType);
   }
 

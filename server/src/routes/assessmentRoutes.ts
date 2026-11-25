@@ -11,7 +11,7 @@ import { authenticate } from '../middleware/auth.middleware';
 import { requireSchoolContext } from '../middleware/school.middleware';
 import { rateLimit } from '../middleware/enhanced-rateLimit.middleware';
 import { validate } from '../middleware/validation.middleware';
-import { auditLog, ResourceAccessControl, requireRole } from '../middleware/permissions.middleware';
+import { auditLog, ResourceAccessControl, requirePermission, requireRole } from '../middleware/permissions.middleware';
 import { checkNotLocked } from '../middleware/workflow.authorization';
 import { checkSubjectOwnership } from '../middleware/subjectOwnership.middleware';
 
@@ -152,6 +152,7 @@ router.post(
 router.get(
   '/formative',
   authenticate,
+  requirePermission('ACCESS_ASSESSMENT_MODULE'),
   rateLimit({ windowMs: 60_000, maxRequests: 100 }),
   assessmentController.getFormativeAssessments
 );
@@ -159,6 +160,7 @@ router.get(
 router.get(
   '/formative/bulk',
   authenticate,
+  requirePermission('ACCESS_ASSESSMENT_MODULE'),
   rateLimit({ windowMs: 60_000, maxRequests: 60 }),
   assessmentController.getBulkFormativeResults
 );
@@ -296,6 +298,7 @@ router.post(
 router.get(
   '/summative/results/bulk',
   authenticate,
+  requirePermission('ACCESS_ASSESSMENT_MODULE'),
   rateLimit({ windowMs: 60_000, maxRequests: 100 }),
   assessmentController.getBulkSummativeResults
 );
@@ -319,6 +322,7 @@ router.patch(
 router.get(
   '/summative/results/test/:testId',
   authenticate,
+  requirePermission('ACCESS_ASSESSMENT_MODULE'),
   rateLimit({ windowMs: 60_000, maxRequests: 100 }),
   assessmentController.getTestResults
 );

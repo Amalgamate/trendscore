@@ -6,7 +6,7 @@
 import express, { Router } from 'express';
 import { LearnerController } from '../controllers/learner.controller';
 import { authenticate, authorize } from '../middleware/auth.middleware';
-import { requirePermission, requireRole, ResourceAccessControl, auditLog } from '../middleware/permissions.middleware';
+import { requireAnyPermission, requirePermission, requireRole, ResourceAccessControl, auditLog } from '../middleware/permissions.middleware';
 import { asyncHandler } from '../utils/async.util';
 import { validate } from '../middleware/validation.middleware';
 import { rateLimit } from '../middleware/enhanced-rateLimit.middleware';
@@ -33,6 +33,7 @@ router.get('/next-admission-number',
 );
 
 router.get('/birthdays/upcoming', 
+  requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER', 'PARENT', 'STUDENT']),
   rateLimit({ windowMs: 60_000, maxRequests: 100 }),
   asyncHandler(learnerController.getUpcomingBirthdays.bind(learnerController))
 );
@@ -62,6 +63,7 @@ router.get('/admission/:admissionNumber',
 );
 
 router.get('/:id', 
+  requireAnyPermission(['VIEW_ALL_LEARNERS', 'VIEW_OWN_CHILDREN']),
   ResourceAccessControl.canAccessLearner(),
   rateLimit({ windowMs: 60_000, maxRequests: 100 }),
   asyncHandler(learnerController.getLearnerById.bind(learnerController))

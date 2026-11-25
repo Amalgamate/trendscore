@@ -92,8 +92,9 @@ export class TripService {
     });
   }
 
-  async getTripsForRoute(routeId: string, date?: Date) {
+  async getTripsForRoute(routeId: string, date?: Date, driverUserId?: string) {
     const where: any = { routeId, archived: false };
+    if (driverUserId) where.driverUserId = driverUserId;
     if (date) {
       const dateUtc = new Date(
         Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()),

@@ -22,6 +22,7 @@ const ROLE_AUTHORITY: Record<UserRole, number> = {
   SUPER_ADMIN: 100,
   ADMIN: 90,
   HEAD_TEACHER: 80,
+  DEPUTY_HEAD_TEACHER: 78,
   HEAD_OF_CURRICULUM: 75,
   TEACHER: 60,
   ACCOUNTANT: 50,
@@ -31,6 +32,9 @@ const ROLE_AUTHORITY: Record<UserRole, number> = {
   SECURITY: 30,
   DRIVER: 30,
   COOK: 30,
+  CLEANER: 30,
+  GROUNDSKEEPER: 30,
+  IT_SUPPORT: 30,
   PARENT: 20,
   STUDENT: 10,
 };
@@ -51,6 +55,13 @@ export function checkToolPermission(
   context: AIContext
 ): PermissionCheckResult {
   const { role } = context.user;
+
+  if (!context.user.id || !context.user.schoolId || !context.school.id) {
+    return { allowed: false, reason: 'AI access is unavailable because the account school context could not be verified.' };
+  }
+  if (context.user.schoolId !== context.school.id) {
+    return { allowed: false, reason: 'Access denied: the user and requested school contexts do not match.' };
+  }
 
   if (!tool.allowedRoles.includes(role)) {
     return {
@@ -85,6 +96,7 @@ export const ADMIN_ROLES: UserRole[] = [
   'SUPER_ADMIN',
   'ADMIN',
   'HEAD_TEACHER',
+  'DEPUTY_HEAD_TEACHER',
   'HEAD_OF_CURRICULUM',
 ];
 
@@ -95,6 +107,7 @@ export const PATHWAY_READ_ROLES: UserRole[] = [
   'SUPER_ADMIN',
   'ADMIN',
   'HEAD_TEACHER',
+  'DEPUTY_HEAD_TEACHER',
   'HEAD_OF_CURRICULUM',
   'TEACHER',
   'PARENT',
@@ -108,6 +121,7 @@ export const PATHWAY_WRITE_ROLES: UserRole[] = [
   'SUPER_ADMIN',
   'ADMIN',
   'HEAD_TEACHER',
+  'DEPUTY_HEAD_TEACHER',
   'HEAD_OF_CURRICULUM',
 ];
 

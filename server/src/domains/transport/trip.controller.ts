@@ -14,9 +14,7 @@ import { AuthRequest } from '../../middleware/permissions.middleware';
 import { ApiError } from '../../utils/error.util';
 import { tripService } from './trip.service';
 import prisma from '../../config/database';
-
-// Roles that can manage trips (not just record boarding)
-const TRIP_ADMIN_ROLES = new Set(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER']);
+import { hasAnyRole } from '../../utils/roleNormalizer';
 
 export class TripController {
 
@@ -57,9 +55,13 @@ export class TripController {
     const { routeId, date } = req.query;
     if (!routeId) throw new ApiError(400, 'routeId query parameter is required');
 
+    const driverScope = hasAnyRole(req.user, ['DRIVER']) && !hasAnyRole(req.user, ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'])
+      ? req.user?.userId
+      : undefined;
     const trips = await tripService.getTripsForRoute(
       routeId as string,
       date ? new Date(date as string) : undefined,
+      driverScope,
     );
     res.json({ success: true, data: trips, count: trips.length });
   }
@@ -69,6 +71,7 @@ export class TripController {
    */
   async getTripById(req: AuthRequest, res: Response) {
     const trip = await tripService.getTripById(req.params.tripId);
+    this.assertDriverOwnsTrip(req, trip);
     res.json({ success: true, data: trip });
   }
 
@@ -85,12 +88,14 @@ export class TripController {
       throw new ApiError(400, `status must be one of: ${validStatuses.join(', ')}`);
     }
 
-    const trip = await tripService.updateTripStatus(tripId, status, {
+    const trip = await tripService.getTripById(tripId);
+    this.assertDriverOwnsTrip(req, trip);
+    const updatedTrip = await tripService.updateTripStatus(tripId, status, {
       departedAt: departedAt ? new Date(departedAt) : undefined,
       arrivedAt:  arrivedAt  ? new Date(arrivedAt)  : undefined,
     });
 
-    res.json({ success: true, data: trip, message: `Trip marked as ${status}` });
+    res.json({ success: true, data: updatedTrip, message: `Trip marked as ${status}` });
   }
 
   // ── Boarding Events ────────────────────────────────────────────────────────
@@ -108,6 +113,9 @@ export class TripController {
     if (!eventType || !['BOARDED', 'ALIGHTED'].includes(eventType)) {
       throw new ApiError(400, 'eventType must be BOARDED or ALIGHTED');
     }
+
+    const trip = await tripService.getTripById(tripId);
+    this.assertDriverOwnsTrip(req, trip);
 
     const result = await tripService.recordBoardingEvent({
       tripId,
@@ -141,6 +149,9 @@ export class TripController {
       throw new ApiError(400, 'eventType must be BOARDED or ALIGHTED');
     }
 
+    const trip = await tripService.getTripById(tripId);
+    this.assertDriverOwnsTrip(req, trip);
+
     const results = await tripService.bulkRecordBoarding(
       tripId, learnerIds, eventType, req.user?.userId,
     );
@@ -161,20 +172,32 @@ export class TripController {
    * Driver-facing boarding manifest for a trip.
    */
   async getManifest(req: AuthRequest, res: Response) {
+    const trip = await tripService.getTripById(req.params.tripId);
+    this.assertDriverOwnsTrip(req, trip);
     const manifest = await tripService.getTripManifest(req.params.tripId);
     res.json({ success: true, data: manifest });
+  }
+
+  private assertDriverOwnsTrip(req: AuthRequest, trip: { driverUserId: string | null }) {
+    if (
+      hasAnyRole(req.user, ['DRIVER']) &&
+      !hasAnyRole(req.user, ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER']) &&
+      trip.driverUserId !== req.user?.userId
+    ) {
+      throw new ApiError(403, 'You can only view or update trips assigned to you');
+    }
   }
 
   // ── Private helpers ────────────────────────────────────────────────────────
 
   private async resolveSchoolId(): Promise<string> {
-    const school = await prisma.school.findFirst({
+    const schools = await prisma.school.findMany({
       where: { archived: false, active: true },
       select: { id: true },
-      orderBy: { createdAt: 'asc' },
+      take: 2,
     });
-    if (!school) throw new ApiError(500, 'No active school found');
-    return school.id;
+    if (schools.length !== 1) throw new ApiError(503, 'Transport trips require exactly one active school in this database');
+    return schools[0].id;
   }
 }
 

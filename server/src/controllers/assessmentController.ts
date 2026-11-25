@@ -18,6 +18,11 @@ import {
 
 import logger from '../utils/logger';
 import { PathwayService } from '../services/pathway.service';
+import { assertLearnerRecordAccess, getTeacherLearnerScope } from '../services/learner-record-access.service';
+
+const LEARNER_RESULTS_ACCESS_ROLES = [
+  'SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER', 'PARENT', 'STUDENT',
+];
 // ── Cache TTLs ────────────────────────────────────────────────────────────────
 const TESTS_CACHE_TTL   = 300;  // 5 min — published tests change rarely
 const RESULTS_CACHE_TTL = 30;   // 30 s  — results are written frequently
@@ -200,6 +205,14 @@ export const getFormativeAssessments = async (req: AuthRequest, res: Response) =
     const whereClause: any = { archived: false };
 
     if (grade) whereClause.learner = { grade };
+    const callerRoles = new Set([req.user?.role, ...((req.user?.roles || []) as string[])]);
+    const teacherOnly = callerRoles.has('TEACHER') && !['ADMIN', 'SUPER_ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'].some((role) => callerRoles.has(role));
+    if (teacherOnly) {
+      whereClause.learner = {
+        ...(grade ? { grade: String(grade) } : {}),
+        AND: [await getTeacherLearnerScope(req.user!.userId)],
+      };
+    }
     if (term) whereClause.term = term;
     if (academicYear) whereClause.academicYear = parseInt(academicYear as string);
     if (learningArea) {
@@ -250,12 +263,19 @@ export const getBulkFormativeResults = async (req: AuthRequest, res: Response) =
       throw new ApiError(400, 'Missing required filters: grade, academicYear, term');
     }
 
+    const callerRoles = new Set([req.user?.role, ...((req.user?.roles || []) as string[])]);
+    const teacherOnly = callerRoles.has('TEACHER') && !['ADMIN', 'SUPER_ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'].some((role) => callerRoles.has(role));
+    const learnerFilter: any = {
+      grade: grade as string,
+      ...(stream ? { stream: stream as string } : {}),
+    };
+    if (teacherOnly) {
+      learnerFilter.AND = [await getTeacherLearnerScope(req.user!.userId)];
+    }
+
     const whereClause: any = {
       archived: false,
-      learner: {
-        grade: grade as string,
-        ...(stream ? { stream: stream as string } : {})
-      },
+      learner: learnerFilter,
       term: String(term).toUpperCase().replace(/\s+/g, '_'),
       academicYear: parseInt(academicYear as string)
     };
@@ -680,9 +700,15 @@ export const recordFormativeResultsBulk = async (req: AuthRequest, res: Response
 export const getFormativeByLearner = async (req: AuthRequest, res: Response) => {
   try {
     const { learnerId } = req.params;
+    await assertLearnerRecordAccess(req.user, learnerId, LEARNER_RESULTS_ACCESS_ROLES);
     const { term, academicYear } = req.query;
 
-    const whereClause: any = { learnerId, archived: false };
+    const isFamilyPortalUser = req.user?.role === 'PARENT' || req.user?.role === 'STUDENT';
+    const whereClause: any = {
+      learnerId,
+      archived: false,
+      ...(isFamilyPortalUser ? { status: 'PUBLISHED' } : {}),
+    };
 
     if (term) whereClause.term = term;
     if (academicYear) whereClause.academicYear = parseInt(academicYear as string);
@@ -704,9 +730,9 @@ export const getFormativeByLearner = async (req: AuthRequest, res: Response) => 
     });
   } catch (error: any) {
     logger.error('Error fetching learner formative assessments:', error);
-    res.status(500).json({
+    res.status(error.statusCode || 500).json({
       success: false,
-      message: 'Failed to fetch results',
+      message: error.statusCode ? error.message : 'Failed to fetch results',
       error: error.message
     });
   }
@@ -1852,14 +1878,24 @@ export const recordSummativeResult = async (req: AuthRequest, res: Response) => 
 export const getSummativeByLearner = async (req: AuthRequest, res: Response) => {
   try {
     const { learnerId } = req.params;
+    await assertLearnerRecordAccess(req.user, learnerId, LEARNER_RESULTS_ACCESS_ROLES);
     const { term, academicYear } = req.query;
 
-    const whereClause: any = { learnerId };
+    const isFamilyPortalUser = req.user?.role === 'PARENT' || req.user?.role === 'STUDENT';
+    const whereClause: any = {
+      learnerId,
+      ...(isFamilyPortalUser ? {
+        archived: false,
+        test: { published: true, active: true, archived: false },
+      } : {}),
+    };
 
     if (term || academicYear) {
-      whereClause.test = {};
-      if (term) whereClause.test.term = term;
-      if (academicYear) whereClause.test.academicYear = parseInt(academicYear as string);
+      whereClause.test = {
+        ...(isFamilyPortalUser ? { published: true, active: true, archived: false } : {}),
+        ...(term ? { term } : {}),
+        ...(academicYear ? { academicYear: parseInt(academicYear as string) } : {}),
+      };
     }
 
     const [results, communicationLogs] = await Promise.all([
@@ -1926,7 +1962,10 @@ export const getSummativeByLearner = async (req: AuthRequest, res: Response) => 
 
   } catch (error: any) {
     logger.error('Error fetching summative results for learner:', error);
-    throw new ApiError(500, 'Failed to fetch results for learner: ' + error.message);
+    res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.statusCode ? error.message : 'Failed to fetch results for learner',
+    });
   }
 };
 

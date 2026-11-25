@@ -13,6 +13,7 @@ export type UserRole =
   | 'SUPER_ADMIN'
   | 'ADMIN'
   | 'HEAD_TEACHER'
+  | 'DEPUTY_HEAD_TEACHER'
   | 'HEAD_OF_CURRICULUM'
   | 'TEACHER'
   | 'PARENT'
@@ -23,7 +24,10 @@ export type UserRole =
   | 'NURSE'
   | 'SECURITY'
   | 'DRIVER'
-  | 'COOK';
+  | 'COOK'
+  | 'CLEANER'
+  | 'GROUNDSKEEPER'
+  | 'IT_SUPPORT';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONTEXT

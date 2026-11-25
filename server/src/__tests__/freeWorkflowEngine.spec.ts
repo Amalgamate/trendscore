@@ -2,12 +2,15 @@ const prismaMock = {
   learner: { findMany: jest.fn(), findUnique: jest.fn(), count: jest.fn(), groupBy: jest.fn() },
   user: { findUnique: jest.fn(), count: jest.fn() },
   feeInvoice: { aggregate: jest.fn() },
+  feePayment: { aggregate: jest.fn() },
   attendance: { groupBy: jest.fn() },
   summativeResult: { aggregate: jest.fn() },
   formativeAssessment: { count: jest.fn() },
   messageReceipt: { count: jest.fn() },
   book: { aggregate: jest.fn() },
   bookLoan: { groupBy: jest.fn() },
+  // Parent learner scoping consults family links through the shared access service.
+  familyMember: { findUnique: jest.fn().mockResolvedValue(null) },
 };
 
 jest.mock('../config/database', () => ({ __esModule: true, default: prismaMock }));
@@ -71,6 +74,10 @@ describe('FreeWorkflowEngine', () => {
     prismaMock.feeInvoice.aggregate.mockResolvedValue({
       _count: { _all: 1 },
       _sum: { totalAmount: 50000, paidAmount: 35000, balance: 15000 },
+    });
+    prismaMock.feePayment.aggregate.mockResolvedValue({
+      _count: { _all: 2 },
+      _sum: { amount: 35000 },
     });
 
     const result = await processFreeWorkflowRequest({

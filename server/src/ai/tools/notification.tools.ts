@@ -15,14 +15,16 @@ import type { AIContext } from '../types';
 
 // Every authenticated role can query their own notification summary
 const ALL_ROLES = [
-  'SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM',
+  'SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER', 'HEAD_OF_CURRICULUM',
   'TEACHER', 'PARENT', 'STUDENT', 'ACCOUNTANT', 'RECEPTIONIST',
-  'LIBRARIAN', 'NURSE', 'SECURITY', 'DRIVER', 'COOK',
+  'LIBRARIAN', 'NURSE', 'SECURITY', 'DRIVER', 'COOK', 'CLEANER', 'GROUNDSKEEPER', 'IT_SUPPORT',
 ] as const;
 
-// Only admin-level roles can query the global audit trail
+// Recent user-activity summaries match VIEW_USER_ACTIVITY; the detailed change
+// history tool matches the stricter VIEW_AUDIT_LOGS permission.
+const AUDIT_SUMMARY_ROLES = ['SUPER_ADMIN', 'ADMIN'] as const;
 const AUDIT_ROLES = [
-  'SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER',
+  'SUPER_ADMIN',
 ] as const;
 
 // ─── get_notification_summary ─────────────────────────────────────────────────
@@ -34,7 +36,7 @@ registerTool({
     'grouped by type (approvals, messages, alerts, LMS, system). ' +
     'Use this when the user asks "what do I have?", "what needs my attention?", ' +
     '"any updates?", or when you want to proactively brief them on open items. ' +
-    'Also returns the 3 most recent audit events for context.',
+    'School audit events are included only for school leaders who can view audit records.',
   category: 'READ',
   allowedRoles: ALL_ROLES as unknown as any[],
   requiresConfirmation: false,
@@ -93,16 +95,19 @@ registerTool({
       // Non-critical — chat count is optional context
     }
 
-    // Most recent 3 audit events for this school (gives AI recent-change context)
+    // Audit history is leadership-only. Other roles receive their own notifications
+    // and unread-message count, never activity by other school users.
     let recentAudit: { action: string; userId: string | null; path: string | null; createdAt: Date }[] = [];
-    try {
-      recentAudit = await prisma.auditLog.findMany({
-        orderBy: { createdAt: 'desc' },
-        take: 3,
-        select: { action: true, userId: true, path: true, createdAt: true },
-      });
-    } catch {
-      // AuditLog table may not exist in all environments
+    if (AUDIT_SUMMARY_ROLES.includes(context.user.role as typeof AUDIT_SUMMARY_ROLES[number])) {
+      try {
+        recentAudit = await prisma.auditLog.findMany({
+          orderBy: { createdAt: 'desc' },
+          take: 3,
+          select: { action: true, userId: true, path: true, createdAt: true },
+        });
+      } catch {
+        // AuditLog table may not exist in all environments
+      }
     }
 
     // Pending approvals specifically

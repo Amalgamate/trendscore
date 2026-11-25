@@ -5,6 +5,7 @@ import { ApiError } from '../utils/error.util';
 
 import logger from '../utils/logger';
 import { accountingService } from '../services/accounting.service';
+import { assertLearnerRecordAccess } from '../services/learner-record-access.service';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -308,6 +309,9 @@ export class TransportController {
     async getLearnerAssignments(req: AuthRequest, res: Response) {
         try {
             const { learnerId } = req.params;
+            await assertLearnerRecordAccess(req.user, learnerId, [
+                'SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'TEACHER', 'PARENT', 'STUDENT',
+            ]);
 
             const assignments = await prisma.transportAssignment.findMany({
                 where: { passengerId: learnerId, passengerType: 'LEARNER', archived: false },
