@@ -219,12 +219,12 @@ router.post(
 /**
  * @route   POST /api/notifications/test
  * @desc    Test WhatsApp connection
- * @access  SUPER_ADMIN, ADMIN
+ * @access  SUPER_ADMIN, ADMIN, HEAD_TEACHER
  */
 router.post(
   '/test',
   authenticate,
-  requireRole(['SUPER_ADMIN', 'ADMIN']),
+  requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER']),
   rateLimit({ windowMs: 60_000, maxRequests: 10 }),
   asyncHandler(notificationController.testWhatsApp.bind(notificationController))
 );
@@ -250,7 +250,7 @@ router.get(
 router.get(
   '/whatsapp/qr',
   authenticate,
-  requireRole(['SUPER_ADMIN', 'ADMIN']),
+  requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER']),
   rateLimit({ windowMs: 60_000, maxRequests: 20 }),
   asyncHandler(whatsappStatusController.getQRCode.bind(whatsappStatusController))
 );
@@ -263,7 +263,7 @@ router.get(
 router.post(
   '/whatsapp/initialize',
   authenticate,
-  requireRole(['SUPER_ADMIN', 'ADMIN']),
+  requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER']),
   rateLimit({ windowMs: 60_000, maxRequests: 5 }),
   auditLog('INITIALIZE_WHATSAPP'),
   asyncHandler(whatsappStatusController.initialize.bind(whatsappStatusController))
@@ -277,7 +277,7 @@ router.post(
 router.post(
   '/whatsapp/logout',
   authenticate,
-  requireRole(['SUPER_ADMIN', 'ADMIN']),
+  requireRole(['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER']),
   rateLimit({ windowMs: 60_000, maxRequests: 5 }),
   auditLog('LOGOUT_WHATSAPP'),
   asyncHandler(whatsappStatusController.logout.bind(whatsappStatusController))

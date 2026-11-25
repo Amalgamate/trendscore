@@ -97,9 +97,9 @@ const DEFAULT_EMAIL_TEMPLATES = {
   generic: { heading: '{subject}', body: '<p>{messageText}</p>' }
 };
 
-const CommunicationSettings = () => {
+const CommunicationSettings = ({ whatsappOnly = false } = {}) => {
   const { showSuccess, showError } = useNotifications();
-  const [activeTab, setActiveTab] = useState('sms'); // Default to SMS as requested
+  const [activeTab, setActiveTab] = useState(whatsappOnly ? 'whatsapp' : 'sms');
   const [loading, setLoading] = useState(false);
   const [testing, setTesting] = useState(false);
   const [aiDrafting, setAiDrafting] = useState(false);
@@ -217,6 +217,16 @@ const CommunicationSettings = () => {
   // Load Configuration on Mount
 
   useEffect(() => {
+    setActiveTab(whatsappOnly ? 'whatsapp' : 'sms');
+  }, [whatsappOnly]);
+
+  useEffect(() => {
+    // Head teachers use this shared screen only for the school WhatsApp session.
+    // Do not load unrelated email, SMS, payment, or AI configuration for them.
+    if (whatsappOnly) {
+      setLoading(false);
+      return undefined;
+    }
     const loadConfig = async () => {
       try {
         setLoading(true);
@@ -323,7 +333,7 @@ const CommunicationSettings = () => {
     };
 
     loadConfig();
-  }, []);
+  }, [whatsappOnly]);
 
   const handleSave = async (type) => {
     try {
@@ -752,6 +762,9 @@ const CommunicationSettings = () => {
     { id: 'ai',       label: 'AI',       icon: <Sparkles size={13} /> },
     { id: 'birthdays',label: 'Birthdays',icon: <Gift size={13} /> },
   ];
+  const visibleCommTabs = whatsappOnly
+    ? COMM_TABS.filter((tab) => tab.id === 'whatsapp')
+    : COMM_TABS;
 
   // Render Logic
   return (
@@ -760,7 +773,7 @@ const CommunicationSettings = () => {
       <ModuleTabNav
         sectionLabel="COMMUNICATION"
         variant="dropdown"
-        tabs={COMM_TABS}
+        tabs={visibleCommTabs}
         activeTab={activeTab}
         onTabChange={(tab) => {
           setActiveTab(tab);

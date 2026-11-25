@@ -965,7 +965,7 @@ const PageRouter = ({
           case 'settings-branding':
             return <SchoolSettings brandingSettings={brandingSettings} setBrandingSettings={handlers.setBrandingSettings} />;
           case 'settings-backup': return <SystemMaintenancePage />;
-          case 'settings-communication': return <ErrorBoundary><CommunicationSettings /></ErrorBoundary>;
+          case 'settings-communication': return <ErrorBoundary><CommunicationSettings whatsappOnly={String(effectiveRole || '').toUpperCase() === 'HEAD_TEACHER'} /></ErrorBoundary>;
           case 'settings-payment': return <PaymentSettings />;
           case 'settings-profile': return <ErrorBoundary><SelfProfilePage user={user} onNavigate={handleNavigate} onLogout={handlers?.onLogout} backTarget="settings" /></ErrorBoundary>;
           case 'settings-system-logs': return <ErrorBoundary><SystemLogsPage /></ErrorBoundary>;
