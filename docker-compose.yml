@@ -68,6 +68,10 @@ services:
       - whatsapp_auth:/app/whatsapp-auth
     networks:
       - zawadi-network
+      # Shared network with the standalone Ollama host (docker-compose.ai.yml).
+      # Wendy's no-cost provider lives there; without this the backend reverts to
+      # `fetch failed` and silently answers from the workflow engine instead.
+      - ai_net
 
   # Optional local intent classifier. Enable with `docker compose --profile ai up -d ollama`.
   # Only inbound message text is sent to this local classifier; fee/result records stay in the database.
@@ -94,6 +98,13 @@ services:
 networks:
   zawadi-network:
     driver: bridge
+  # `external: true` reuses the network created by docker-compose.ai.yml rather
+  # than letting compose mint a duplicate `<project>_ai_net`. Compose refuses to
+  # start a service pointing at a missing external network, so deploy-release.sh
+  # creates it first — that keeps hosts without a local AI box bootable.
+  ai_net:
+    external: true
+    name: ${AI_NETWORK:-trendscore-ai}
 
 volumes:
   postgres_data:
