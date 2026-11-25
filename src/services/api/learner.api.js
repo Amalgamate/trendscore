@@ -64,6 +64,19 @@ export const learnerAPI = {
   },
   previewBulkPromote: async (promotionData) =>
     fetchWithAuth('/learners/bulk-promote/preview', { method: 'POST', body: JSON.stringify(promotionData) }),
+  getPromotionReadiness: async (params = {}) => {
+    const query = new URLSearchParams(
+      Object.entries(params).reduce((acc, [key, value]) => {
+        if (value !== undefined && value !== null && value !== '') acc[key] = String(value);
+        return acc;
+      }, {})
+    ).toString();
+    return fetchWithAuth(`/learners/bulk-promote/readiness${query ? `?${query}` : ''}`);
+  },
+  cleanupStaleEnrollments: async (data = {}) => {
+    cacheDelPrefix('learners:');
+    return fetchWithAuth('/learners/bulk-promote/cleanup-stale', { method: 'POST', body: JSON.stringify(data) });
+  },
   bulkMoveStream: async (moveData) => {
     cacheDelPrefix('learners:');
     return fetchWithAuth('/learners/bulk-move-stream', { method: 'POST', body: JSON.stringify(moveData) });

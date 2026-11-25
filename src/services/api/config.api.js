@@ -99,6 +99,10 @@ export const configAPI = {
   seedPathways: async () => fetchWithAuth('/pathways/seed', { method: 'POST' }),
 
   seedClasses: async () => fetchWithAuth('/config/classes/seed', { method: 'POST' }),
+  bulkCreateYearClasses: async (data) => {
+    cacheDelPrefix('config:');
+    return fetchWithAuth('/config/classes/bulk-create', { method: 'POST', body: JSON.stringify(data) });
+  },
   seedStreams: async () => {
     cacheDel('config:streams');
     return fetchWithAuth('/config/streams/seed', { method: 'POST' });

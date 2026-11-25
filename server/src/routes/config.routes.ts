@@ -316,6 +316,26 @@ router.post(
   configController.seedClasses
 );
 
+/**
+ * @route   POST /api/config/classes/bulk-create
+ * @desc    Create destination classes for an explicit academic year and term.
+ *          Does not enrol learners — use Promotion for that.
+ * @access  ADMIN, SUPER_ADMIN
+ */
+router.post(
+  '/classes/bulk-create',
+  requireRole(['ADMIN', 'SUPER_ADMIN']),
+  rateLimit({ windowMs: 60_000, maxRequests: 10 }),
+  validate(z.object({
+    academicYear: z.number().int().min(2000).max(2150),
+    term: z.enum(['TERM_1', 'TERM_2', 'TERM_3']),
+    capacity: z.number().int().min(1).max(500).optional(),
+    streams: z.array(z.string().min(1)).optional(),
+  })),
+  auditLog('BULK_CREATE_YEAR_CLASSES'),
+  configController.bulkCreateYearClasses
+);
+
 // ============================================
 // UTILITY ROUTES
 // ============================================

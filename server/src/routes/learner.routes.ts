@@ -139,6 +139,19 @@ router.post('/bulk-promote/preview',
   asyncHandler(learnerController.previewPromotions.bind(learnerController))
 );
 
+router.get('/bulk-promote/readiness',
+  requirePermission('PROMOTE_LEARNER'),
+  rateLimit({ windowMs: 60_000, maxRequests: 60 }),
+  asyncHandler(learnerController.getPromotionReadiness.bind(learnerController))
+);
+
+router.post('/bulk-promote/cleanup-stale',
+  requirePermission('PROMOTE_LEARNER'),
+  rateLimit({ windowMs: 60_000, maxRequests: 10 }),
+  auditLog('PROMOTION_STALE_ENROLLMENT_CLEANUP'),
+  asyncHandler(learnerController.cleanupStaleEnrollments.bind(learnerController))
+);
+
 router.post('/bulk-move-stream',
   requirePermission('EDIT_LEARNER'),
   rateLimit({ windowMs: 60_000, maxRequests: 20 }),

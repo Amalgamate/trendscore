@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertTriangle, ArrowRight, CalendarDays, CheckCircle, GraduationCap, RefreshCw, Users } from 'lucide-react';
+import { AlertTriangle, ArrowRight, CalendarDays, CheckCircle, Download, GraduationCap, Info, RefreshCw, Users } from 'lucide-react';
 import EmptyState from '../shared/EmptyState';
 import api, { configAPI } from '../../../services/api';
 
@@ -34,6 +34,12 @@ const PromotionPage = ({ onPromote, showNotification, showError }) => {
   const [preview, setPreview] = useState(null);
   const [rosterVersion, setRosterVersion] = useState(0);
   const [loadingConfig, setLoadingConfig] = useState(true);
+  const [readiness, setReadiness] = useState(null);
+  const [guidanceBusy, setGuidanceBusy] = useState(false);
+  const guidanceKey = `promotion-guidance:${targetAcademicYear}:${targetTerm}`;
+  const [guidanceDismissed, setGuidanceDismissed] = useState(() => {
+    try { return sessionStorage.getItem(guidanceKey) === '1'; } catch { return false; }
+  });
   const [loadingLearners, setLoadingLearners] = useState(false);
   const [reviewing, setReviewing] = useState(false);
   const [promoting, setPromoting] = useState(false);
@@ -115,6 +121,27 @@ const PromotionPage = ({ onPromote, showNotification, showError }) => {
     return () => { cancelled = true; };
   }, [sourceGrade, sourceStream, rosterVersion, showNotification, showError]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const loadReadiness = async () => {
+      try {
+        const response = await api.learners.getPromotionReadiness({
+          targetAcademicYear: Number(targetAcademicYear),
+          targetTerm,
+        });
+        if (!cancelled) setReadiness(response?.data || null);
+      } catch {
+        if (!cancelled) setReadiness(null);
+      }
+    };
+    loadReadiness();
+    return () => { cancelled = true; };
+  }, [targetAcademicYear, targetTerm, rosterVersion]);
+
+  useEffect(() => {
+    try { setGuidanceDismissed(sessionStorage.getItem(guidanceKey) === '1'); } catch { setGuidanceDismissed(false); }
+  }, [guidanceKey]);
+
   const gradesForSchool = useMemo(() => [...availableGrades, 'GRADUATED'], [availableGrades]);
   const readyPlacements = preview?.placements?.filter((placement) => placement.ready) || [];
   const blockedPlacements = preview?.blockers || [];
@@ -185,6 +212,66 @@ const PromotionPage = ({ onPromote, showNotification, showError }) => {
     }
   };
 
+  const dismissGuidance = () => {
+    setGuidanceDismissed(true);
+    try { sessionStorage.setItem(guidanceKey, '1'); } catch { /* storage unavailable */ }
+  };
+
+  const refreshAfterGuidance = () => {
+    setPreview(null);
+    setRosterVersion((version) => version + 1);
+  };
+
+  const handleCreateDestinationClasses = async () => {
+    setGuidanceBusy(true);
+    try {
+      const result = await configAPI.bulkCreateYearClasses({
+        academicYear: Number(targetAcademicYear),
+        term: targetTerm,
+      });
+      showNotification?.(result?.message || 'Destination classes created.', 'success');
+      refreshAfterGuidance();
+    } catch (error) {
+      (showError || showNotification)?.(error.message || 'Could not create destination classes.');
+    } finally {
+      setGuidanceBusy(false);
+    }
+  };
+
+  const handleCleanupStaleEnrollments = async () => {
+    setGuidanceBusy(true);
+    try {
+      const result = await api.learners.cleanupStaleEnrollments({ reason: 'Promotion readiness cleanup' });
+      showNotification?.(result?.message || 'Stale enrollments cleared.', 'success');
+      refreshAfterGuidance();
+    } catch (error) {
+      (showError || showNotification)?.(error.message || 'Could not clear stale enrollments.');
+    } finally {
+      setGuidanceBusy(false);
+    }
+  };
+
+  const exportPreview = () => {
+    if (!preview?.placements?.length) return;
+    const escape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    const rows = [
+      ['Name', 'Admission Number', 'Current Grade', 'Stream', 'Destination Grade', 'Destination Class', 'Status', 'Issue'],
+      ...preview.placements.map((item) => [
+        item.name, item.admissionNumber, item.sourceGrade, item.sourceStream,
+        item.targetGrade, item.targetClassName, item.ready ? 'READY' : 'BLOCKED', item.issue || '',
+      ]),
+    ];
+    const csv = rows.map((row) => row.map(escape).join(',')).join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `promotion-preview-${targetAcademicYear}-${targetTerm}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   if (loadingConfig) return <div className="p-6 text-sm text-slate-600">Loading promotion options…</div>;
 
   return (
@@ -232,6 +319,43 @@ const PromotionPage = ({ onPromote, showNotification, showError }) => {
         <p className="mt-3 flex items-center gap-2 text-xs text-slate-500"><CalendarDays size={14} /> Set up destination-year classes and streams before reviewing placements.</p>
         {targetGrade === 'GRADUATED' && <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900">Graduating learners keeps their final grade and records, marks their status as Graduated, and closes active class enrollments.</p>}
       </section>
+
+      {readiness && !guidanceDismissed && (
+        <section className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <span className="rounded-md bg-blue-700 p-2 text-white"><Info size={18} /></span>
+              <div>
+                <h3 className="font-bold text-slate-900">Promotion readiness · {targetAcademicYear} {targetTerm.replace('_', ' ')}</h3>
+                <p className="mt-0.5 text-sm text-slate-700">{readiness.activeLearnerCount} active learners · {readiness.missingClasses.length} destination classes missing · {readiness.staleEnrollmentCount} stale enrollments</p>
+              </div>
+            </div>
+            <button type="button" onClick={dismissGuidance} className="text-xs font-semibold text-blue-800 hover:text-blue-950">Hide for this session</button>
+          </div>
+          <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-slate-700">
+            {readiness.messages.map((message, index) => <li key={index}>{message}</li>)}
+          </ul>
+          {readiness.suggestedOrder.length > 0 && (
+            <p className="mt-3 rounded-md bg-white/70 px-3 py-2 text-xs text-slate-700">
+              <span className="font-semibold">Apply in this order:</span> {readiness.suggestedOrder.join(' · ')}
+            </p>
+          )}
+          {(readiness.missingClasses.length > 0 || readiness.staleEnrollmentCount > 0) && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {readiness.missingClasses.length > 0 && (
+                <button type="button" onClick={handleCreateDestinationClasses} disabled={guidanceBusy} className="inline-flex min-h-9 items-center gap-2 rounded-md bg-blue-700 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-slate-300">
+                  Create {readiness.missingClasses.length} missing class{readiness.missingClasses.length === 1 ? '' : 'es'}
+                </button>
+              )}
+              {readiness.staleEnrollmentCount > 0 && (
+                <button type="button" onClick={handleCleanupStaleEnrollments} disabled={guidanceBusy} className="inline-flex min-h-9 items-center gap-2 rounded-md border border-blue-300 bg-white px-3 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-100 disabled:cursor-not-allowed disabled:text-slate-400">
+                  Clear {readiness.staleEnrollmentCount} stale enrollment{readiness.staleEnrollmentCount === 1 ? '' : 's'}
+                </button>
+              )}
+            </div>
+          )}
+        </section>
+      )}
 
       <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
@@ -282,9 +406,12 @@ const PromotionPage = ({ onPromote, showNotification, showError }) => {
               <h3 className="font-bold text-slate-900">Placement review</h3>
               <p className="text-sm text-slate-600">{formatGrade(preview.destination.grade)} · {preview.destination.academicYear} · {preview.destination.term.replace('_', ' ')}</p>
             </div>
-            <div className="flex gap-2 text-xs font-semibold">
+            <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
               <span className="rounded-full bg-emerald-50 px-3 py-1.5 text-emerald-800">{preview.readyCount} ready</span>
               {preview.blockerCount > 0 && <span className="rounded-full bg-rose-50 px-3 py-1.5 text-rose-800">{preview.blockerCount} need attention</span>}
+              <button type="button" onClick={exportPreview} disabled={!preview.placements?.length} className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400">
+                <Download size={14} /> Export CSV
+              </button>
             </div>
           </div>
           {preview.blockerCount > 0 && (
