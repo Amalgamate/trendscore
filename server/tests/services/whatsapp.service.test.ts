@@ -46,8 +46,8 @@ jest.mock('fs', () => ({
   existsSync: jest.fn().mockReturnValue(false),  // No existing session by default
   mkdirSync: jest.fn(),
   rmSync: jest.fn(),
-  // The auth purge uses the promise API so EBUSY can be retried.
-  promises: { rm: jest.fn().mockResolvedValue(undefined) },
+  // The auth purge uses the promise API so a busy handle can be retried.
+  promises: { rm: jest.fn().mockResolvedValue(undefined), readdir: jest.fn().mockResolvedValue([]) },
 }));
 
 jest.mock('pino', () => {
@@ -362,14 +362,18 @@ describe('WhatsApp Service — Unit Tests', () => {
       (service as any).status = 'authenticated';
 
       const fsModule = require('fs');
-      // Simulate the directory being present, then gone once rm() succeeds so
-      // the helper's post-purge verification passes.
+      // The auth dir is a Docker volume mount point, so logout empties it
+      // rather than removing it: rm() is called per entry, not on the folder.
       let removed = false;
       fsModule.existsSync.mockImplementation(() => !removed);
+      fsModule.promises.readdir.mockResolvedValue(removed ? [] : ['creds.json']);
       const rmSpy = jest.spyOn(fsModule.promises, 'rm').mockImplementation(async () => { removed = true; });
 
       await service.logout();
-      expect(rmSpy).toHaveBeenCalledWith(expect.stringContaining('whatsapp-auth'), expect.objectContaining({ recursive: true }));
+      expect(rmSpy).toHaveBeenCalledWith(
+        expect.stringContaining('whatsapp-auth'),
+        expect.objectContaining({ recursive: true }),
+      );
     });
   });
 

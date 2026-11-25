@@ -56,18 +56,19 @@ describe('WhatsApp logout', () => {
 
     expect(fakeSock.logout).toHaveBeenCalled();
     expect(result.success).toBe(true);
-    expect(authFolderExists()).toBe(false);
+    // The folder itself stays (it is a Docker mount point); its contents go.
+    expect(fs.readdirSync(authDir)).toHaveLength(0);
   });
 
   it('retries an EBUSY purge instead of reporting false success', async () => {
-    // The original bug: a busy handle made rm() throw while logout still
-    // reported success. Fail once, then let the retry succeed.
+    // A busy handle makes one unlink throw. It must be retried, not treated as
+    // success — that gap is what left the pairing on disk.
     let attempts = 0;
     const realRm = fs.promises.rm.bind(fs.promises);
     jest.spyOn(fs.promises, 'rm').mockImplementation(async (target: any, opts: any) => {
       attempts += 1;
       if (attempts === 1) {
-        const err: any = new Error('EBUSY: resource busy or locked, rmdir');
+        const err: any = new Error('EBUSY: resource busy or locked, unlink');
         err.code = 'EBUSY';
         throw err;
       }
@@ -78,12 +79,12 @@ describe('WhatsApp logout', () => {
 
     expect(attempts).toBeGreaterThan(1);
     expect(result.success).toBe(true);
-    expect(authFolderExists()).toBe(false);
+    expect(fs.readdirSync(authDir)).toHaveLength(0);
   });
 
-  it('reports failure when the auth folder cannot be removed at all', async () => {
+  it('reports failure when the auth folder cannot be emptied at all', async () => {
     jest.spyOn(fs.promises, 'rm').mockImplementation(async () => {
-      const err: any = new Error('EBUSY: resource busy or locked, rmdir');
+      const err: any = new Error('EBUSY: resource busy or locked, unlink');
       err.code = 'EBUSY';
       throw err;
     });
