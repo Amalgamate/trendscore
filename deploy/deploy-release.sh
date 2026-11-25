@@ -1050,6 +1050,15 @@ restart_services() {
     compose_with_pinned_images "${kind}" "${project}" "${env_file}" up -d redis || return 1
   fi
 
+  # The backend joins an external AI network so it can reach the shared Ollama
+  # host. `external: true` makes compose fail outright when the network is
+  # missing, so create it here — harmless when a school has no local AI.
+  local ai_net="${AI_NETWORK:-trendscore-ai}"
+  if ! docker_cmd network inspect "${ai_net}" >/dev/null 2>&1; then
+    log "Creating external AI network ${ai_net}..."
+    docker_cmd network create "${ai_net}" >/dev/null 2>&1 || true
+  fi
+
   if [[ "${kind}" == "main" ]]; then
     compose_with_pinned_images "${kind}" "${project}" "${env_file}" \
       up -d --no-deps --force-recreate backend frontend || return 1
