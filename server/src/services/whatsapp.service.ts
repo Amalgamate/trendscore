@@ -50,6 +50,33 @@ export type InboundHandler = (message: InboundWhatsAppMessage) => Promise<void> 
 
 type ConnectionStatus = 'disconnected' | 'qr_needed' | 'authenticated' | 'initializing';
 
+/**
+ * Delete the Baileys auth directory, tolerating the transient EBUSY/ENOTEMPTY
+ * that appears while the library's event buffer finishes writing.
+ *
+ * `fs.rmSync(..., { force: true })` only suppresses ENOENT — a busy handle still
+ * throws, which is how a logout could report success while the pairing stayed
+ * on disk. Retry with a short backoff, then fail loudly.
+ */
+async function removeAuthFolder(retries = 5, delayMs = 200): Promise<void> {
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      await fs.promises.rm(AUTH_FOLDER, { recursive: true, force: true });
+      // `force` hides a leftover directory on some platforms; verify explicitly.
+      if (!fs.existsSync(AUTH_FOLDER)) return;
+    } catch (err: any) {
+      const code = err?.code;
+      // EBUSY / ENOTEMPTY / EPERM are all "still in use" — worth retrying.
+      const retryable = code === 'EBUSY' || code === 'ENOTEMPTY' || code === 'EPERM';
+      if (!retryable || attempt === retries) throw err;
+    }
+
+    if (attempt < retries) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs * (attempt + 1)));
+    }
+  }
+}
+
 class WhatsAppService {
   private sock: ReturnType<BaileysModule['default']> | null = null;
   private status: ConnectionStatus = 'disconnected';
@@ -77,6 +104,12 @@ class WhatsAppService {
   }
 
   getStatus(): { status: ConnectionStatus; qrCode: string | null } {
+    // `authenticated` must mean the socket is genuinely usable. After a failed
+    // logout the flag could outlive the socket, so the UI showed "connected"
+    // while every send failed. Derive it from the live socket instead.
+    if (this.status === 'authenticated' && !this.sock?.user?.id) {
+      return { status: 'disconnected', qrCode: null };
+    }
     return { status: this.status, qrCode: this.qrCode };
   }
 
@@ -204,9 +237,9 @@ class WhatsAppService {
 
             if (statusCode === loadBaileys().DisconnectReason.loggedOut) {
               console.log('[WhatsApp] Session invalid or logged out. Clearing auth data to generate a fresh QR code...');
-              if (fs.existsSync(AUTH_FOLDER)) {
-                fs.rmSync(AUTH_FOLDER, { recursive: true, force: true });
-              }
+              void removeAuthFolder().catch((purgeErr) =>
+                console.error('[WhatsApp] Could not clear auth data after logout:', purgeErr?.message || purgeErr),
+              );
             }
 
             if (shouldReconnect) {
@@ -356,30 +389,56 @@ class WhatsAppService {
   }
 
   async logout(): Promise<{ success: boolean; message: string }> {
-    try {
-      this.manualLogout = true;
-      if (this.reconnectTimeout) {
-        clearTimeout(this.reconnectTimeout);
-        this.reconnectTimeout = null;
-      }
-      if (this.sock) {
-        this.sock.ev.removeAllListeners('connection.update');
-        this.sock.ev.removeAllListeners('creds.update');
-        this.sock.ev.removeAllListeners('messages.upsert');
-        await this.sock.logout();
-        this.sock = null;
-      }
-      // Remove saved auth so next initialize() generates fresh QR
-      if (fs.existsSync(AUTH_FOLDER)) {
-        fs.rmSync(AUTH_FOLDER, { recursive: true, force: true });
-      }
-      this.status = 'disconnected';
-      this.qrCode = null;
-      return { success: true, message: 'Logged out and session cleared.' };
-    } catch (err: any) {
-      this.manualLogout = false;
-      return { success: false, message: err.message };
+    // Stays true unless the session was genuinely cleared. Returning early on a
+    // partial failure must not leave the service auto-reconnecting into a
+    // half-deleted auth folder.
+    this.manualLogout = true;
+
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
     }
+
+    // Detach the socket *before* awaiting logout(). `sock.logout()` resolves
+    // while Baileys' event buffer is still flushing to disk, so the auth files
+    // stay open — deleting them at that moment raises EBUSY on overlay mounts.
+    const sock = this.sock;
+    this.sock = null;
+    if (sock) {
+      try {
+        sock.ev.removeAllListeners('connection.update');
+        sock.ev.removeAllListeners('creds.update');
+        sock.ev.removeAllListeners('messages.upsert');
+        await sock.logout();
+      } catch (err: any) {
+        // The remote session may already be revoked (e.g. the device was logged
+        // out from the phone). That is not a reason to keep the local pairing.
+        console.warn('[WhatsApp] sock.logout() failed, clearing locally anyway:', err?.message || err);
+      }
+    }
+
+    this.status = 'disconnected';
+    this.qrCode = null;
+
+    // Baileys writes key files asynchronously even after logout resolves, so
+    // give the flush a moment before removing the directory.
+    await new Promise((resolve) => setTimeout(resolve, 250));
+
+    try {
+      await removeAuthFolder();
+    } catch (err: any) {
+      // Auth data survived. Leave manualLogout set so the service cannot
+      // silently reconnect with a stale pairing; report the failure so the
+      // operator knows a phone-side logout is required.
+      return {
+        success: false,
+        message:
+          `Local session files could not be removed (${err?.message || err}). ` +
+          'The WhatsApp pairing may still be active — log out this device from the phone under Linked devices.',
+      };
+    }
+
+    return { success: true, message: 'Logged out and session cleared.' };
   }
 
   async stopClient(): Promise<void> {
