@@ -144,6 +144,17 @@ export interface AIRequest {
   confirmationId?: string;
   /** Optional: model tier override */
   modelTier?: ModelTier;
+  /**
+   * Optional: earlier turns of this conversation, oldest first.
+   * Without this the model answers every message in isolation and repeats itself.
+   */
+  history?: AIConversationTurn[];
+}
+
+/** One prior exchange, flattened for prompting. */
+export interface AIConversationTurn {
+  userMessage: string;
+  assistantMessage: string;
 }
 
 export interface AIToolCall {

@@ -15,7 +15,7 @@
 
 import { callAI, routeModelTier } from './provider';
 import { executeTool } from './tools/ToolRegistry';
-import type { AIContext, AIRequest, AIResponse } from './types';
+import type { AIContext, AIConversationTurn, AIRequest, AIResponse } from './types';
 import { resolveActiveAIMode, type AIMode } from '../services/ai-settings.service';
 import { processFreeWorkflowRequest } from './workflow/FreeWorkflowEngine';
 
@@ -27,12 +27,18 @@ function isSchoolRecordQuestion(message: string): boolean {
   return asksAboutSchoolPolicy || (asksForRecords && mentionsSchoolData && !asksForAdvice);
 }
 
+// How much conversation memory to feed the model. The local model has a small
+// context window, so a handful of turns is worth more than a long transcript.
+const MAX_HISTORY_TURNS = 6;
+const MAX_HISTORY_CHARS = 600;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // TOOL REGISTRATION
 // Import all tool files here so they register on startup
 // ─────────────────────────────────────────────────────────────────────────────
 
 import './tools/pathway.tools';
+import './tools/schoolData.tools';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ORCHESTRATOR
@@ -40,7 +46,7 @@ import './tools/pathway.tools';
 
 export async function processAIRequest(request: AIRequest): Promise<AIResponse> {
   const start = Date.now();
-  const { userMessage, context, confirmationId, modelTier } = request;
+  const { userMessage, context, confirmationId, modelTier, history } = request;
   const mode = await resolveActiveAIMode();
 
   // If a confirmation ID was provided, re-execute the pending tool
@@ -59,8 +65,8 @@ export async function processAIRequest(request: AIRequest): Promise<AIResponse> 
 
   const tier = modelTier ?? routeModelTier(userMessage);
 
-  // Build a prompt that includes tool awareness
-  const toolAwarePrompt = buildToolAwarePrompt(userMessage, context);
+  // Build a prompt that includes persona, conversation memory and tool awareness
+  const toolAwarePrompt = buildToolAwarePrompt(userMessage, context, history);
 
   // First pass: ask the model what it wants to do
   const firstPass = await callAI(toolAwarePrompt, { tier, context });
@@ -226,15 +232,69 @@ async function executeConfirmedAction(
 // PROMPT BUILDERS
 // ─────────────────────────────────────────────────────────────────────────────
 
-function buildToolAwarePrompt(userMessage: string, context: AIContext): string {
+/**
+ * Persona shared by every prompt. Kept short on purpose: the local model is a
+ * 1.5B, and long instructions make it lose the thread of the actual request.
+ */
+function buildPersonaLine(context: AIContext): string {
+  const role = context.user.role.replace(/_/g, ' ').toLowerCase();
+  const school = context.school.name || 'the school';
+  return [
+    `You are Wendy, the assistant for ${school}.`,
+    `You are speaking to ${context.user.name}, whose role is ${role}.`,
+    `Be warm, specific and concise. Prefer concrete detail over filler.`,
+    `When asked to write a message, notice or announcement, write it ready to send — in a natural human voice, not corporate boilerplate.`,
+    `Never invent learner names, figures, dates or fee amounts. If you do not have the data, say so or ask for the detail you need.`,
+  ].join(' ');
+}
+
+/**
+ * Render prior turns as a compact transcript. Only the last few are included:
+ * the context window is small and older turns add noise faster than value.
+ */
+function buildHistoryBlock(history?: AIConversationTurn[]): string {
+  if (!history || history.length === 0) return '';
+
+  const recent = history.slice(-MAX_HISTORY_TURNS);
+  const lines = recent.map((turn, index) => {
+    const user = truncate(turn.userMessage, MAX_HISTORY_CHARS);
+    const assistant = truncate(turn.assistantMessage, MAX_HISTORY_CHARS);
+    return [
+      `Turn ${index + 1}:`,
+      `User: ${user}`,
+      `You: ${assistant}`,
+    ].join('\n');
+  });
+
+  return [
+    ``,
+    `Earlier in this conversation (oldest first):`,
+    ...lines,
+    ``,
+    `Continue the conversation naturally. Do not repeat what you already said, and do not re-introduce yourself.`,
+  ].join('\n');
+}
+
+function truncate(value: string, max: number): string {
+  const text = String(value ?? '').replace(/\s+/g, ' ').trim();
+  return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
+}
+
+function buildToolAwarePrompt(
+  userMessage: string,
+  context: AIContext,
+  history?: AIConversationTurn[]
+): string {
   const moduleTools = getModuleToolDescriptions(context.currentModule, context.user.role);
 
   return [
-    `User request: "${userMessage}"`,
+    buildPersonaLine(context),
+    buildHistoryBlock(history),
+    ``,
+    `Current request: "${userMessage}"`,
     ``,
     moduleTools
       ? [
-          `Available tools for the ${context.currentModule} module:`,
           moduleTools,
           ``,
           `If you need data to answer this request, respond with a tool call in this exact format:`,
@@ -333,9 +393,21 @@ export function parseToolCallIntent(
   }
 }
 
-function getModuleToolDescriptions(module: string, role: AIContext['user']['role']): string | null {
-  if (module !== 'pathways') return null;
-  const tools = [
+/**
+ * Tools that are useful regardless of which module the user is in. Previously
+ * only the `pathways` module exposed tools, so every other request fell through
+ * to "answer from context" — where a small model invents data.
+ * Access is still enforced by the tool layer, not by these descriptions.
+ */
+const ALWAYS_AVAILABLE_TOOLS = [
+  '- find_learner(query): Find a learner by name or admission number. Returns learnerId, grade, class.',
+  '- get_learner_fee_balance(learnerId): Outstanding fees for one learner (leadership/accounts only).',
+  '- get_learner_attendance_summary(learnerId, days?): Present/absent/late counts and attendance rate.',
+  '- get_fee_arrears_overview(): School-wide total outstanding and largest balances (leadership/accounts only).',
+];
+
+function getModuleToolDescriptions(module: string, role: AIContext['user']['role']): string {
+  const pathwayTools = [
     { roles: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER', 'PARENT', 'STUDENT'], text: '- get_learner_readiness(learnerId): Analyze a learner\'s Grade 9 pathway readiness' },
     { roles: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER', 'PARENT', 'STUDENT'], text: '- get_learner_pathway_status(learnerId): Get current recommendation + parent preference + finalization status' },
     { roles: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER', 'PARENT', 'STUDENT'], text: '- search_senior_schools(pathway, county?, gender?, limit?): Find schools for a pathway' },
@@ -343,6 +415,9 @@ function getModuleToolDescriptions(module: string, role: AIContext['user']['role
     { roles: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER', 'HEAD_OF_CURRICULUM'], text: '- submit_pathway_recommendation(learnerId, recommendedPathway, confidenceScore): Submit staff recommendation' },
     { roles: ['SUPER_ADMIN', 'PARENT'], text: '- submit_parent_preference(learnerId, parentPreference): Submit a linked parent preference' },
     { roles: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'], text: '- finalize_learner_pathway(learnerId, finalApprovedPathway): Lock and finalize pathway [REQUIRES CONFIRMATION]' },
-  ].filter((tool) => tool.roles.includes(role)).map((tool) => tool.text);
-  return tools.length ? tools.join('\n') : null;
+  ];
+  const moduleTools = module === 'pathways'
+    ? pathwayTools.filter((tool) => tool.roles.includes(role)).map((tool) => tool.text)
+    : [];
+  return [...moduleTools, ...ALWAYS_AVAILABLE_TOOLS].join('\n');
 }
