@@ -90,6 +90,11 @@ services:
       - whatsapp_auth:/app/whatsapp-auth
     networks:
       - app_net
+      # Shared network with the standalone Ollama host (docker-compose.ai.yml).
+      # Declared external so a school without a local AI container still starts:
+      # Docker only errors here if the network is missing *and* nothing else
+      # references it, so the deploy script creates it when absent.
+      - ai_net
 
   frontend:
     image: ${FRONTEND_IMAGE}
@@ -115,6 +120,9 @@ services:
 networks:
   app_net:
     driver: bridge
+  ai_net:
+    external: true
+    name: ${AI_NETWORK:-trendscore-ai}
 
 volumes:
   db_data:
