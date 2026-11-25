@@ -74,4 +74,34 @@ describe('AI settings service', () => {
       source: 'built-in',
     });
   });
+
+  describe('Ollama', () => {
+    it('exposes ollama as a selectable mode that needs no credential', () => {
+      const result = getPublicAISettings({
+        __ai: { enabled: true, provider: 'ollama', providers: {} },
+      });
+
+      expect(result.provider).toBe('ollama');
+      expect(result.enabled).toBe(true);
+      // No key exists anywhere; ollama must still report itself as usable.
+      expect(result.hasApiKey).toBe(true);
+      expect(result.providers.ollama).toMatchObject({
+        hasApiKey: true,
+        source: 'built-in',
+        model: 'qwen2.5:1.5b-instruct',
+      });
+    });
+
+    it('honours an explicitly configured ollama endpoint and model', () => {
+      process.env.OLLAMA_BASE_URL = 'http://gpu-box:11434/v1';
+      process.env.OLLAMA_MODEL = 'llama3.2:3b';
+
+      const result = getPublicAISettings({
+        __ai: { enabled: true, provider: 'ollama', providers: {} },
+      });
+
+      expect(result.providers.ollama.model).toBe('llama3.2:3b');
+      expect(result.providers.ollama.apiUrl).toBe('http://gpu-box:11434/v1/chat/completions');
+    });
+  });
 });

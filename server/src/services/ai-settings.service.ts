@@ -14,11 +14,19 @@ export const AI_PROVIDER_DEFAULTS: Record<AIProvider, { model: string; apiUrl: s
     model: 'gpt-4o-mini',
     apiUrl: 'https://api.openai.com/v1/chat/completions',
   },
+  ollama: {
+    // Self-hosted on the shared `trendscore-ai` Docker network. No cost, no key.
+    model: process.env.OLLAMA_MODEL?.trim() || 'qwen2.5:1.5b-instruct',
+    apiUrl: process.env.OLLAMA_API_URL?.trim()
+      || `${(process.env.OLLAMA_BASE_URL?.trim() || 'http://ollama:11434/v1').replace(/\/+$/, '')}/chat/completions`,
+  },
 };
 
 const isRecord = (value: unknown): value is Record<string, any> => Boolean(value && typeof value === 'object');
 
-export const isAIProvider = (value: unknown): value is AIProvider => value === 'anthropic' || value === 'openai';
+export const isAIProvider = (value: unknown): value is AIProvider => (
+  value === 'anthropic' || value === 'openai' || value === 'ollama'
+);
 export const isAIMode = (value: unknown): value is AIMode => value === 'workflow' || isAIProvider(value);
 
 const endpointFromBaseUrl = (baseUrl: string, provider: AIProvider) => {
@@ -33,10 +41,23 @@ const getEnvironmentMode = (): AIMode => {
   if (process.env.ANTHROPIC_API_KEY?.trim()) return 'anthropic';
   if (process.env.OPENAI_API_KEY?.trim()) return 'openai';
   if (process.env.AI_API_KEY?.trim()) return 'openai';
+  // Ollama has no credential to detect, so it is only chosen explicitly via
+  // AI_PROVIDER=ollama (above) or the stored setting. Falling back to it here
+  // would silently switch every install onto a local model.
   return 'workflow';
 };
 
 const getEnvironmentSettings = (provider: AIProvider, selectedProvider: AIProvider) => {
+  if (provider === 'ollama') {
+    const baseUrl = process.env.OLLAMA_BASE_URL?.trim() || 'http://ollama:11434/v1';
+    return {
+      apiKey: undefined,
+      model: process.env.OLLAMA_MODEL?.trim() || AI_PROVIDER_DEFAULTS.ollama.model,
+      apiUrl: process.env.OLLAMA_API_URL?.trim()
+        || endpointFromBaseUrl(baseUrl, 'ollama'),
+    };
+  }
+
   const providerKey = provider === 'anthropic' ? process.env.ANTHROPIC_API_KEY : process.env.OPENAI_API_KEY;
   const genericKey = provider === selectedProvider ? process.env.AI_API_KEY : undefined;
   const providerModel = provider === 'anthropic' ? process.env.ANTHROPIC_MODEL : process.env.OPENAI_MODEL;
@@ -83,7 +104,7 @@ export const getPublicAISettings = (templates: unknown) => {
   const selectedMode = resolveSelectedMode(ai);
   const environmentProvider: AIProvider = selectedMode === 'workflow' ? 'openai' : selectedMode;
 
-  const providers = (['anthropic', 'openai'] as AIProvider[]).reduce((result, provider) => {
+  const providers = (['anthropic', 'openai', 'ollama'] as AIProvider[]).reduce((result, provider) => {
     const stored = getStoredProviderConfig(ai, provider);
     const environment = getEnvironmentSettings(provider, environmentProvider);
     const hasSavedKey = typeof stored.apiKey === 'string' && stored.apiKey.length > 0;
@@ -91,8 +112,10 @@ export const getPublicAISettings = (templates: unknown) => {
     result[provider] = {
       model: String(stored.model || environment.model),
       apiUrl: String(stored.apiUrl || environment.apiUrl),
-      hasApiKey: hasSavedKey || hasEnvironmentKey,
-      source: hasSavedKey ? 'settings' : hasEnvironmentKey ? 'environment' : 'none',
+      // Ollama runs on our own infrastructure and takes no credential, so it is
+      // always "configured" — otherwise the UI would show it as unusable.
+      hasApiKey: provider === 'ollama' ? true : hasSavedKey || hasEnvironmentKey,
+      source: provider === 'ollama' ? 'built-in' : hasSavedKey ? 'settings' : hasEnvironmentKey ? 'environment' : 'none',
     };
     return result;
   }, {} as Record<AIProvider, { model: string; apiUrl: string; hasApiKey: boolean; source: string }>);
@@ -166,7 +189,11 @@ export const resolveActiveAISettings = async (): Promise<AIProviderSettings> => 
   }
 
   const value: AIProviderSettings = {
-    enabled: ai.enabled !== undefined ? Boolean(ai.enabled) : Boolean(savedKey || environment.apiKey),
+    // Ollama needs no credential, so its enabled-state must not depend on a key
+    // being present — otherwise every request would be rejected as disabled.
+    enabled: ai.enabled !== undefined
+      ? Boolean(ai.enabled)
+      : provider === 'ollama' ? true : Boolean(savedKey || environment.apiKey),
     provider,
     apiKey: savedKey || environment.apiKey,
     model: String(stored.model || environment.model),
