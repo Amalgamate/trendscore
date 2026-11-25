@@ -16,6 +16,7 @@ import { parentService } from '../services/parent.service';
 import { parentAccessService } from '../services/parent-access.service';
 import { ensureStudentAccountForLearner } from '../services/studentAccount.service';
 import { auditService } from '../services/audit.service';
+import { buildPromotionReadiness } from '../services/promotionReadiness.service';
 import { v2 as cloudinary } from 'cloudinary';
 import { PRODUCT_STORAGE_PREFIX } from '../config/productIdentity';
 
@@ -931,6 +932,65 @@ export class LearnerController {
     res.json({ success: true, data: preview });
   }
 
+  /** Live readiness guidance for the Promotion page. Read-only. */
+  async getPromotionReadiness(req: AuthRequest, res: Response) {
+    const academicYear = Number(req.query.targetAcademicYear || new Date().getFullYear() + 1);
+    const targetTerm = String(req.query.targetTerm || 'TERM_1').toUpperCase();
+    if (!Number.isInteger(academicYear) || academicYear < 2000 || academicYear > 2150) {
+      throw new ApiError(400, 'Choose a valid destination academic year.');
+    }
+    if (!['TERM_1', 'TERM_2', 'TERM_3'].includes(targetTerm)) {
+      throw new ApiError(400, 'Choose a valid destination term.');
+    }
+    const readiness = await buildPromotionReadiness({
+      institutionType: getInstitutionType(req) as 'PRIMARY_CBC' | 'SECONDARY',
+      targetAcademicYear: academicYear,
+      targetTerm: targetTerm as 'TERM_1' | 'TERM_2' | 'TERM_3',
+    });
+    res.json({ success: true, data: readiness });
+  }
+
+  /** Deactivate enrollments that still belong to non-active learners. */
+  async cleanupStaleEnrollments(req: AuthRequest, res: Response) {
+    const stale = await prisma.classEnrollment.findMany({
+      where: { active: true, archived: false, learner: { status: { not: 'ACTIVE' } } },
+      select: { id: true, learnerId: true, classId: true },
+    });
+    const userId = req.user!.userId;
+    const reason = String(req.body?.reason || 'Promotion readiness cleanup');
+
+    await prisma.$transaction(async (tx) => {
+      if (stale.length) {
+        await tx.classEnrollment.updateMany({
+          where: { id: { in: stale.map((row) => row.id) } },
+          data: { active: false },
+        });
+        for (const row of stale) {
+          await tx.changeHistory.create({
+            data: {
+              entityType: 'ClassEnrollment',
+              entityId: row.id,
+              action: 'STALE_ENROLLMENT_CLEANUP',
+              field: 'active',
+              oldValue: 'true',
+              newValue: 'false',
+              changedBy: userId,
+              reason: `${reason} (learner ${row.learnerId}, class ${row.classId})`,
+            },
+          });
+        }
+      }
+    });
+
+    res.json({
+      success: true,
+      message: stale.length
+        ? `Cleared ${stale.length} stale active enrollment${stale.length === 1 ? '' : 's'}.`
+        : 'No stale active enrollments were found.',
+      data: { cleared: stale.length, enrollmentIds: stale.map((row) => row.id) },
+    });
+  }
+
   async promoteLearners(req: AuthRequest, res: Response) {
     const result = await prisma.$transaction(async (tx) => {
       const preview = await this.buildPromotionPreview(tx, req, req.body);
@@ -947,6 +1007,20 @@ export class LearnerController {
           where: { id: { in: learnerIds } },
           data: { status: 'GRADUATED', exitDate: new Date(), exitReason: 'Graduated', updatedBy: userId },
         });
+        for (const placement of preview.placements as any[]) {
+          await tx.changeHistory.create({
+            data: {
+              entityType: 'Learner',
+              entityId: placement.id,
+              action: 'BULK_GRADUATE_LEARNER',
+              field: 'status',
+              oldValue: 'ACTIVE',
+              newValue: 'GRADUATED',
+              changedBy: userId,
+              reason: `${placement.name} (${placement.admissionNumber || 'no admission number'}) graduated for ${preview.destination.academicYear} ${preview.destination.term}`,
+            },
+          });
+        }
       } else {
         const placementsByClass = new Map<string, string[]>();
         for (const placement of preview.placements as any[]) {
@@ -969,6 +1043,20 @@ export class LearnerController {
           });
         }
         await tx.learner.updateMany({ where: { id: { in: learnerIds } }, data: { grade: targetGrade, updatedBy: userId } });
+        for (const placement of preview.placements as any[]) {
+          await tx.changeHistory.create({
+            data: {
+              entityType: 'Learner',
+              entityId: placement.id,
+              action: 'BULK_PROMOTE_LEARNER',
+              field: 'grade',
+              oldValue: placement.sourceGrade,
+              newValue: targetGrade,
+              changedBy: userId,
+              reason: `${placement.name} (${placement.admissionNumber || 'no admission number'}) → ${placement.targetClassName || targetGrade}, ${preview.destination.academicYear} ${preview.destination.term}`,
+            },
+          });
+        }
       }
       return { rejected: false as const, preview };
     });
@@ -991,6 +1079,7 @@ export class LearnerController {
         destination: result.preview.destination,
         promotedCount: result.preview.destination.grade === 'GRADUATED' ? 0 : result.preview.readyCount,
         graduatedCount: result.preview.destination.grade === 'GRADUATED' ? result.preview.readyCount : 0,
+        learnerIds: result.preview.placements.map((placement: any) => placement.id),
         placements: result.preview.placements,
       },
     });

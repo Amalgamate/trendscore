@@ -15,6 +15,8 @@ import prisma from '../config/database';
 import { ApiError } from '../utils/error.util';
 import { redisCacheService } from './redis-cache.service';
 import { diffDays, schoolDateKey } from './keyDates.service';
+import { NotificationService, NotificationType } from './notification.service';
+import { buildPromotionReadiness } from './promotionReadiness.service';
 
 export const TERM_IDS = ['TERM_1', 'TERM_2', 'TERM_3'] as const;
 export type TermId = (typeof TERM_IDS)[number];
@@ -212,6 +214,70 @@ export async function previewAcademicYear(input: AcademicYearPlanInput): Promise
   };
 }
 
+/**
+ * Tell every administrator, in their own inbox, what the new year still needs
+ * before learners can be promoted. One notification per academic year/admin.
+ */
+async function announcePromotionReadiness(year: number, term: TermId): Promise<void> {
+  try {
+    const school = await prisma.school.findFirst({
+      where: { archived: false },
+      select: { institutionType: true },
+    });
+    const readiness = await buildPromotionReadiness({
+      institutionType: (school?.institutionType as 'PRIMARY_CBC' | 'SECONDARY') || 'PRIMARY_CBC',
+      targetAcademicYear: year,
+      targetTerm: term,
+    });
+
+    const title = `${year} promotion readiness`;
+    const message = readiness.missingClasses.length || readiness.staleEnrollmentCount
+      ? `${readiness.missingClasses.length} destination class(es) still missing, ${readiness.staleEnrollmentCount} stale enrollment(s), ${readiness.activeLearnerCount} active learners. Open Promotion for the guided checklist.`
+      : `Destination classes and enrollment hygiene look ready for ${readiness.activeLearnerCount} active learners. Open Promotion to review placements.`;
+
+    const admins = await prisma.user.findMany({
+      where: {
+        OR: [{ role: { in: ['ADMIN', 'SUPER_ADMIN'] as any } }, { roles: { hasSome: ['ADMIN', 'SUPER_ADMIN'] as any } }],
+        status: 'ACTIVE',
+        archived: false,
+      },
+      select: { id: true },
+    });
+
+    for (const admin of admins) {
+      const recent = await prisma.userNotification.findMany({
+        where: { userId: admin.id, title },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+        select: { metadata: true },
+      });
+      const alreadyAnnounced = recent.some((row) => (row.metadata as any)?.academicYear === year);
+      if (alreadyAnnounced) continue;
+      await NotificationService.createNotification({
+        userId: admin.id,
+        title,
+        message,
+        type: readiness.missingClasses.length || readiness.staleEnrollmentCount
+          ? NotificationType.WARNING
+          : NotificationType.INFO,
+        link: '/app/learners-promotion',
+        showAsPopup: true,
+        metadata: {
+          feature: 'promotion-readiness',
+          academicYear: year,
+          term,
+          missingClasses: readiness.missingClasses.length,
+          staleEnrollments: readiness.staleEnrollmentCount,
+          activeLearners: readiness.activeLearnerCount,
+        },
+      });
+    }
+  } catch (error) {
+    // Announcements are advisory; never let them fail a year setup.
+    console.warn('[AcademicYear] Promotion readiness announcement failed:', error);
+  }
+}
+
 /** Validate and save the whole year in one transaction. */
 export async function saveAcademicYear(input: AcademicYearPlanInput, userId: string) {
   const preview = await previewAcademicYear(input);
@@ -342,6 +408,7 @@ export async function saveAcademicYear(input: AcademicYearPlanInput, userId: str
   });
 
   await redisCacheService.clear();
+  await announcePromotionReadiness(year, preview.activeTerm || 'TERM_1');
 
   return {
     academicYear: year,

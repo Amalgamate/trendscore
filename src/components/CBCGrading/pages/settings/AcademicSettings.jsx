@@ -1118,6 +1118,9 @@ const AcademicSettings = () => {
               </button>
             </div>
           </div>
+          <p className="mb-4 -mt-3 text-xs text-gray-500">
+            “Seed Classes” uses the current calendar year and Term 1 only. For a future year, use the guided checklist on the Promotion page, which offers a Create missing classes action.
+          </p>
 
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">

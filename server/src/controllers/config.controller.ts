@@ -8,6 +8,7 @@ import { ApiError } from '../utils/error.util';
 import { getInstitutionType } from '../utils/institutionNormalizer';
 import { broadcastKeyDatesChanged } from '../services/keyDates.service';
 import { assertValidTermRange, syncTermEvents } from '../services/termEvents.service';
+import { getPromotionGrades } from '../services/promotionReadiness.service';
 
 // Helper to safely parse dates
 const safeParseDate = (dateVal: any, defaultDate: Date): Date => {
@@ -335,6 +336,74 @@ export const seedClasses = async (req: AuthRequest, res: Response) => {
   });
 };
 
+/**
+ * Create destination classes for an explicitly chosen year/term. Unlike the
+ * legacy seed endpoint this never auto-enrols current learners — promotion
+ * must remain the only operation that moves learners into the new year.
+ */
+export const bulkCreateYearClasses = async (req: AuthRequest, res: Response) => {
+  const institutionType = getInstitutionType(req) as 'PRIMARY_CBC' | 'SECONDARY';
+  const academicYear = Number(req.body?.academicYear);
+  const term = String(req.body?.term || 'TERM_1') as Term;
+  const capacity = Number(req.body?.capacity ?? 40);
+  const requestedStreams: string[] = Array.isArray(req.body?.streams)
+    ? (req.body.streams as unknown[]).map((value) => String(value).trim()).filter((value): value is string => Boolean(value))
+    : [];
+
+  if (!Number.isInteger(academicYear) || academicYear < 2000 || academicYear > 2150) {
+    throw new ApiError(400, 'Choose a valid academic year.');
+  }
+  if (!['TERM_1', 'TERM_2', 'TERM_3'].includes(term)) {
+    throw new ApiError(400, 'Choose a valid term.');
+  }
+  if (!Number.isInteger(capacity) || capacity < 1 || capacity > 500) {
+    throw new ApiError(400, 'Capacity must be between 1 and 500.');
+  }
+
+  const grades = getPromotionGrades(institutionType);
+  const configuredStreams = await prisma.stream.findMany({
+    where: { active: true, archived: false },
+    select: { name: true },
+    orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
+  });
+  const streams = requestedStreams.length
+    ? [...new Set(requestedStreams)]
+    : configuredStreams.map((s) => s.name.trim()).filter(Boolean);
+  if (!streams.length) {
+    throw new ApiError(400, 'No streams configured. Create a stream before generating classes.');
+  }
+
+  const created: any[] = [];
+  let skipped = 0;
+  await prisma.$transaction(async (tx) => {
+    for (const grade of grades) {
+      for (const stream of streams) {
+        const existing = await tx.class.findFirst({
+          where: { grade, stream, academicYear, term },
+          select: { id: true },
+        });
+        if (existing) {
+          skipped++;
+          continue;
+        }
+        const classCode = await generateClassCode();
+        const name = institutionType === 'SECONDARY'
+          ? `Grade ${String(grade).replace('GRADE', '')} ${stream}`
+          : `${String(grade).replace('_', ' ')} ${stream}`;
+        created.push(await tx.class.create({
+          data: { classCode, name, grade, institutionType, stream, academicYear, term, capacity, active: true },
+        }));
+      }
+    }
+  });
+
+  res.json({
+    success: true,
+    message: `Created ${created.length} class${created.length === 1 ? '' : 'es'} for ${academicYear} ${term}; ${skipped} already existed.`,
+    data: { created: created.length, skipped, classes: created },
+  });
+};
+
 export const configController = {
   getTermConfigs,
   getSpecificTermConfig,
@@ -358,4 +427,5 @@ export const configController = {
   recalculateClassScores,
   seedStreams,
   seedClasses,
+  bulkCreateYearClasses,
 };
