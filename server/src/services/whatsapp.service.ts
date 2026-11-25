@@ -51,19 +51,32 @@ export type InboundHandler = (message: InboundWhatsAppMessage) => Promise<void> 
 type ConnectionStatus = 'disconnected' | 'qr_needed' | 'authenticated' | 'initializing';
 
 /**
- * Delete the Baileys auth directory, tolerating the transient EBUSY/ENOTEMPTY
- * that appears while the library's event buffer finishes writing.
+ * Delete the Baileys auth data so the next initialize() starts from a fresh QR.
  *
- * `fs.rmSync(..., { force: true })` only suppresses ENOENT — a busy handle still
- * throws, which is how a logout could report success while the pairing stayed
- * on disk. Retry with a short backoff, then fail loudly.
+ * Deletes the directory's *contents*, never the directory itself. In Docker
+ * `WHATSAPP_AUTH_DIR` is a volume mount point (`/app/whatsapp-auth`), and
+ * `rmdir` on a mount point fails with EBUSY permanently — that is what made
+ * logout report success while the pairing survived. Emptying it is equivalent
+ * for Baileys and works whether or not the path is a mount.
+ *
+ * Retries the transient EBUSY/ENOTEMPTY that appears while the library's event
+ * buffer is still flushing key files, then fails loudly.
  */
-async function removeAuthFolder(retries = 5, delayMs = 200): Promise<void> {
+async function clearAuthFolder(retries = 5, delayMs = 200): Promise<void> {
+  if (!fs.existsSync(AUTH_FOLDER)) return;
+
+  const removeContents = async (): Promise<void> => {
+    const entries = await fs.promises.readdir(AUTH_FOLDER);
+    for (const entry of entries) {
+      await fs.promises.rm(path.join(AUTH_FOLDER, entry), { recursive: true, force: true });
+    }
+  };
+
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     try {
-      await fs.promises.rm(AUTH_FOLDER, { recursive: true, force: true });
-      // `force` hides a leftover directory on some platforms; verify explicitly.
-      if (!fs.existsSync(AUTH_FOLDER)) return;
+      await removeContents();
+      const remaining = await fs.promises.readdir(AUTH_FOLDER);
+      if (remaining.length === 0) return;
     } catch (err: any) {
       const code = err?.code;
       // EBUSY / ENOTEMPTY / EPERM are all "still in use" — worth retrying.
@@ -74,6 +87,12 @@ async function removeAuthFolder(retries = 5, delayMs = 200): Promise<void> {
     if (attempt < retries) {
       await new Promise((resolve) => setTimeout(resolve, delayMs * (attempt + 1)));
     }
+  }
+
+  // Contents survived every attempt — surface it rather than claim success.
+  const leftovers = fs.existsSync(AUTH_FOLDER) ? await fs.promises.readdir(AUTH_FOLDER) : [];
+  if (leftovers.length > 0) {
+    throw new Error(`${leftovers.length} session file(s) could not be removed`);
   }
 }
 
@@ -237,7 +256,7 @@ class WhatsAppService {
 
             if (statusCode === loadBaileys().DisconnectReason.loggedOut) {
               console.log('[WhatsApp] Session invalid or logged out. Clearing auth data to generate a fresh QR code...');
-              void removeAuthFolder().catch((purgeErr) =>
+              void clearAuthFolder().catch((purgeErr) =>
                 console.error('[WhatsApp] Could not clear auth data after logout:', purgeErr?.message || purgeErr),
               );
             }
@@ -425,7 +444,7 @@ class WhatsAppService {
     await new Promise((resolve) => setTimeout(resolve, 250));
 
     try {
-      await removeAuthFolder();
+      await clearAuthFolder();
     } catch (err: any) {
       // Auth data survived. Leave manualLogout set so the service cannot
       // silently reconnect with a stale pairing; report the failure so the
