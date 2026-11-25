@@ -104,10 +104,24 @@ class WhatsAppStatusController {
 
     /**
      * Logout WhatsApp service
+     *
+     * Must not answer 200 when the session survived: the operator then believes
+     * the number is detached and stops looking. `logout()` already resolved the
+     * local pairing state, so an unsuccessful purge is a 502 — the request was
+     * understood, the upstream cleanup did not complete.
      */
     async logout(req: AuthRequest, res: Response) {
         try {
             const result = await whatsappService.logout();
+
+            if (!result.success) {
+                logger.error('[WhatsApp Status] Logout did not clear the session:', result.message);
+                return res.status(502).json({
+                    success: false,
+                    message: result.message,
+                });
+            }
+
             res.json(result);
         } catch (error: any) {
             logger.error('[WhatsApp Status] Error logging out:', error);
