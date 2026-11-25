@@ -19,7 +19,7 @@ class WhatsAppStatusController {
     async getStatus(req: AuthRequest, res: Response) {
         try {
             const status = whatsappService.getStatus();
-            const canSeeQr = hasAnyRole(req.user, ['SUPER_ADMIN', 'ADMIN']);
+            const canSeeQr = hasAnyRole(req.user, ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER']);
 
             res.json({
                 success: true,
