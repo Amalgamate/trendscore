@@ -120,6 +120,7 @@ export default function AcademicYearSetup({ academicYear, onSaved, onDirtyChange
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [prefilling, setPrefilling] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [reason, setReason] = useState('');
   const [showPromotionPrompt, setShowPromotionPrompt] = useState(false);
@@ -251,6 +252,58 @@ export default function AcademicYearSetup({ academicYear, onSaved, onDirtyChange
     }
   };
 
+  const prefillFromPreviousYear = async () => {
+    setPrefilling(true);
+    try {
+      const res = await api.planner.getAcademicYearSetup(academicYear - 1);
+      const data = res?.data ?? res;
+      const previousTerms = data?.terms || [];
+      if (!previousTerms.some((term) => term.startDate && term.endDate)) {
+        throw new Error(`No term dates are saved for ${academicYear - 1}.`);
+      }
+      const shiftYear = (value) => {
+        if (!value) return '';
+        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value));
+        if (!match) return '';
+        const nextYear = Number(match[1]) + 1;
+        const month = Number(match[2]);
+        const lastDay = new Date(Date.UTC(nextYear, month, 0)).getUTCDate();
+        return `${nextYear}-${match[2]}-${String(Math.min(Number(match[3]), lastDay)).padStart(2, '0')}`;
+      };
+      setForm((prev) => {
+        const next = { ...prev };
+        for (const term of TERMS) {
+          const source = previousTerms.find((row) => row.term === term.id) || {};
+          next[term.id] = {
+            startDate: shiftYear(source.startDate),
+            endDate: shiftYear(source.endDate),
+            midtermStart: shiftYear(source.midtermStart),
+            midtermEnd: shiftYear(source.midtermEnd),
+            examStart: shiftYear(source.examStart),
+            examEnd: shiftYear(source.examEnd),
+          };
+        }
+        return next;
+      });
+      setActiveTerm('TERM_1');
+      setConfirmed(false);
+      setDirty(true);
+      toast.success(`Copied ${academicYear - 1} dates into ${academicYear}. Review them before saving.`);
+    } catch (error) {
+      toast.error(error?.message || 'Could not copy dates from the previous year');
+    } finally {
+      setPrefilling(false);
+    }
+  };
+
+  const saveBlockReason = checking ? 'Checking the year…'
+    : saving ? 'Saving…'
+      : !isComplete ? 'Enter opening and closing dates for all three terms.'
+        : !preview ? 'Waiting for the year check to finish.'
+          : !preview.valid ? 'Fix the errors listed above.'
+            : needsConfirm && !confirmed ? 'Tick the confirmation checkbox above to enable saving.'
+              : null;
+
   const fromPlannerOnly = useMemo(
     () => TERMS.filter((t) => sources[t.id] === 'planner').map((t) => t.label),
     [sources],
@@ -345,7 +398,17 @@ export default function AcademicYearSetup({ academicYear, onSaved, onDirtyChange
         )}
 
         {!isComplete && (
-          <p className="text-sm text-slate-500">Enter the opening and closing dates of all three terms to check the year.</p>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-sm text-slate-600">Enter the opening and closing dates of all three terms to check the year.</p>
+            <button
+              type="button"
+              onClick={prefillFromPreviousYear}
+              disabled={prefilling}
+              className="rounded-md border border-blue-300 bg-white px-3 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-50 disabled:cursor-not-allowed disabled:text-slate-400"
+            >
+              {prefilling ? 'Copying…' : `Copy ${academicYear - 1} dates`}
+            </button>
+          </div>
         )}
 
         {checking && (
@@ -387,11 +450,12 @@ export default function AcademicYearSetup({ academicYear, onSaved, onDirtyChange
           </div>
         )}
 
-        <div className="flex justify-end border-t pt-5">
+        <div className="flex flex-col items-end gap-2 border-t pt-5">
           <Button onClick={handleSave} disabled={!canSave} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white">
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
             Save academic year {academicYear}
           </Button>
+          {saveBlockReason && <p className="text-xs text-slate-500">{saveBlockReason}</p>}
         </div>
       </section>
 
