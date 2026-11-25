@@ -1,8 +1,12 @@
 /**
- * Unified text-generation interface for Anthropic and OpenAI.
+ * Unified text-generation interface for Anthropic, OpenAI, and self-hosted Ollama.
  *
  * Provider configuration is resolved for every request so environment changes
  * and scoped credentials (for example Communication Settings) are respected.
+ *
+ * Ollama is a local, no-cost, no-API-key provider. It speaks the OpenAI chat
+ * completions shape on /v1/chat/completions, so it reuses the OpenAI transport
+ * with the key requirement dropped.
  */
 
 import axios from 'axios';
@@ -10,7 +14,7 @@ import { ApiError } from '../utils/error.util';
 import logger from '../utils/logger';
 import { resolveActiveAISettings } from './ai-settings.service';
 
-export type AIProvider = 'anthropic' | 'openai';
+export type AIProvider = 'anthropic' | 'openai' | 'ollama';
 
 export interface PromptOptions {
   model?: string;
@@ -54,6 +58,8 @@ interface ResolvedProviderConfig {
 
 const DEFAULT_SYSTEM_PROMPT = 'You are a helpful assistant in a School Management System.';
 const DEFAULT_TIMEOUT_MS = 30_000;
+/** Local CPU inference is slow: a 1.5B model manages roughly 5 tokens/second here. */
+const OLLAMA_TIMEOUT_MS = 180_000;
 const PROVIDER_DEFAULTS: Record<AIProvider, { baseUrl: string; endpoint: string; model: string }> = {
   anthropic: {
     baseUrl: 'https://api.anthropic.com/v1',
@@ -64,6 +70,13 @@ const PROVIDER_DEFAULTS: Record<AIProvider, { baseUrl: string; endpoint: string;
     baseUrl: 'https://api.openai.com/v1',
     endpoint: '/chat/completions',
     model: 'gpt-4o-mini',
+  },
+  ollama: {
+    // Container name on the shared `trendscore-ai` network. Ollama serves an
+    // OpenAI-compatible surface under /v1 alongside its native /api endpoints.
+    baseUrl: 'http://ollama:11434/v1',
+    endpoint: '/chat/completions',
+    model: 'qwen2.5:1.5b-instruct',
   },
 };
 
@@ -97,6 +110,9 @@ export class AIBridgeService {
     if (config.provider === 'anthropic') {
       return this.callAnthropic(prompt, options, config);
     }
+    if (config.provider === 'ollama') {
+      return this.callOllama(prompt, options, config);
+    }
     return this.callOpenAI(prompt, options, config);
   }
 
@@ -127,13 +143,25 @@ export class AIBridgeService {
 
     const provider = this.resolveProvider(overrides.provider ?? this.defaults.provider ?? persisted.provider);
     const defaults = PROVIDER_DEFAULTS[provider];
-    const apiKey = clean(overrides.apiKey)
-      ?? clean(this.defaults.apiKey)
-      ?? clean(persisted.apiKey)
-      ?? clean(process.env.AI_API_KEY)
-      ?? clean(provider === 'anthropic' ? process.env.ANTHROPIC_API_KEY : process.env.OPENAI_API_KEY);
 
-    if (!apiKey) {
+    // Ollama is self-hosted and needs no credential. Skip every key lookup so a
+    // local install is never blocked by a missing AI_API_KEY.
+    const apiKey: string = provider === 'ollama'
+      ? ''
+      : (
+        clean(overrides.apiKey)
+        ?? clean(this.defaults.apiKey)
+        ?? clean(persisted.apiKey)
+        ?? clean(process.env.AI_API_KEY)
+        ?? clean(
+          provider === 'anthropic' ? process.env.ANTHROPIC_API_KEY
+            : provider === 'openai' ? process.env.OPENAI_API_KEY
+              : undefined,
+        )
+        ?? ''
+      );
+
+    if (provider !== 'ollama' && !apiKey) {
       const providerKey = provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY';
       throw new ApiError(500, `AI API key is not configured for ${provider} (set AI_API_KEY or ${providerKey})`)
         .withCode('AI_PROVIDER_NOT_CONFIGURED');
@@ -142,9 +170,12 @@ export class AIBridgeService {
     const explicitApiUrl = clean(overrides.apiUrl) ?? clean(this.defaults.apiUrl) ?? clean(persisted.apiUrl);
     const providerApiUrl = provider === 'anthropic'
       ? clean(process.env.ANTHROPIC_API_URL)
-      : clean(process.env.OPENAI_API_URL);
+      : provider === 'openai' ? clean(process.env.OPENAI_API_URL) : clean(process.env.OLLAMA_API_URL);
     const configuredBaseUrl = clean(overrides.baseUrl) ?? clean(this.defaults.baseUrl);
-    const environmentBaseUrl = clean(provider === 'anthropic' ? process.env.ANTHROPIC_BASE_URL : process.env.OPENAI_BASE_URL)
+    const providerBaseUrlEnv = provider === 'anthropic' ? process.env.ANTHROPIC_BASE_URL
+      : provider === 'openai' ? process.env.OPENAI_BASE_URL
+        : process.env.OLLAMA_BASE_URL;
+    const environmentBaseUrl = clean(providerBaseUrlEnv)
       ?? clean(process.env.AI_BASE_URL)
       ?? defaults.baseUrl;
     const apiUrl = explicitApiUrl
@@ -152,14 +183,18 @@ export class AIBridgeService {
         ? endpointFromBaseUrl(configuredBaseUrl, defaults.endpoint)
         : providerApiUrl ?? endpointFromBaseUrl(environmentBaseUrl, defaults.endpoint));
 
+    const providerModelEnv = provider === 'anthropic' ? process.env.ANTHROPIC_MODEL
+      : provider === 'openai' ? process.env.OPENAI_MODEL
+        : process.env.OLLAMA_MODEL;
     const model = clean(options.model)
       ?? clean(persisted.model)
-      ?? clean(provider === 'anthropic' ? process.env.ANTHROPIC_MODEL : process.env.OPENAI_MODEL)
+      ?? clean(providerModelEnv)
       ?? clean(process.env.AI_MODEL)
       ?? defaults.model;
+    const timeoutFallback = provider === 'ollama' ? OLLAMA_TIMEOUT_MS : DEFAULT_TIMEOUT_MS;
     const timeoutMs = positiveInteger(
       overrides.timeoutMs ?? this.defaults.timeoutMs ?? process.env.AI_TIMEOUT_MS,
-      DEFAULT_TIMEOUT_MS,
+      timeoutFallback,
     );
 
     return { provider, apiKey, apiUrl, model, timeoutMs };
@@ -172,8 +207,8 @@ export class AIBridgeService {
       ?? (clean(process.env.OPENAI_API_KEY) ? 'openai' : undefined)
       ?? 'anthropic';
     const provider = raw.toLowerCase();
-    if (provider !== 'anthropic' && provider !== 'openai') {
-      throw new ApiError(400, `Unsupported AI provider: ${raw}. Use 'anthropic' or 'openai'.`)
+    if (provider !== 'anthropic' && provider !== 'openai' && provider !== 'ollama') {
+      throw new ApiError(400, `Unsupported AI provider: ${raw}. Use 'anthropic', 'openai', or 'ollama'.`)
         .withCode('AI_PROVIDER_UNSUPPORTED');
     }
     return provider;
@@ -272,6 +307,59 @@ export class AIBridgeService {
       };
     } catch (error) {
       throw this.toProviderError('openai', error);
+    }
+  }
+
+  /**
+   * Local inference through Ollama.
+   *
+   * Ollama exposes an OpenAI-compatible /v1/chat/completions endpoint, so the
+   * request body matches callOpenAI. Differences worth knowing:
+   *   - No Authorization header: the server is ours and needs no credential.
+   *   - `max_tokens` is honoured, but a small model often stops early anyway.
+   *   - A cold model load can take longer than any cloud call, hence the
+   *     extended default timeout resolved in resolveConfig().
+   */
+  private async callOllama(
+    prompt: string,
+    options: PromptOptions,
+    config: ResolvedProviderConfig,
+  ): Promise<AIResponse> {
+    try {
+      const response = await axios.post(
+        config.apiUrl,
+        {
+          model: config.model,
+          messages: [
+            { role: 'system', content: options.systemPrompt || DEFAULT_SYSTEM_PROMPT },
+            { role: 'user', content: prompt },
+          ],
+          temperature: options.temperature ?? 0.7,
+          max_tokens: options.maxTokens,
+          stream: false,
+          ...(options.jsonMode ? { response_format: { type: 'json_object' } } : {}),
+        },
+        {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: config.timeoutMs,
+        },
+      );
+
+      const data = response.data || {};
+      const promptTokens = data.usage?.prompt_tokens ?? 0;
+      const completionTokens = data.usage?.completion_tokens ?? 0;
+      return {
+        content: data.choices?.[0]?.message?.content || '',
+        usage: data.usage ? {
+          promptTokens,
+          completionTokens,
+          totalTokens: data.usage.total_tokens ?? promptTokens + completionTokens,
+        } : undefined,
+        provider: 'ollama',
+        model: data.model || config.model,
+      };
+    } catch (error) {
+      throw this.toProviderError('ollama', error);
     }
   }
 

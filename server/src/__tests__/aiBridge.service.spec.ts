@@ -220,4 +220,47 @@ describe('AIBridgeService', () => {
     });
     expect(mockedAxios.post).not.toHaveBeenCalled();
   });
+
+  describe('Ollama (self-hosted, no key)', () => {
+    it('calls the local endpoint without an Authorization header and without an API key', async () => {
+      mockedAxios.post.mockResolvedValue({
+        data: {
+          model: 'qwen2.5:1.5b-instruct',
+          choices: [{ message: { role: 'assistant', content: 'Outstanding balance is KES 392,250.' } }],
+          usage: { prompt_tokens: 40, completion_tokens: 12, total_tokens: 52 },
+        },
+      } as any);
+
+      // No apiKey, no AI_API_KEY in env: this must still work.
+      const service = new AIBridgeService({ provider: 'ollama' });
+
+      const result = await service.generateCompletion('What is outstanding?', {
+        temperature: 0.3,
+        maxTokens: 512,
+      });
+
+      const [url, body, config] = mockedAxios.post.mock.calls[0] as [string, any, any];
+      expect(url).toBe('http://ollama:11434/v1/chat/completions');
+      expect(body.model).toBe('qwen2.5:1.5b-instruct');
+      expect(body.stream).toBe(false);
+      expect(body.messages).toEqual([
+        expect.objectContaining({ role: 'system' }),
+        { role: 'user', content: 'What is outstanding?' },
+      ]);
+      expect(config.headers).not.toHaveProperty('Authorization');
+      expect(result.provider).toBe('ollama');
+      expect(result.content).toContain('KES 392,250');
+      expect(result.usage?.totalTokens).toBe(52);
+    });
+
+    it('is never rejected for a missing credential', async () => {
+      mockedAxios.post.mockResolvedValue({
+        data: { choices: [{ message: { content: 'ok' } }] },
+      } as any);
+
+      const service = new AIBridgeService({ provider: 'ollama' });
+
+      await expect(service.generateCompletion('Hello', {})).resolves.toMatchObject({ provider: 'ollama' });
+    });
+  });
 });

@@ -328,7 +328,7 @@ export const saveCommunicationConfig = async (req: AuthRequest, res: Response) =
         const existingAi = getStoredAIConfig(baseTemplates);
         const provider = String(ai.provider || existingAi.provider || '').toLowerCase();
         if (!isAIMode(provider)) {
-            throw new ApiError(400, 'Unsupported AI provider. Use workflow, anthropic, or openai.')
+            throw new ApiError(400, 'Unsupported AI provider. Use workflow, anthropic, openai, or ollama.')
                 .withCode('AI_PROVIDER_UNSUPPORTED');
         }
 

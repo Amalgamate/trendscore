@@ -82,7 +82,7 @@ const saveCommunicationConfigSchema = z.object({
     }).optional(),
     ai: z.object({
         enabled: z.boolean().optional(),
-        provider: z.enum(['workflow', 'anthropic', 'openai']).optional(),
+        provider: z.enum(['workflow', 'anthropic', 'openai', 'ollama']).optional(),
         model: z.string().min(2).max(80).optional(),
         apiUrl: z.string().url().optional(),
         apiKey: z.string().min(10).max(300).optional()
