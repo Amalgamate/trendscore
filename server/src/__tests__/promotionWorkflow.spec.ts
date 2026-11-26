@@ -215,4 +215,40 @@ describe('destination class creation', () => {
     }));
     expect(db.classEnrollment.createMany).not.toHaveBeenCalled();
   });
+
+  it('allocates distinct codes in one batch when uncommitted rows are invisible outside the transaction', async () => {
+    const committed = [{ classCode: 'CLS-00012' }];
+    const inTransaction = [...committed];
+    const tx = {
+      class: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockImplementation(async () => [...inTransaction]),
+        findUnique: jest.fn().mockImplementation(async ({ where }: any) =>
+          inTransaction.find((row) => row.classCode === where.classCode)
+            ? { id: 'found' }
+            : null),
+        create: jest.fn().mockImplementation(async ({ data }: any) => {
+          inTransaction.push({ classCode: data.classCode });
+          return { id: `created-${data.grade}`, ...data };
+        }),
+      },
+    };
+    db.$transaction.mockImplementation(async (callback: any) => callback(tx));
+    db.stream.findMany.mockResolvedValue([{ name: 'A' }]);
+    // The global client cannot see rows written through tx until commit.
+    db.class.findMany.mockResolvedValue(committed);
+    db.class.findUnique.mockResolvedValue(null);
+    const res = makeRes();
+
+    await configController.bulkCreateYearClasses(baseReq({
+      academicYear: 2027,
+      term: 'TERM_1',
+    }), res);
+
+    const codes = tx.class.create.mock.calls.map(([args]: any[]) => args.data.classCode);
+    expect(codes).toHaveLength(12);
+    expect(new Set(codes).size).toBe(12);
+    expect(codes[0]).toBe('CLS-00013');
+    expect(codes[11]).toBe('CLS-00024');
+  });
 });

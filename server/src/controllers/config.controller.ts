@@ -17,8 +17,18 @@ const safeParseDate = (dateVal: any, defaultDate: Date): Date => {
   return isNaN(d.getTime()) ? defaultDate : d;
 };
 
-const generateClassCode = async (): Promise<string> => {
-  const existingCodes = await prisma.class.findMany({
+type ClassCodeClient = {
+  class: {
+    findMany: (args: any) => Promise<Array<{ classCode: string | null }>>;
+    findUnique: (args: any) => Promise<{ id: string } | null>;
+  };
+};
+
+// Must be called with the active transaction client when creating several
+// classes at once: rows written via `tx` are invisible to the global `prisma`
+// connection until commit, so reusing it would hand out the same code twice.
+const generateClassCode = async (client: ClassCodeClient = prisma): Promise<string> => {
+  const existingCodes = await client.class.findMany({
     where: { classCode: { startsWith: 'CLS-' } },
     select: { classCode: true },
   });
@@ -31,7 +41,7 @@ const generateClassCode = async (): Promise<string> => {
   let counter = maxNumber + 1;
   while (true) {
     const classCode = `CLS-${String(counter).padStart(5, '0')}`;
-    const existing = await prisma.class.findUnique({
+    const existing = await client.class.findUnique({
       where: { classCode },
       select: { id: true },
     });
@@ -386,7 +396,7 @@ export const bulkCreateYearClasses = async (req: AuthRequest, res: Response) => 
           skipped++;
           continue;
         }
-        const classCode = await generateClassCode();
+        const classCode = await generateClassCode(tx);
         const name = institutionType === 'SECONDARY'
           ? `Grade ${String(grade).replace('GRADE', '')} ${stream}`
           : `${String(grade).replace('_', ' ')} ${stream}`;
