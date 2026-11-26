@@ -9,7 +9,7 @@ import { aiAssistantService } from '../services/ai-assistant.service';
 import { performanceService } from '../services/performance.service';
 import { ApiError } from '../utils/error.util';
 import { processAIRequest, buildAIContext } from '../ai';
-import type { UserRole } from '../ai/types';
+import type { AIConversationTurn, UserRole } from '../ai/types';
 import { randomUUID } from 'crypto';
 import {
     archiveAIConversation,
@@ -141,11 +141,32 @@ export const aiController = {
                 selectedEntityType: selectedEntityType || undefined,
             });
 
+            // Load earlier turns so the model can follow the conversation.
+            // Best-effort: a history read must never block answering the request.
+            let conversationHistory: AIConversationTurn[] = [];
+            if (requestedSessionId && !confirmationId) {
+                try {
+                    const stored = await getAIConversationHistory({
+                        sessionId: String(requestedSessionId),
+                        userId,
+                        schoolId: req.school?.id,
+                        limit: 20,
+                    });
+                    conversationHistory = stored.map((exchange) => ({
+                        userMessage: exchange.userMessage,
+                        assistantMessage: exchange.response?.message || '',
+                    }));
+                } catch (historyError) {
+                    logger.warn({ err: historyError }, '[AI Chat] Failed to load conversation history');
+                }
+            }
+
             const response = await processAIRequest({
                 userMessage: typeof message === 'string' && message.trim() ? message.trim() : 'Confirmed action',
                 context,
                 confirmationId: confirmationId || undefined,
                 modelTier: modelTier || undefined,
+                history: conversationHistory,
             });
 
             const sessionId = requestedSessionId ? String(requestedSessionId) : randomUUID();
