@@ -76,13 +76,13 @@ describe('AI conversation memory', () => {
       { userMessage: 'Which class is worst?', assistantMessage: 'Grade 7 is the worst, followed by Grade 9.' },
     ];
 
-    await processAIRequest({ userMessage: 'And who owes the most in that class?', context, history });
+    await processAIRequest({ userMessage: 'And what about that one?', context, history });
 
     const prompt = capturedPrompt();
     expect(prompt).toContain('Earlier in this conversation');
     expect(prompt).toContain('How much is outstanding in Grade 7?');
     expect(prompt).toContain('Grade 7 owes KES 84,000 across 12 learners.');
-    expect(prompt).toContain('And who owes the most in that class?');
+    expect(prompt).toContain('And what about that one?');
     // The transcript must be ordered oldest-first and explicitly numbered,
     // otherwise the model reads the last question as the first one.
     expect(prompt.indexOf('Turn 1:')).toBeLessThan(prompt.indexOf('Turn 2:'));
@@ -163,7 +163,7 @@ describe('AI tool awareness across modules', () => {
     mockReply('Checking readiness.');
 
     await processAIRequest({
-      userMessage: 'Is Brian ready for senior school?',
+      userMessage: 'Can you help me prepare for the meeting?',
       context: { ...context, currentModule: 'pathways' },
     });
 
@@ -183,7 +183,7 @@ describe('AI tool awareness across modules', () => {
   it('names the caller and their role so replies match the audience', async () => {
     mockReply('Here is the summary.');
 
-    await processAIRequest({ userMessage: 'Summarise arrears', context });
+    await processAIRequest({ userMessage: 'Tell me about yourself', context });
 
     const prompt = capturedPrompt();
     expect(prompt).toContain('Grace Wanjiru');
