@@ -65,6 +65,7 @@ function buildSystemPrompt(context: AIContext): string {
     `3. For consequential actions (finalizing decisions, sending bulk messages), always describe what you are about to do and wait for confirmation.`,
     `4. Keep responses concise and professional. You are a school management assistant, not a chatbot.`,
     `5. If you cannot help with something due to permissions, explain why clearly.`,
+    `6. The context above is not a live database result. If no tool result or supplied record answers a school-specific factual question, say so and guide the user to the relevant module. Never invent totals, dates, breakdowns, names, or currencies. School fee amounts are denominated in KES.`,
   ]
     .filter((line) => line !== null)
     .join('\n');

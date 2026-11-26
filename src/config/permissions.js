@@ -36,7 +36,7 @@ export const PERMISSIONS = {
   CREATE_LEARNER: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER'],
   EDIT_LEARNER: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER'],
   DELETE_LEARNER: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'],
-  VIEW_ALL_LEARNERS: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER', 'ACCOUNTANT', 'LIBRARIAN', 'NURSE', 'SECURITY', 'DRIVER', 'COOK', 'CLEANER', 'GROUNDSKEEPER', 'IT_SUPPORT'],
+  VIEW_ALL_LEARNERS: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER', 'ACCOUNTANT', 'LIBRARIAN', 'NURSE'],
   VIEW_OWN_LEARNERS: ['TEACHER'],
   VIEW_OWN_CHILDREN: ['PARENT'],
   PROMOTE_LEARNER: ['SUPER_ADMIN', 'ADMIN'],
@@ -185,7 +185,7 @@ export const PERMISSIONS = {
   // ============================================
   // TRANSPORT & HOSTEL MANAGEMENT
   // ============================================
-  TRANSPORT_MANAGEMENT: ['SUPER_ADMIN', 'ADMIN'], // Access to transport module
+  TRANSPORT_MANAGEMENT: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'], // Matches server MANAGE_TRANSPORT_TRIPS access
   MANAGE_BUS_ROUTES: ['SUPER_ADMIN', 'ADMIN'],
   GPS_TRACKING: ['SUPER_ADMIN', 'ADMIN'],
   MANAGE_DRIVERS: ['SUPER_ADMIN', 'ADMIN'],
@@ -258,9 +258,12 @@ function getRoleAccessOverrides() {
 }
 
 function getEffectiveRolePermissions(role) {
-  if (role === 'DEPUTY_HEAD_TEACHER') role = 'HEAD_TEACHER';
   const overrides = getRoleAccessOverrides();
-  if (Array.isArray(overrides[role])) return overrides[role];
+  if (Array.isArray(overrides[role])) {
+    return role === 'DEPUTY_HEAD_TEACHER'
+      ? overrides[role].filter(permission => !DEPUTY_RESTRICTED_PERMISSIONS.has(permission))
+      : overrides[role];
+  }
   if (role === 'DEPUTY_HEAD_TEACHER') {
     return Object.entries(PERMISSIONS)
       .filter(([permission, roles]) => roles.includes('HEAD_TEACHER') && !DEPUTY_RESTRICTED_PERMISSIONS.has(permission))

@@ -4,6 +4,13 @@ jest.mock('../config/database', () => ({
     classEnrollment: {
       findFirst: jest.fn().mockResolvedValue({ id: 'class-enrollment-1' }),
     },
+    // Teacher learner access now uses the shared record-access service.
+    class: {
+      findMany: jest.fn().mockResolvedValue([{ id: 'class-1', grade: 'Grade 7', stream: 'A' }]),
+    },
+    learner: {
+      findFirst: jest.fn().mockResolvedValue({ id: 'learner-1' }),
+    },
   },
 }));
 

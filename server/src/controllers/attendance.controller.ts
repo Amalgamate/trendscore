@@ -10,7 +10,7 @@ import prisma from '../config/database';
 import { ApiError } from '../utils/error.util';
 import { AuthRequest } from '../middleware/permissions.middleware';
 import { AttendanceStatus } from '@prisma/client';
-import { parentAccessService } from '../services/parent-access.service';
+import { assertLearnerRecordAccess } from '../services/learner-record-access.service';
 import {
   checkAttendanceLock,
   enforceRemarksRule,
@@ -507,66 +507,9 @@ export class AttendanceController {
   async getLearnerAttendanceSummary(req: AuthRequest, res: Response) {
     const { learnerId } = req.params;
     const { startDate, endDate } = req.query;
-    const currentUserId = req.user!.userId;
-    const currentUserRole = req.user!.role;
-
-    if (currentUserRole === 'PARENT') {
-      if (!(await parentAccessService.canAccessLearner(currentUserId, learnerId))) {
-        throw new ApiError(403, "You can only access your own children's attendance");
-      }
-    }
-
-    if (currentUserRole === 'STUDENT') {
-      const user = await prisma.user.findUnique({
-        where: { id: currentUserId },
-        select: { username: true, email: true },
-      });
-      const usernameCandidates = [
-        user?.username,
-        user?.username?.replace(/-/g, '/'),
-        user?.email?.split('@')[0],
-        user?.email?.split('@')[0]?.replace(/-/g, '/'),
-      ].filter(Boolean) as string[];
-      const ownLearner = await prisma.learner.findFirst({
-        where: {
-          id: learnerId,
-          archived: false,
-          OR: [
-            { studentUserId: currentUserId },
-            { admissionNumber: { in: usernameCandidates } },
-          ],
-        },
-        select: { id: true },
-      });
-      if (!ownLearner) {
-        throw new ApiError(403, 'You can only access your own attendance');
-      }
-    }
-
-    if (currentUserRole === 'TEACHER') {
-      const teacherClasses = await prisma.class.findMany({
-        where: { OR: [{ teacherId: currentUserId }, { teacherAssignments: { some: { teacherId: currentUserId } } }] },
-        select: { id: true, grade: true, stream: true },
-      });
-      const validLearner = await prisma.learner.findFirst({
-        where: {
-          id: learnerId,
-          status: 'ACTIVE',
-          OR: teacherClasses.length > 0
-            ? teacherClasses.map((c) => ({
-                OR: [
-                  { enrollments: { some: { classId: c.id, active: true } } },
-                  { grade: c.grade, ...(c.stream ? { stream: c.stream } : {}) },
-                ],
-              }))
-            : [{ id: 'none' }],
-        },
-        select: { id: true },
-      });
-      if (!validLearner) {
-        throw new ApiError(403, 'You can only access attendance for learners in your assigned class');
-      }
-    }
+    await assertLearnerRecordAccess(req.user, learnerId, [
+      'SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER', 'PARENT', 'STUDENT',
+    ]);
 
     const whereClause: any = { learnerId };
     if (startDate && endDate) {

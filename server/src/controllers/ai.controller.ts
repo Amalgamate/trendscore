@@ -18,6 +18,12 @@ import {
 } from '../ai/conversations/AIConversationStore';
 
 import logger from '../utils/logger';
+import { assertLearnerRecordAccess } from '../services/learner-record-access.service';
+
+const AI_LEARNER_ACCESS_ROLES = [
+    'SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER',
+];
+
 export const aiController = {
     /**
      * Generate AI Feedback for a learner
@@ -26,6 +32,8 @@ export const aiController = {
         try {
             const { learnerId } = req.params;
             const { term, academicYear } = req.query;
+
+            await assertLearnerRecordAccess(req.user, learnerId, AI_LEARNER_ACCESS_ROLES);
 
             if (!term || !academicYear) {
                 throw new ApiError(400, 'Term and academic year are required');
@@ -56,6 +64,7 @@ export const aiController = {
     analyzeRisk: async (req: AuthRequest, res: Response) => {
         try {
             const { learnerId } = req.params;
+            await assertLearnerRecordAccess(req.user, learnerId, AI_LEARNER_ACCESS_ROLES);
             const analysis = await aiAssistantService.analyzeLearnerRisk(learnerId);
 
             res.json({
@@ -196,13 +205,16 @@ export const aiController = {
     listTools: async (req: AuthRequest, res: Response) => {
         try {
             const { listTools } = await import('../ai');
-            const tools = listTools().map((t) => ({
+            const role = req.user?.role as UserRole | undefined;
+            const tools = listTools()
+                .filter((t) => role && t.allowedRoles.includes(role))
+                .map((t) => ({
                 name: t.name,
                 description: t.description,
                 category: t.category,
                 allowedRoles: t.allowedRoles,
                 requiresConfirmation: t.requiresConfirmation,
-            }));
+                }));
             res.json({ success: true, data: tools });
         } catch (error: any) {
             res.status(500).json({ success: false, message: error.message });
@@ -215,6 +227,7 @@ export const aiController = {
     getTrend: async (req: AuthRequest, res: Response) => {
         try {
             const { learnerId } = req.params;
+            await assertLearnerRecordAccess(req.user, learnerId, AI_LEARNER_ACCESS_ROLES);
             const trend = await performanceService.getLearnerPerformanceTrend(learnerId);
 
             res.json({

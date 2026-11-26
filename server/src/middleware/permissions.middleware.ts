@@ -4,6 +4,7 @@ import { getCanonicalRoles, hasAnyRole } from '../utils/roleNormalizer';
 import prisma from '../config/database';
 import { ApiError } from '../utils/error.util';
 import { parentAccessService } from '../services/parent-access.service';
+import { assertLearnerRecordAccess } from '../services/learner-record-access.service';
 
 type InstitutionType = 'PRIMARY_CBC' | 'SECONDARY' | 'TERTIARY';
 
@@ -204,11 +205,11 @@ export class ResourceAccessControl {
           );
         }
 
-        if (hasAnyRole(req.user, ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'])) {
+        if (hasAnyRole(req.user, ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'HEAD_OF_CURRICULUM'])) {
           return next();
         }
 
-        if (hasAnyRole(req.user, ['ACCOUNTANT', 'RECEPTIONIST'])) {
+        if (hasAnyRole(req.user, ['ACCOUNTANT', 'LIBRARIAN', 'NURSE', 'RECEPTIONIST'])) {
           if (req.method === 'GET') return next();
           return next(
             new ApiError(403, 'You can only view learner information').withCode('ROLE_FORBIDDEN')
@@ -216,13 +217,6 @@ export class ResourceAccessControl {
         }
 
         if (hasAnyRole(req.user, ['TEACHER'])) {
-          // Teachers may browse the school learner directory, but changes to
-          // a learner are permitted only for a learner actively enrolled in a
-          // class for which that teacher is the class teacher. This is checked
-          // on the server so a crafted request cannot bypass the hidden UI
-          // actions.
-          if (req.method === 'GET') return next();
-
           const learnerId = req.params.learnerId || req.params.id || req.body?.learnerId || req.query.learnerId;
           if (!learnerId) {
             return next(
@@ -230,26 +224,7 @@ export class ResourceAccessControl {
             );
           }
 
-          const assignedLearner = await prisma.classEnrollment.findFirst({
-            where: {
-              learnerId: String(learnerId),
-              active: true,
-              archived: false,
-              class: {
-                active: true,
-                archived: false,
-                OR: [{ teacherId: userId }, { teacherAssignments: { some: { teacherId: userId } } }],
-              },
-            },
-            select: { id: true },
-          });
-
-          if (!assignedLearner) {
-            return next(
-              new ApiError(403, 'You can only change learners in your assigned class')
-                .withCode('CLASS_ASSIGNMENT_REQUIRED')
-            );
-          }
+          await assertLearnerRecordAccess(req.user, String(learnerId), ['TEACHER']);
           return next();
         }
 

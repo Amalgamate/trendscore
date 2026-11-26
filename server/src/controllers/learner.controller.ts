@@ -14,6 +14,7 @@ import { SmsService } from '../services/sms.service';
 import { EmailService } from '../services/email.service';
 import { parentService } from '../services/parent.service';
 import { parentAccessService } from '../services/parent-access.service';
+import { assertLearnerRecordAccess, assertTeacherClassAccess, getStudentLearnerIds, getTeacherLearnerScope } from '../services/learner-record-access.service';
 import { ensureStudentAccountForLearner } from '../services/studentAccount.service';
 import { auditService } from '../services/audit.service';
 import { buildPromotionReadiness } from '../services/promotionReadiness.service';
@@ -23,6 +24,38 @@ import { PRODUCT_STORAGE_PREFIX } from '../config/productIdentity';
 import logger from '../utils/logger';
 const SKIP_PARENT_PORTAL_NOTIFICATIONS = process.env.SKIP_PARENT_PORTAL_NOTIFICATIONS === 'true' || process.env.NODE_ENV === 'test';
 const SECONDARY_GRADE_CODES = ['GRADE10', 'GRADE11', 'GRADE12', 'GRADE_10', 'GRADE_11', 'GRADE_12', 'FORM_1', 'FORM_2', 'FORM_3'] as const;
+
+const learnerSummarySelect = {
+  id: true,
+  firstName: true,
+  lastName: true,
+  admissionNumber: true,
+  grade: true,
+  stream: true,
+  status: true,
+};
+
+const getLearnerReadSelect = (role: string): Record<string, any> | null => {
+  if (role === 'ACCOUNTANT' || role === 'LIBRARIAN') return learnerSummarySelect;
+  if (role === 'NURSE') {
+    return {
+      ...learnerSummarySelect,
+      dateOfBirth: true,
+      gender: true,
+      medicalConditions: true,
+      allergies: true,
+      emergencyContact: true,
+      emergencyPhone: true,
+      bloodGroup: true,
+      specialNeeds: true,
+      guardianName: true,
+      guardianPhone: true,
+      primaryContactName: true,
+      primaryContactPhone: true,
+    };
+  }
+  return null;
+};
 
 const applyInstitutionGradeScope = (
   institutionType: 'PRIMARY_CBC' | 'SECONDARY' | 'TERTIARY',
@@ -112,6 +145,9 @@ export class LearnerController {
     if (currentUserRole === 'PARENT') {
       whereClause.id = { in: await parentAccessService.getAccessibleLearnerIds(currentUserId) };
     }
+    if (currentUserRole === 'TEACHER') {
+      whereClause.AND = [await getTeacherLearnerScope(currentUserId)];
+    }
     if (grade && String(grade).toLowerCase() !== 'all') {
       whereClause.grade = { equals: String(grade).trim(), mode: 'insensitive' };
     }
@@ -129,26 +165,28 @@ export class LearnerController {
       ];
     }
     if (status === 'DROPPED_OUT') delete whereClause.archived;
+    const roleSelect = getLearnerReadSelect(currentUserRole);
+    const learnerSelect = roleSelect || {
+      id: true, firstName: true, lastName: true, middleName: true,
+      admissionNumber: true, grade: true, stream: true, dateOfBirth: true,
+      gender: true, parentId: true, status: true,
+      primaryContactPhone: true, primaryContactName: true,
+      primaryContactType: true, primaryContactEmail: true,
+      guardianPhone: true, guardianName: true,
+      isTransportStudent: true,
+      createdBy: true,
+      enrollments: {
+        where: { active: true },
+        select: { class: { select: { teacherId: true } } }
+      },
+      parent: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+    };
 
     try {
       const [learners, total] = await Promise.all([
         prisma.learner.findMany({
           where: whereClause,
-          select: {
-            id: true, firstName: true, lastName: true, middleName: true,
-            admissionNumber: true, grade: true, stream: true, dateOfBirth: true,
-            gender: true, parentId: true, status: true,
-            primaryContactPhone: true, primaryContactName: true,
-            primaryContactType: true, primaryContactEmail: true,
-            guardianPhone: true, guardianName: true,
-            isTransportStudent: true,
-            createdBy: true,
-            enrollments: {
-              where: { active: true },
-              select: { class: { select: { teacherId: true } } }
-            },
-            parent: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
-          },
+          select: learnerSelect,
           orderBy: [{ createdAt: 'desc' }, { grade: 'asc' }, { stream: 'asc' }, { lastName: 'asc' }, { firstName: 'asc' }],
           skip, take: Number(limit),
         }),
@@ -246,12 +284,17 @@ export class LearnerController {
   async getLearnerById(req: AuthRequest, res: Response) {
     const { id } = req.params;
     const institutionType = getInstitutionType(req);
-    const learner = await prisma.learner.findUnique({
-      where: { id },
-      include: { parent: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } } },
-    });
+    const roleSelect = getLearnerReadSelect(req.user!.role);
+    const learner = await prisma.learner.findFirst({
+      where: { id, institutionType },
+      ...(roleSelect
+        ? { select: roleSelect }
+        : { include: { parent: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } } } }),
+    } as any);
     if (!learner) throw new ApiError(404, 'Learner not found');
-    if (learner.institutionType !== institutionType) throw new ApiError(404, 'Learner not found');
+    if (req.user!.role === 'TEACHER') {
+      await assertLearnerRecordAccess(req.user, id, ['TEACHER']);
+    }
     if (req.user!.role === 'PARENT' && !(await parentAccessService.canAccessLearner(req.user!.userId, id))) {
       throw new ApiError(403, 'You can only access your own children');
     }
@@ -260,12 +303,17 @@ export class LearnerController {
 
   async getLearnerByAdmissionNumber(req: AuthRequest, res: Response) {
     const institutionType = getInstitutionType(req);
-    const learner = await prisma.learner.findUnique({
-      where: { admissionNumber: req.params.admissionNumber },
-      include: { parent: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } } },
-    });
+    const roleSelect = getLearnerReadSelect(req.user!.role);
+    const learner = await prisma.learner.findFirst({
+      where: { admissionNumber: req.params.admissionNumber, institutionType },
+      ...(roleSelect
+        ? { select: roleSelect }
+        : { include: { parent: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } } } }),
+    } as any);
     if (!learner) throw new ApiError(404, 'Learner not found');
-    if (learner.institutionType !== institutionType) throw new ApiError(404, 'Learner not found');
+    if (req.user!.role === 'TEACHER') {
+      await assertLearnerRecordAccess(req.user, (learner as any).id, ['TEACHER']);
+    }
     res.json({ success: true, data: learner });
   }
 
@@ -317,6 +365,9 @@ export class LearnerController {
       select: { id: true },
     });
     if (!matchingClass) throw new ApiError(400, 'Create the matching active class before adding learners.');
+    if (req.user!.role === 'TEACHER') {
+      await assertTeacherClassAccess(req.user, matchingClass.id);
+    }
     const existing = await prisma.learner.findUnique({ where: { admissionNumber } });
     if (existing) {
       throw new ApiError(
@@ -795,17 +846,24 @@ export class LearnerController {
     const { grade } = req.params;
     const { stream, status = 'ACTIVE' } = req.query;
     const institutionType = getInstitutionType(req);
-    const learners = await prisma.learner.findMany({
-      where: {
+    const whereClause: any = {
         grade: String(grade),
         status: String(status).toUpperCase() as LearnerStatus,
         stream: stream ? (stream as string) : undefined,
         archived: false,
         institutionType,
-      },
-      include: { parent: { select: { id: true, firstName: true, lastName: true, phone: true } } },
+    };
+    if (req.user!.role === 'TEACHER') {
+      whereClause.AND = [await getTeacherLearnerScope(req.user!.userId)];
+    }
+    const roleSelect = getLearnerReadSelect(req.user!.role);
+    const learners = await prisma.learner.findMany({
+      where: whereClause,
+      ...(roleSelect
+        ? { select: roleSelect }
+        : { include: { parent: { select: { id: true, firstName: true, lastName: true, phone: true } } } }),
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
-    });
+    } as any);
     res.json({ success: true, data: learners, count: learners.length });
   }
 
@@ -821,8 +879,16 @@ export class LearnerController {
 
   async getUpcomingBirthdays(_req: AuthRequest, res: Response) {
     const institutionType = getInstitutionType(_req);
+    const whereClause: any = { status: 'ACTIVE', archived: false, institutionType };
+    if (_req.user!.role === 'TEACHER') {
+      whereClause.AND = [await getTeacherLearnerScope(_req.user!.userId)];
+    } else if (_req.user!.role === 'PARENT') {
+      whereClause.id = { in: await parentAccessService.getAccessibleLearnerIds(_req.user!.userId) };
+    } else if (_req.user!.role === 'STUDENT') {
+      whereClause.id = { in: await getStudentLearnerIds(_req.user!.userId) };
+    }
     const activeLearners = await prisma.learner.findMany({
-      where: { status: 'ACTIVE', archived: false, institutionType },
+      where: whereClause,
       select: { id: true, firstName: true, lastName: true, dateOfBirth: true, grade: true, stream: true, admissionNumber: true },
     });
     const today = new Date(); today.setHours(0, 0, 0, 0);

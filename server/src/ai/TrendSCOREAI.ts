@@ -19,6 +19,14 @@ import type { AIContext, AIRequest, AIResponse } from './types';
 import { resolveActiveAIMode, type AIMode } from '../services/ai-settings.service';
 import { processFreeWorkflowRequest } from './workflow/FreeWorkflowEngine';
 
+function isSchoolRecordQuestion(message: string): boolean {
+  const asksForRecords = /\b(?:what|when|where|who|which|does|do|is|are|did|was|were|has|have|how (?:much|many|was|were|are|is|did)|show|list|report|summari[sz]e|give me|tell me|total|breakdown|check|can i)\b/i.test(message);
+  const mentionsSchoolData = /\b(?:fee|fees|payment|payments|paid|collection|collections|collected|invoice|invoices|receipt|receipts|balance|outstanding|arrears|amount|mpesa|attendance|absent|present|late|learner|learners|student|students|pupil|pupils|grade|score|scores|result|results|assessment|assessments|exam|exams|homework|assignment|assignments|diary|staff|teacher|teachers|employee|employees|payroll|salary|leave|library|book|books|loan|loans|message|messages|notice|notices|announcement|announcements|timetable|lesson|lessons|transport|trip|route|routes|inventory|stock|class list|enrolment|enrollment|incident|incidents|discipline|disciplinary|health|medical|nurse|driver|vehicle|fuel|maintenance|meal|kitchen|uniform|admission|application|refund|policy|policies|procedure|procedures|deadline|calendar|term date|opening date|closing date|expense|expenses|accounting|expenditure|spending|spend|spent|ledger|vendor|vendors|journal|reconciliation|purchase|procurement|hostel|boarding|safeguarding|asset|store|visitor|homework|diary|office|school|class|course|courses|open|closed)\b/i.test(message);
+  const asksForAdvice = /\b(?:how to|how do (?:i|we|you|schools?)|how can i|how should i|should i|advice|strategy|strategies|improve|increase|reduce|steps|guide|configure|set up|create|draft|write|procedure|process|what does .+ mean|what is .+ policy)\b/i.test(message);
+  const asksAboutSchoolPolicy = /\b(?:our|your|this|the)\s+(?:school\s+)?(?:(?:fee|refund|admission|attendance|discipline|safeguarding|medical|transport|uniform|payment|data|privacy)\s+)?(?:policy|policies|rule|rules|procedure|procedures|requirement|requirements|deadline|date|calendar)\b/i.test(message);
+  return asksAboutSchoolPolicy || (asksForRecords && mentionsSchoolData && !asksForAdvice);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // TOOL REGISTRATION
 // Import all tool files here so they register on startup
@@ -38,6 +46,13 @@ export async function processAIRequest(request: AIRequest): Promise<AIResponse> 
   // If a confirmation ID was provided, re-execute the pending tool
   if (confirmationId) {
     return executeConfirmedAction(confirmationId, context, start, mode);
+  }
+
+  // Keep school record lookups on deterministic, role-scoped workflows even
+  // when a language-model provider is enabled. The model may explain verified
+  // results, but must not invent records when a workflow has no matching lookup.
+  if (isSchoolRecordQuestion(userMessage)) {
+    return processFreeWorkflowRequest(request);
   }
 
   if (mode === 'workflow') return processFreeWorkflowRequest(request);
@@ -212,7 +227,7 @@ async function executeConfirmedAction(
 // ─────────────────────────────────────────────────────────────────────────────
 
 function buildToolAwarePrompt(userMessage: string, context: AIContext): string {
-  const moduleTools = getModuleToolDescriptions(context.currentModule);
+  const moduleTools = getModuleToolDescriptions(context.currentModule, context.user.role);
 
   return [
     `User request: "${userMessage}"`,
@@ -227,7 +242,11 @@ function buildToolAwarePrompt(userMessage: string, context: AIContext): string {
           ``,
           `If you can answer without a tool call, respond directly.`,
         ].join('\n')
-      : 'Answer the user\'s question directly based on the context provided.',
+      : [
+          'No live-data tool is available for this request.',
+          'For school-specific records or current totals, do not guess or create examples that look real; explain that this lookup is not available and guide the user to the relevant module.',
+          'For general how-to questions, answer with clear steps without claiming you checked school data.',
+        ].join(' '),
   ].join('\n');
 }
 
@@ -314,20 +333,16 @@ export function parseToolCallIntent(
   }
 }
 
-function getModuleToolDescriptions(module: string): string | null {
-  const toolsByModule: Record<string, string[]> = {
-    pathways: [
-      '- get_learner_readiness(learnerId): Analyze a learner\'s Grade 9 pathway readiness',
-      '- get_learner_pathway_status(learnerId): Get current recommendation + parent preference + finalization status',
-      '- search_senior_schools(pathway, county?, gender?, limit?): Find senior schools for a pathway',
-      '- get_class_pathway_summary(classId): Get pathway distribution across a class',
-      '- submit_pathway_recommendation(learnerId, recommendedPathway, confidenceScore): Submit staff recommendation',
-      '- submit_parent_preference(learnerId, parentPreference): Submit parent preference',
-      '- finalize_learner_pathway(learnerId, finalApprovedPathway): Lock and finalize pathway [REQUIRES CONFIRMATION]',
-    ],
-  };
-
-  const tools = toolsByModule[module];
-  if (!tools || tools.length === 0) return null;
-  return tools.join('\n');
+function getModuleToolDescriptions(module: string, role: AIContext['user']['role']): string | null {
+  if (module !== 'pathways') return null;
+  const tools = [
+    { roles: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER', 'PARENT', 'STUDENT'], text: '- get_learner_readiness(learnerId): Analyze a learner\'s Grade 9 pathway readiness' },
+    { roles: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER', 'PARENT', 'STUDENT'], text: '- get_learner_pathway_status(learnerId): Get current recommendation + parent preference + finalization status' },
+    { roles: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER', 'PARENT', 'STUDENT'], text: '- search_senior_schools(pathway, county?, gender?, limit?): Find schools for a pathway' },
+    { roles: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER', 'HEAD_OF_CURRICULUM', 'TEACHER'], text: '- get_class_pathway_summary(classId): Get pathway distribution across an assigned class' },
+    { roles: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER', 'DEPUTY_HEAD_TEACHER', 'HEAD_OF_CURRICULUM'], text: '- submit_pathway_recommendation(learnerId, recommendedPathway, confidenceScore): Submit staff recommendation' },
+    { roles: ['SUPER_ADMIN', 'PARENT'], text: '- submit_parent_preference(learnerId, parentPreference): Submit a linked parent preference' },
+    { roles: ['SUPER_ADMIN', 'ADMIN', 'HEAD_TEACHER'], text: '- finalize_learner_pathway(learnerId, finalApprovedPathway): Lock and finalize pathway [REQUIRES CONFIRMATION]' },
+  ].filter((tool) => tool.roles.includes(role)).map((tool) => tool.text);
+  return tools.length ? tools.join('\n') : null;
 }

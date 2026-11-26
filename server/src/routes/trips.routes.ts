@@ -43,7 +43,7 @@ router.get(
  */
 router.get(
   '/:tripId',
-  requireAnyPermission(['MANAGE_TRANSPORT_TRIPS', 'VIEW_TRANSPORT_TRIPS', 'RECORD_BOARDING_EVENTS']),
+  requireAnyPermission(['MANAGE_TRANSPORT_TRIPS', 'RECORD_BOARDING_EVENTS']),
   asyncHandler(tripController.getTripById.bind(tripController)),
 );
 
@@ -63,7 +63,7 @@ router.patch(
  */
 router.get(
   '/:tripId/manifest',
-  requireAnyPermission(['MANAGE_TRANSPORT_TRIPS', 'VIEW_TRANSPORT_TRIPS', 'RECORD_BOARDING_EVENTS']),
+  requireAnyPermission(['MANAGE_TRANSPORT_TRIPS', 'RECORD_BOARDING_EVENTS']),
   asyncHandler(tripController.getManifest.bind(tripController)),
 );
 

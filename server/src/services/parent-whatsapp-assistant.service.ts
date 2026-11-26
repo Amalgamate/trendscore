@@ -3,6 +3,7 @@ import { normalizeKenyanPhone } from '../utils/phone.util';
 import { parentAccessService } from './parent-access.service';
 import { parentWhatsAppLinkService } from './parent-whatsapp-link.service';
 import { classifyParentWhatsAppIntent } from './parent-whatsapp-intent.service';
+import { publicWhatsAppAssistantService } from './public-whatsapp-assistant.service';
 import { whatsappService, InboundWhatsAppMessage } from './whatsapp.service';
 import logger from '../utils/logger';
 
@@ -65,7 +66,9 @@ export class ParentWhatsAppAssistantService {
 
     const link = await this.findActiveLink(from);
     if (!link) {
-      await this.reply(from, 'For learner privacy, please sign in to the Parent Portal, open My Profile, and link your WhatsApp number before asking about school records.');
+      // Unknown or unlinked senders get public-only assistance. This handler
+      // never passes their message into the private AI workflow or school data.
+      await publicWhatsAppAssistantService.handleMessage(from, message);
       return;
     }
     if (!link.enabled) {
